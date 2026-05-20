@@ -1,0 +1,33 @@
+# Dependências
+node_modules/
+jspm_packages/
+web_modules/
+
+# Logs e Bancos de dados
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.db
+*.sqlite
+
+# IDEs e Editores
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Temporários/Build
+dist/
+build/
+.next/
+out/
+.nuxt/
+.cache/

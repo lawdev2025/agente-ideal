@@ -7,12 +7,17 @@ vi.mock("@google/generative-ai", () => ({
     getGenerativeModel: vi.fn(() => ({
       startChat: vi.fn(() => ({
         sendMessage: vi.fn(async () => ({
-          text: () => "This is a test response",
-          functionCalls: () => null,
+          response: {
+            text: () => "This is a test response",
+            functionCalls: () => null,
+          },
         })),
       })),
     })),
   })),
+  SchemaType: {
+    OBJECT: "OBJECT",
+  },
 }));
 
 describe("LLM Provider", () => {

@@ -61,7 +61,7 @@ describe("Message Orchestrator", () => {
     await orchestrator.processMessage("user123", "What is my balance?", "user123");
 
     expect(mockLLM.generateMessage).toHaveBeenCalled();
-    expect(mockStateRepo.addMessage).toHaveBeenCalled();
+    expect(mockStateRepo.appendMessage).toHaveBeenCalled();
     expect(mockWhatsApp.sendMessage).toHaveBeenCalled();
   });
 

@@ -6,7 +6,15 @@ import config from '../config/env';
 let db: Database.Database | null = null;
 
 export function initDatabase(): Database.Database {
-  if (db) return db;
+  // Allow resetting database for tests
+  if (db) {
+    try {
+      db.close();
+    } catch {
+      // Ignore errors when closing
+    }
+    db = null;
+  }
 
   const dbPath = config.DB_PATH;
   const dir = path.dirname(dbPath);

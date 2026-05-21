@@ -30,7 +30,7 @@ export class MessageOrchestrator {
       );
 
       // Get conversation history
-      const history = await this.stateRepository.getConversation(conversationId);
+      const history = this.stateRepository.getHistory(conversationId);
 
       // Format conversation for LLM
       const conversationHistory: ConversationMessage[] = history.map((msg) => ({
@@ -47,13 +47,7 @@ export class MessageOrchestrator {
       );
 
       // Store assistant message
-      await this.stateRepository.addMessage({
-        conversationId,
-        role: "assistant",
-        content: response.message,
-        timestamp: new Date(),
-        metadata: { hasToolCalls: !!response.toolCalls?.length },
-      });
+      this.stateRepository.appendMessage(conversationId, "assistant", response.message);
 
       // Execute tool calls if any
       if (response.toolCalls && response.toolCalls.length > 0) {
@@ -70,26 +64,20 @@ export class MessageOrchestrator {
             );
 
             // Store tool execution result
-            await this.stateRepository.addMessage({
+            this.stateRepository.appendMessage(
               conversationId,
-              role: "system",
-              content: `Tool ${toolCall.name} result: ${toolResult}`,
-              timestamp: new Date(),
-              metadata: {
-                type: "tool_result",
-                toolName: toolCall.name,
-              },
-            });
+              "tool",
+              `Tool ${toolCall.name} result: ${toolResult}`
+            );
 
             // Generate follow-up message with tool results
-            const updatedHistory = await this.stateRepository.getConversation(
-              conversationId
-            );
-            const updatedConversationHistory: ConversationMessage[] =
-              updatedHistory.map((msg) => ({
+            const updatedHistory = this.stateRepository.getHistory(conversationId);
+            const updatedConversationHistory: ConversationMessage[] = updatedHistory.map(
+              (msg) => ({
                 role: msg.role,
                 content: msg.content,
-              }));
+              })
+            );
 
             const followUpResponse = await this.llmProvider.generateMessage(
               `Based on the tool results: ${toolResult}`,
@@ -145,11 +133,8 @@ export class MessageOrchestrator {
     reason: string
   ): Promise<void> {
     try {
-      const history = await this.stateRepository.getConversation(conversationId);
-      const context = history
-        .slice(-5)
-        .map((m) => `${m.role}: ${m.content}`)
-        .join("\n");
+      const history = this.stateRepository.getHistory(conversationId, 5);
+      const context = history.map((m) => `${m.role}: ${m.content}`).join("\n");
 
       await this.escalationHandler.escalateToGroup(
         studentId,

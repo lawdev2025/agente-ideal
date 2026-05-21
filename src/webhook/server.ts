@@ -43,22 +43,25 @@ export async function createWebhookServer(
   });
 
   // Webhook verification (Meta)
-  fastify.get("/webhook", async (request, reply) => {
-    const mode = request.query.mode as string;
-    const token = request.query.token as string;
-    const challenge = request.query.challenge as string;
+  fastify.get<{ Querystring: { mode: string; token: string; challenge: string } }>(
+    "/webhook",
+    async (request, reply) => {
+      const mode = request.query.mode;
+      const token = request.query.token;
+      const challenge = request.query.challenge;
 
-    if (
-      mode === "subscribe" &&
-      token === config.webhook.verifyToken
-    ) {
-      logger.info("Webhook verified");
-      reply.code(200).send(challenge);
-      return;
+      if (
+        mode === "subscribe" &&
+        token === config.webhook.verifyToken
+      ) {
+        logger.info("Webhook verified");
+        reply.code(200).send(challenge);
+        return;
+      }
+
+      reply.code(403).send("Forbidden");
     }
-
-    reply.code(403).send("Forbidden");
-  });
+  );
 
   // Webhook receiver
   fastify.post<{ Body: WebhookPayload }>("/webhook", async (request, reply) => {
@@ -111,13 +114,7 @@ export async function createWebhookServer(
               });
 
               // Store conversation state
-              await stateRepository.addMessage({
-                conversationId: senderId,
-                role: "user",
-                content: text,
-                timestamp: new Date(),
-                metadata: { platform: "whatsapp" },
-              });
+              stateRepository.appendMessage(senderId, "user", text);
             }
           }
         }

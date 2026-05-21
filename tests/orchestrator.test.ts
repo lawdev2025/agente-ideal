@@ -21,12 +21,21 @@ describe("Message Orchestrator", () => {
     };
 
     mockStateRepo = {
-      getConversation: vi.fn(async () => [
-        { role: "user", content: "Hello", timestamp: new Date(), metadata: {} },
+      getHistory: vi.fn(() => [
+        { id: 1, wa_id: "user123", role: "user", content: "Hello", created_at: Date.now() },
       ]),
-      addMessage: vi.fn(async () => {}),
-      getMessageHistory: vi.fn(async () => []),
-      getContactInfo: vi.fn(async () => ({ phone: "123" })),
+      appendMessage: vi.fn(() => 1),
+      getOrCreateContact: vi.fn(() => ({
+        wa_id: "user123",
+        bot_paused: false,
+        paused_reason: null,
+        paused_at: null,
+        last_seen_at: null,
+      })),
+      pauseBot: vi.fn(),
+      resumeBot: vi.fn(),
+      isBotPaused: vi.fn(() => false),
+      updateLastSeen: vi.fn(),
     } as unknown as StateRepository;
 
     mockWhatsApp = {
@@ -111,11 +120,10 @@ describe("Message Orchestrator", () => {
   it("should store conversation history", async () => {
     await orchestrator.processMessage("user123", "Hello", "user123");
 
-    expect(mockStateRepo.addMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "user123",
-        role: expect.any(String),
-      })
+    expect(mockStateRepo.appendMessage).toHaveBeenCalledWith(
+      "user123",
+      expect.any(String),
+      expect.any(String)
     );
   });
 });

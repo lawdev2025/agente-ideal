@@ -27,7 +27,7 @@ async function bootstrap() {
     const queueDb = await createQueueDb();
 
     // Create repositories
-    const stateRepository = new StateRepository(stateDb);
+    const stateRepository = stateDb;
 
     // Initialize LLM provider
     logger.info("Initializing Gemini LLM provider");
@@ -63,10 +63,7 @@ async function bootstrap() {
 
     // Start webhook server
     logger.info({ port: config.port }, "Starting webhook server");
-    const webhookServer = await startWebhookServer(
-      stateRepository,
-      config.port
-    );
+    const webhookServer = await startWebhookServer(stateRepository);
 
     // Start message poller
     logger.info("Starting message poller");

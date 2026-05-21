@@ -137,6 +137,37 @@ export class SqliteQueue {
       failed: counts.failed || 0,
     };
   }
+
+  // Alias methods for compatibility
+  async addMessage(msg: { messageId: string; senderId: string; text: string; platform: string }): Promise<number> {
+    return this.enqueue(msg.messageId, msg.senderId, msg.text);
+  }
+
+  async claimMessages(limit: number, lockTimeMs: number): Promise<Array<{ id: number; messageId: string; senderId: string; text: string; created_at: number }>> {
+    const messages = this.claim(limit);
+    return messages.map(msg => ({
+      id: msg.id,
+      messageId: msg.wa_message_id,
+      senderId: msg.wa_id,
+      text: msg.body,
+      created_at: msg.created_at,
+    }));
+  }
+
+  async completeMessage(id: number): Promise<void> {
+    this.complete(id);
+  }
+
+  async releaseClaim(id: number): Promise<void> {
+    const db = this.getDb();
+    const stmt = db.prepare(`
+      UPDATE inbound_queue
+      SET status = 'pending'
+      WHERE id = ?
+    `);
+    stmt.run(id);
+    logger.debug({ id }, 'Claim released, message back to pending');
+  }
 }
 
 export const queue = new SqliteQueue();

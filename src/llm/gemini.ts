@@ -1,4 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  GoogleGenerativeAI,
+  SchemaType,
+  FunctionDeclaration,
+  Tool,
+} from "@google/generative-ai";
 import { LLMProvider } from "./provider";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
 import { logger } from "../logger";
@@ -29,24 +34,27 @@ export class GeminiProvider implements LLMProvider {
     }>;
   }> {
     try {
+      const functionDeclarations: FunctionDeclaration[] = (tools || []).map(
+        (tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: SchemaType.OBJECT,
+            properties: (tool.inputSchema.properties as Record<string, any>) || {},
+            required: (tool.inputSchema.required as string[]) || [],
+          },
+        })
+      );
+
+      const modelTools: Tool[] | undefined =
+        functionDeclarations.length > 0
+          ? [{ functionDeclarations }]
+          : undefined;
+
       const model = this.client.getGenerativeModel({
         model: this.model,
         systemInstruction: SYSTEM_PROMPT,
-        tools: tools
-          ? [
-              {
-                functionDeclarations: tools.map((tool) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  parameters: {
-                    type: "OBJECT",
-                    properties: tool.inputSchema.properties || {},
-                    required: tool.inputSchema.required || [],
-                  },
-                })),
-              },
-            ]
-          : undefined,
+        tools: modelTools,
       });
 
       const chat = model.startChat({
@@ -57,14 +65,29 @@ export class GeminiProvider implements LLMProvider {
       });
 
       const response = await chat.sendMessage(userMessage);
-      const text = response.text();
+
+      // Get text content
+      let text = "";
+      const contentResponse = response.response;
+      if (contentResponse && contentResponse.text) {
+        text = contentResponse.text();
+      }
 
       // Extract function calls if any
-      const toolCalls = response.functionCalls()?.map((call) => ({
-        id: call.name,
-        name: call.name,
-        arguments: call.args as Record<string, unknown>,
-      }));
+      let toolCalls: Array<{
+        id: string;
+        name: string;
+        arguments: Record<string, unknown>;
+      }> | undefined;
+
+      const functionCalls = contentResponse?.functionCalls?.();
+      if (functionCalls && functionCalls.length > 0) {
+        toolCalls = functionCalls.map((call) => ({
+          id: call.name,
+          name: call.name,
+          arguments: (call.args as Record<string, unknown>) || {},
+        }));
+      }
 
       logger.info(
         {

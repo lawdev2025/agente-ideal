@@ -1,4 +1,5 @@
 import Fastify, { FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
 import { validateMetaSignature } from "./signature";
 import { logger } from "../logger";
 import { config } from "../config";
@@ -37,10 +38,49 @@ export async function createWebhookServer(
     },
   });
 
+  // Enable CORS for local testing
+  await fastify.register(cors, {
+    origin: true,
+  });
+
   // Health check
   fastify.get("/health", async () => {
     return { status: "ok" };
   });
+
+  // Get latest response for a user (for testing)
+  fastify.get<{ Querystring: { userId: string } }>(
+    "/api/response",
+    async (request, reply) => {
+      const userId = request.query.userId;
+      if (!userId) {
+        reply.code(400).send({ error: "Missing userId" });
+        return;
+      }
+
+      try {
+        const queueDb = await createQueueDb();
+        // Get the latest assistant message for this user
+        const db = (queueDb as any).getDb();
+        const latestResponse = db
+          .prepare(
+            `SELECT content FROM messages
+             WHERE wa_id = ? AND role = 'assistant'
+             ORDER BY created_at DESC LIMIT 1`
+          )
+          .get(userId) as any;
+
+        if (latestResponse) {
+          reply.send({ response: latestResponse.content });
+        } else {
+          reply.code(404).send({ error: "No response yet" });
+        }
+      } catch (error) {
+        logger.error({ error, userId }, "Error fetching response");
+        reply.code(500).send({ error: "Internal error" });
+      }
+    }
+  );
 
   // Webhook verification (Meta)
   fastify.get<{ Querystring: { mode: string; token: string; challenge: string } }>(
@@ -122,7 +162,7 @@ export async function createWebhookServer(
 
       reply.code(200).send({ received: true });
     } catch (error) {
-      logger.error({ error }, "Webhook processing error");
+      logger.error({ error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined }, "Webhook processing error");
       reply.code(500).send("Internal error");
     }
   });

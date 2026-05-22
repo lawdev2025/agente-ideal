@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import { logger } from "../logger";
+import { config } from "../config";
 
 export interface WhatsAppMessage {
   messaging_product: string;
@@ -40,6 +41,22 @@ export class WhatsAppClient {
   }
 
   async sendMessage(to: string, text: string): Promise<{ messageId: string }> {
+    const dryRun = config.whatsapp.dryRun;
+
+    if (dryRun) {
+      logger.info(
+        {
+          to,
+          messageLength: text.length,
+          dryRun: true,
+        },
+        "WhatsApp message (DRY_RUN - not actually sent)"
+      );
+      return {
+        messageId: "dry-run-" + Date.now(),
+      };
+    }
+
     try {
       const payload: WhatsAppMessage = {
         messaging_product: "whatsapp",

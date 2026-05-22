@@ -12,9 +12,16 @@ const EnvSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().min(1),
   WHATSAPP_DRY_RUN: z.enum(['0', '1']).default('0').transform(v => v === '1'),
 
-  // Gemini
+  // LLM provider selection — "claude" (default) or "gemini"
+  LLM_PROVIDER: z.enum(['claude', 'gemini']).default('claude'),
+
+  // Gemini (kept for fallback/comparison)
   GEMINI_API_KEY: z.string().min(1),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
+
+  // Anthropic Claude
+  ANTHROPIC_API_KEY: z.string().min(1),
+  CLAUDE_MODEL: z.string().default('claude-haiku-4-5-20251001'),
 
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(1),

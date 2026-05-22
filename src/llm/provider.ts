@@ -1,3 +1,7 @@
+export interface GenerateOptions {
+  systemPromptOverride?: string;
+}
+
 export interface LLMProvider {
   generateMessage(
     userMessage: string,
@@ -6,7 +10,8 @@ export interface LLMProvider {
       name: string;
       description: string;
       inputSchema: Record<string, unknown>;
-    }>
+    }>,
+    options?: GenerateOptions
   ): Promise<{
     message: string;
     toolCalls?: Array<{

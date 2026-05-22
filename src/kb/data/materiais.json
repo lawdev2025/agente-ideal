@@ -1,174 +1,45 @@
 [
   {
-    "id": "materiais_infantil",
-    "nivel": "Educação Infantil (3 a 5 anos)",
-    "descricao": "Lista de materiais para Educação Infantil",
+    "id": "ef1_materiais",
+    "nivel": "Ensino Fundamental 1",
+    "descricao": "Materiais para 1º ao 5º ano",
     "materiais": [
       {
-        "nome": "Mochila escolar",
-        "quantidade": 1,
-        "especificacoes": "Tamanho pequeno (não muito pesada)"
+        "nome": "Livros didáticos",
+        "quantidade": "Por disciplina",
+        "especificacoes": "Material atualizado conforme BNCC"
       },
       {
-        "nome": "Uniforme",
-        "quantidade": 3,
-        "especificacoes": "Conforme tabela de tamanhos da escola"
+        "nome": "Apostilas complementares",
+        "quantidade": "Mensal",
+        "especificacoes": "Exercícios e atividades extras"
       },
       {
-        "nome": "Tênis esportivo",
-        "quantidade": 2,
-        "especificacoes": "Confortável e com velcro/cadarço"
-      },
-      {
-        "nome": "Chinelo escolar",
-        "quantidade": 1,
-        "especificacoes": "Com nome e antiderrapante"
-      },
-      {
-        "nome": "Lancheira/Marmita",
-        "quantidade": 1,
-        "especificacoes": "Com nome identificado"
-      },
-      {
-        "nome": "Caderneta/Agenda",
-        "quantidade": 1,
-        "especificacoes": "Para comunicações com a escola"
-      },
-      {
-        "nome": "Estojo com materiais básicos",
-        "quantidade": 1,
-        "especificacoes": "Lápis de cor, giz de cera, tesoura de ponta arredondada, cola, borracha"
+        "nome": "Simulados",
+        "quantidade": "Periódicos",
+        "especificacoes": "Avaliações para acompanhamento"
       }
     ]
   },
   {
-    "id": "materiais_fundamental_1",
-    "nivel": "Ensino Fundamental I (1º a 5º ano)",
-    "descricao": "Lista de materiais para Fundamental I",
+    "id": "em_materiais",
+    "nivel": "Ensino Médio",
+    "descricao": "Materiais para Ensino Médio e Pré-Enem",
     "materiais": [
       {
-        "nome": "Mochila escolar",
-        "quantidade": 1,
-        "especificacoes": "Reforçada, com alças ergonômicas"
+        "nome": "Livros didáticos",
+        "quantidade": "Por disciplina",
+        "especificacoes": "Material especializado para Enem"
       },
       {
-        "nome": "Uniforme",
-        "quantidade": 5,
-        "especificacoes": "Camiseta + bermuda"
+        "nome": "Apostilas Enem",
+        "quantidade": "Mensal",
+        "especificacoes": "Exercícios tipo Enem com resolução"
       },
       {
-        "nome": "Tênis esportivo",
-        "quantidade": 2,
-        "especificacoes": "Confortável"
-      },
-      {
-        "nome": "Chinelo escolar",
-        "quantidade": 1,
-        "especificacoes": "Antiderrapante"
-      },
-      {
-        "nome": "Lancheira",
-        "quantidade": 1,
-        "especificacoes": "Térmica (recomendado)"
-      },
-      {
-        "nome": "Estojo com materiais escolares",
-        "quantidade": 1,
-        "especificacoes": "Lápis, borracha, apontador, régua 30cm, tesoura, cola stick"
-      },
-      {
-        "nome": "Caderneta",
-        "quantidade": 1,
-        "especificacoes": "Para comunicações gerais"
-      },
-      {
-        "nome": "Cadernos",
-        "quantidade": 5,
-        "especificacoes": "200 folhas cada (Português, Matemática, Ciências, História, Geografia)"
-      }
-    ]
-  },
-  {
-    "id": "materiais_fundamental_2",
-    "nivel": "Ensino Fundamental II (6º a 9º ano)",
-    "descricao": "Lista de materiais para Fundamental II",
-    "materiais": [
-      {
-        "nome": "Uniforme",
-        "quantidade": 5,
-        "especificacoes": "Calça/saia + camiseta"
-      },
-      {
-        "nome": "Tênis esportivo",
-        "quantidade": 2,
-        "especificacoes": "Para aulas de Educação Física"
-      },
-      {
-        "nome": "Mochila reforçada",
-        "quantidade": 1,
-        "especificacoes": "Com compartimentos múltiplos"
-      },
-      {
-        "nome": "Estojo completo",
-        "quantidade": 1,
-        "especificacoes": "Lápis, canetas azul/preta, borracha, apontador, régua, esquadro, compasso, transferidor"
-      },
-      {
-        "nome": "Cadernos",
-        "quantidade": 6,
-        "especificacoes": "1 por disciplina (200 folhas)"
-      },
-      {
-        "nome": "Calculadora científica",
-        "quantidade": 1,
-        "especificacoes": "Para aulas de Matemática"
-      },
-      {
-        "nome": "Dicionário",
-        "quantidade": 1,
-        "especificacoes": "Português (recomendado)"
-      }
-    ]
-  },
-  {
-    "id": "materiais_ensino_medio",
-    "nivel": "Ensino Médio (1º a 3º ano)",
-    "descricao": "Lista de materiais para Ensino Médio",
-    "materiais": [
-      {
-        "nome": "Uniforme",
-        "quantidade": 5,
-        "especificacoes": "Conforme padrão escolar"
-      },
-      {
-        "nome": "Tênis esportivo",
-        "quantidade": 2,
-        "especificacoes": "Para Educação Física"
-      },
-      {
-        "nome": "Mochila ou pasta",
-        "quantidade": 1,
-        "especificacoes": "Profissional para livros"
-      },
-      {
-        "nome": "Estojo profissional",
-        "quantidade": 1,
-        "especificacoes": "Lápis, canetas (azul, preta, vermelha), marca-texto, borracha, apontador"
-      },
-      {
-        "nome": "Cadernos ou fichário",
-        "quantidade": 1,
-        "especificacoes": "Para todas as disciplinas"
-      },
-      {
-        "nome": "Calculadora científica gráfica",
-        "quantidade": 1,
-        "especificacoes": "Para Matemática e Física"
-      },
-      {
-        "nome": "Livros (didáticos conforme lista específica)",
-        "quantidade": "Conforme ementa",
-        "especificacoes": "Será fornecida lista detalhada em janeiro"
+        "nome": "Simulados Enem",
+        "quantidade": "Mensais",
+        "especificacoes": "Provas completas no formato oficial"
       }
     ]
   }

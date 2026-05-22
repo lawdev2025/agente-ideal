@@ -4,7 +4,7 @@ import {
   FunctionDeclaration,
   Tool,
 } from "@google/generative-ai";
-import { LLMProvider } from "./provider";
+import { LLMProvider, GenerateOptions } from "./provider";
 import { SYSTEM_PROMPT } from "./prompts/system-prompt";
 import { logger } from "../logger";
 
@@ -24,7 +24,8 @@ export class GeminiProvider implements LLMProvider {
       name: string;
       description: string;
       inputSchema: Record<string, unknown>;
-    }>
+    }>,
+    options?: GenerateOptions
   ): Promise<{
     message: string;
     toolCalls?: Array<{
@@ -53,7 +54,7 @@ export class GeminiProvider implements LLMProvider {
 
       const model = this.client.getGenerativeModel({
         model: this.model,
-        systemInstruction: SYSTEM_PROMPT,
+        systemInstruction: options?.systemPromptOverride ?? SYSTEM_PROMPT,
         tools: modelTools,
       });
 

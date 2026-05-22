@@ -13,6 +13,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
+    "simulate": "tsx scripts/simulate-chats.ts",
     "worker": "tsx src/worker/poller.ts",
     "lint": "tsc --noEmit"
   },
@@ -28,7 +29,8 @@
   },
   "homepage": "https://github.com/lawdev2025/agente-ideal#readme",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.30.0",
+    "@anthropic-ai/sdk": "^0.98.0",
+    "@fastify/cors": "^11.2.0",
     "@google/generative-ai": "^0.21.0",
     "axios": "^1.16.1",
     "better-sqlite3": "^11.0.0",

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agente Ideal - Chat Teste</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 500px;
+            height: 90vh;
+            max-height: 800px;
+            background: white;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 18px;
+            margin-bottom: 4px;
+        }
+
+        .chat-header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .message.user .message-bubble {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message.bot .message-bubble {
+            background: #f0f0f0;
+            color: #333;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: #999;
+            display: flex;
+            align-items: flex-end;
+            padding: 0 4px;
+        }
+
+        .message.user .message-time {
+            text-align: right;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f0f0f0;
+            border-radius: 18px;
+            width: fit-content;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #999;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+            0%, 60%, 100% {
+                opacity: 0.3;
+                transform: translateY(0);
+            }
+            30% {
+                opacity: 1;
+                transform: translateY(-10px);
+            }
+        }
+
+        .chat-input-area {
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            padding: 12px 16px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .input-group {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 24px;
+            padding: 10px 16px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #667eea;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 24px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #764ba2;
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            font-size: 12px;
+            color: #999;
+            text-align: center;
+            padding: 8px;
+            background: #f9f9f9;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .status.connected {
+            color: #4caf50;
+            background: #f1f8f6;
+        }
+
+        .status.error {
+            color: #f44336;
+            background: #fef5f5;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            text-align: center;
+        }
+
+        .empty-state h2 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: #667eea;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>Ana - Agente Ideal</h1>
+            <p>Colégio Ideal • Teste Local</p>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="empty-state">
+                <h2>👋 Bem-vindo!</h2>
+                <p>Comece digitando uma mensagem para testar o agente</p>
+            </div>
+        </div>
+
+        <div class="status" id="status">Conectando ao servidor...</div>
+
+        <div class="chat-input-area">
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="messageInput"
+                    placeholder="Digite uma mensagem..."
+                    autocomplete="off"
+                >
+                <button id="sendBtn" onclick="sendMessage()">Enviar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const statusEl = document.getElementById('status');
+
+        let userId = 'user_' + Date.now();
+        let conversationLog = [];
+        let lastMessageId = 0;
+        let userMessageCount = 0; // Track how many user messages we've sent
+        let lastSeenAssistantMessages = new Set(); // Track messages we've already seen
+        let userName = null; // Store user's name
+        let nameAsked = false; // Track if we already asked for name
+
+        // Verificar conexão com servidor
+        async function checkServerConnection() {
+            try {
+                const response = await fetch('http://localhost:3000/health');
+                if (response.ok) {
+                    statusEl.textContent = '✓ Servidor conectado';
+                    statusEl.className = 'status connected';
+                    return true;
+                }
+            } catch (error) {
+                statusEl.textContent = '✗ Servidor não está respondendo';
+                statusEl.className = 'status error';
+                return false;
+            }
+        }
+
+        // Extrair nome da mensagem (primeiro nome mencionado)
+        function extractName(text) {
+            const match = text.match(/\b([A-Za-záéíóúãõâêôäëïöüÀ-ÿ]+)\b/);
+            if (match) {
+                return match[1].charAt(0).toUpperCase() + match[1].slice(1);
+            }
+            return null;
+        }
+
+        // Enviar mensagem
+        async function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text) return;
+
+            // Limpar input
+            messageInput.value = '';
+            sendBtn.disabled = true;
+            userMessageCount++; // Incrementar contador de mensagens do usuário
+
+            // Limpar empty state
+            if (chatMessages.querySelector('.empty-state')) {
+                chatMessages.innerHTML = '';
+            }
+
+            // Se é a primeira mensagem e ainda não perguntamos o nome, tentar extrair
+            if (userMessageCount === 1 && !nameAsked && !userName) {
+                const extractedName = extractName(text);
+                if (extractedName && extractedName.length > 2) {
+                    userName = extractedName;
+                    nameAsked = true;
+                    console.log('Nome capturado:', userName);
+                }
+            }
+
+            // Adicionar mensagem do usuário ao chat
+            addMessageToUI(text, 'user');
+
+            try {
+                // Enviar webhook
+                const messageId = 'msg_' + Date.now();
+                await sendWebhook(messageId, text);
+
+                // Mostrar "digitando"
+                showTypingIndicator();
+
+                // Aguardar resposta
+                // Timeout NUNCA injeta texto na conversa — em produção isso
+                // seria visto por um cliente real. Em caso de demora, só atualiza
+                // a barra de status no rodapé (fora do chat) e mantém o typing.
+                const response = await waitForResponse(messageId, 45000);
+
+                if (response) {
+                    removeTypingIndicator();
+                    addMessageToUI(response, 'bot');
+                    statusEl.textContent = '✓ Servidor conectado';
+                    statusEl.className = 'status connected';
+                } else {
+                    // Polling continua indefinidamente em segundo plano sem
+                    // poluir o chat; usuário pode mandar nova mensagem se quiser.
+                    removeTypingIndicator();
+                    statusEl.textContent = '⚠ Resposta atrasada — servidor lento ou Gemini indisponível';
+                    statusEl.className = 'status error';
+                    continueBackgroundPolling(messageId);
+                }
+            } catch (error) {
+                removeTypingIndicator();
+                console.error('Erro:', error);
+                addMessageToUI('⚠️ Erro ao enviar mensagem. Verifique se o servidor está rodando.', 'bot');
+            } finally {
+                sendBtn.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        // Enviar webhook para o servidor
+        async function sendWebhook(messageId, text) {
+            const appSecret = 'test_secret_local';
+            const payload = {
+                object: "whatsapp_business_account",
+                entry: [
+                    {
+                        id: "123456",
+                        time: Math.floor(Date.now() / 1000),
+                        messaging: [
+                            {
+                                sender: { id: userId },
+                                recipient: { id: "123456789" },
+                                timestamp: Math.floor(Date.now() / 1000),
+                                message: {
+                                    mid: messageId,
+                                    text: text
+                                }
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            const payloadString = JSON.stringify(payload);
+
+            // Calcular HMAC
+            const encoder = new TextEncoder();
+            const key = new TextEncoder().encode(appSecret);
+            const data = encoder.encode(payloadString);
+            const signature = await crypto.subtle.sign('HMAC',
+                await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']),
+                data
+            ).then(sig => Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join(''));
+
+            const response = await fetch('http://localhost:3000/webhook', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-hub-signature-256': `sha256=${signature}`
+                },
+                body: payloadString
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            return response.json();
+        }
+
+        // Continua tentando achar a resposta mesmo após o timeout inicial,
+        // sem bloquear o usuário. Se chegar, aparece naturalmente como
+        // mensagem do bot — como se o atendente tivesse demorado pra digitar.
+        async function continueBackgroundPolling(messageId) {
+            const extraTimeout = 120000; // mais 2min de margem
+            const response = await waitForResponse(messageId, extraTimeout);
+            if (response) {
+                addMessageToUI(response, 'bot');
+                statusEl.textContent = '✓ Servidor conectado';
+                statusEl.className = 'status connected';
+            }
+        }
+
+        // Aguardar resposta do servidor com detecção robusta
+        async function waitForResponse(messageId, timeout) {
+            const startTime = Date.now();
+            let consecutiveMatches = 0;
+            let lastDetectedResponse = null;
+            const pollInterval = 400; // Mais rápido!
+
+            // Esperar tempo suficiente para Gemini processar (reduzido)
+            await new Promise(r => setTimeout(r, 1000));
+
+            while (Date.now() - startTime < timeout) {
+                try {
+                    const response = await fetch(
+                        `http://localhost:3000/api/response?userId=${userId}`
+                    );
+
+                    if (response.ok) {
+                        const data = await response.json();
+
+                        if (data.response) {
+                            // Heurísticas para detectar uma resposta nova:
+                            // 1. Não é uma resposta genérica padrão
+                            // 2. Tem comprimento razoável (mais de 20 chars)
+                            // 3. Contém informações específicas de contexto
+                            // Aceita qualquer texto não vazio que ainda não tenhamos exibido.
+                            // O filtro antigo (>20 chars) descartava saudações legítimas como "Oi João!".
+                            const isValidResponse =
+                                data.response.trim().length > 0 &&
+                                !lastSeenAssistantMessages.has(data.response);
+
+                            if (isValidResponse) {
+                                // Se é uma resposta nova e parece legítima
+                                if (data.response === lastDetectedResponse) {
+                                    consecutiveMatches++;
+
+                                    // Se vimos a mesma resposta 2x, retorna RÁPIDO!
+                                    if (consecutiveMatches >= 2) {
+                                        lastSeenAssistantMessages.add(data.response);
+                                        return data.response;
+                                    }
+                                } else {
+                                    // Nova resposta detectada
+                                    lastDetectedResponse = data.response;
+                                    consecutiveMatches = 1;
+                                }
+                            }
+                        }
+                    }
+
+                    await new Promise(r => setTimeout(r, pollInterval));
+                } catch (error) {
+                    console.error("Error fetching response:", error);
+                    await new Promise(r => setTimeout(r, pollInterval));
+                }
+            }
+
+            // Se chegou aqui e tem uma resposta válida, retorna
+            if (lastDetectedResponse && lastDetectedResponse.trim().length > 0) {
+                lastSeenAssistantMessages.add(lastDetectedResponse);
+                return lastDetectedResponse;
+            }
+
+            return null;
+        }
+
+        // Adicionar mensagem ao chat
+        function addMessageToUI(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+
+            const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+            messageDiv.innerHTML = `
+                <div class="message-bubble">${text}</div>
+                <div class="message-time">${time}</div>
+            `;
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Mostrar indicador de digitação
+        function showTypingIndicator() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message bot';
+            messageDiv.id = 'typingIndicator';
+            messageDiv.innerHTML = `
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Remover indicador de digitação
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        // Enter para enviar
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Verificar servidor ao iniciar
+        checkServerConnection();
+        messageInput.focus();
+    </script>
+</body>
+</html>

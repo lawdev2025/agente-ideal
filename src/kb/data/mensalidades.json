@@ -1,91 +1,62 @@
 [
   {
-    "id": "tuition_full_time",
-    "nivel": "Educação Infantil",
-    "descricao": "Período Integral (7h às 17h)",
-    "preco_mensal": 1500.00,
-    "preco_semestral": 8500.00,
-    "preco_anual": 16000.00,
+    "id": "ef1",
+    "nivel": "Ensino Fundamental 1",
+    "descricao": "1º ao 5º ano",
+    "preco_mensal": 1200.00,
+    "preco_semestral": 7200.00,
+    "preco_anual": 14400.00,
     "incluso": [
-      "Aulas de educação física",
-      "Aulas de inglês",
-      "Alimentação (café, almoço, lanche)",
-      "Atividades extracurriculares"
+      "Material didático atualizado",
+      "Acompanhamento pedagógico individualizado",
+      "Simulados periódicos",
+      "Aulas em turno matutino ou vespertino"
     ]
   },
   {
-    "id": "tuition_part_time_morning",
-    "nivel": "Educação Infantil",
-    "descricao": "Período Matutino (7h às 12h)",
-    "preco_mensal": 1000.00,
-    "preco_semestral": 5500.00,
-    "preco_anual": 10500.00,
+    "id": "ef2",
+    "nivel": "Ensino Fundamental 2",
+    "descricao": "6º ao 9º ano",
+    "preco_mensal": 1400.00,
+    "preco_semestral": 8400.00,
+    "preco_anual": 16800.00,
     "incluso": [
-      "Aulas de educação física",
-      "Aulas de inglês",
-      "Café e lanche"
+      "Material didático atualizado",
+      "Acompanhamento pedagógico individualizado",
+      "Simulados periódicos",
+      "Preparação para transição ao Ensino Médio",
+      "Aulas em turno matutino"
     ]
   },
   {
-    "id": "tuition_part_time_afternoon",
-    "nivel": "Educação Infantil",
-    "descricao": "Período Vespertino (13h às 17h)",
-    "preco_mensal": 900.00,
-    "preco_semestral": 5000.00,
-    "preco_anual": 9500.00,
+    "id": "em",
+    "nivel": "Ensino Médio",
+    "descricao": "1ª e 2ª série",
+    "preco_mensal": 1700.00,
+    "preco_semestral": 10200.00,
+    "preco_anual": 20400.00,
     "incluso": [
-      "Aulas de educação física",
-      "Aulas de inglês",
-      "Lanche"
+      "Material didático atualizado",
+      "Acompanhamento pedagógico individualizado",
+      "Simulados periódicos",
+      "Preparação para Enem e vestibulares",
+      "Aulas em turno matutino"
     ]
   },
   {
-    "id": "tuition_fundamental_1",
-    "nivel": "Ensino Fundamental I (1º a 5º ano)",
-    "descricao": "Período Integral (7h às 17h)",
-    "preco_mensal": 1800.00,
-    "preco_semestral": 10000.00,
-    "preco_anual": 19000.00,
+    "id": "pre-enem",
+    "nivel": "Pré-Enem (Eixo)",
+    "descricao": "Terceirão e Cursinho",
+    "preco_mensal": 1900.00,
+    "preco_semestral": 11400.00,
+    "preco_anual": 22800.00,
     "incluso": [
-      "Aulas regulares",
-      "Aulas de educação física",
-      "Aulas de inglês",
-      "Aulas de tecnologia",
-      "Alimentação (café, almoço, lanche)",
-      "Atividades extracurriculares"
-    ]
-  },
-  {
-    "id": "tuition_fundamental_2",
-    "nivel": "Ensino Fundamental II (6º a 9º ano)",
-    "descricao": "Período Integral (7h às 17h)",
-    "preco_mensal": 2000.00,
-    "preco_semestral": 11000.00,
-    "preco_anual": 21000.00,
-    "incluso": [
-      "Aulas regulares",
-      "Aulas de educação física",
-      "Aulas de inglês avançado",
-      "Aulas de tecnologia e programação",
-      "Alimentação (café, almoço, lanche)",
-      "Laboratório de ciências"
-    ]
-  },
-  {
-    "id": "tuition_ensino_medio",
-    "nivel": "Ensino Médio (1º a 3º ano)",
-    "descricao": "Período Integral (7h às 17h)",
-    "preco_mensal": 2200.00,
-    "preco_semestral": 12000.00,
-    "preco_anual": 23000.00,
-    "incluso": [
-      "Aulas regulares preparatórias",
-      "Aulas de educação física",
-      "Aulas de inglês avançado",
-      "Preparação para ENEM",
-      "Alimentação (café, almoço, lanche)",
-      "Laboratório de ciências",
-      "Tutoria especializada"
+      "Material didático especializado para Enem",
+      "Acompanhamento pedagógico intensivo",
+      "Simulados mensais tipo Enem",
+      "Aulas de aprofundamento à tarde",
+      "Foco total em aprovação nas melhores universidades",
+      "Turno integral (matutino + tarde)"
     ]
   }
 ]

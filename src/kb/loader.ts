@@ -88,7 +88,9 @@ function loadJSON<T>(filename: string): T {
   }
 
   try {
-    const content = fs.readFileSync(filepath, 'utf-8');
+    let content = fs.readFileSync(filepath, 'utf-8');
+    // Strip UTF-8 BOM if present (PowerShell adds one by default on writes).
+    if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
     return JSON.parse(content) as T;
   } catch (error) {
     throw new Error(

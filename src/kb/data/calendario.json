@@ -1,105 +1,26 @@
 [
   {
-    "id": "semestre_1",
-    "nome": "Primeiro Semestre 2024",
-    "data_inicio": "2024-02-01",
-    "data_fim": "2024-06-30",
+    "id": "janelas_matricula",
+    "nome": "Janelas de Matrícula 2027",
+    "data_inicio": "2026-08-01",
+    "data_fim": "2026-12-31",
+    "descricao": "Período de inscrições e matrículas com descontos escalonados",
     "eventos": [
       {
-        "data": "2024-02-12",
-        "evento": "Início das aulas",
-        "tipo": "aula"
+        "data": "2026-08-15",
+        "evento": "Abertura das inscrições",
+        "tipo": "matricula"
       },
       {
-        "data": "2024-02-13",
-        "evento": "Reunião de pais e mestres",
-        "tipo": "reuniao"
+        "data": "2026-10-31",
+        "evento": "Encerramento da primeira janela",
+        "tipo": "matricula"
       },
       {
-        "data": "2024-03-08",
-        "evento": "Dia Internacional da Mulher - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-03-29",
-        "evento": "Sexta-feira Santa - Recesso",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-04-21",
-        "evento": "Tiradentes - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-05-01",
-        "evento": "Dia do Trabalho - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-05-30",
-        "evento": "Corpus Christi - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-06-30",
-        "evento": "Encerramento do primeiro semestre",
-        "tipo": "encerramento"
+        "data": "2026-12-31",
+        "evento": "Encerramento das inscrições",
+        "tipo": "matricula"
       }
     ]
-  },
-  {
-    "id": "semestre_2",
-    "nome": "Segundo Semestre 2024",
-    "data_inicio": "2024-07-15",
-    "data_fim": "2024-12-22",
-    "eventos": [
-      {
-        "data": "2024-07-15",
-        "evento": "Início do segundo semestre",
-        "tipo": "aula"
-      },
-      {
-        "data": "2024-09-07",
-        "evento": "Independência do Brasil - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-10-12",
-        "evento": "Nossa Senhora Aparecida - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-11-02",
-        "evento": "Finados - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-11-15",
-        "evento": "Proclamação da República - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-11-20",
-        "evento": "Consciência Negra - Feriado",
-        "tipo": "feriado"
-      },
-      {
-        "data": "2024-12-22",
-        "evento": "Encerramento do ano letivo",
-        "tipo": "encerramento"
-      },
-      {
-        "data": "2024-12-25",
-        "evento": "Natal - Feriado",
-        "tipo": "feriado"
-      }
-    ]
-  },
-  {
-    "id": "recesso_2024",
-    "nome": "Recesso Escolar 2024",
-    "data_inicio": "2024-12-23",
-    "data_fim": "2025-01-31",
-    "descricao": "Período de recesso escolar com retorno em fevereiro de 2025"
   }
 ]

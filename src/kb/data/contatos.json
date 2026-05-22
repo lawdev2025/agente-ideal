@@ -1,57 +1,27 @@
 [
   {
-    "id": "contato_principal",
-    "nome": "Secretaria Escolar",
-    "tipo": "secretaria",
-    "telefone": "551133334444",
-    "email": "secretaria@escolaideal.com.br",
-    "horario_funcionamento": "8h às 17h - Segunda a Sexta",
-    "descricao": "Atendimento geral, matrículas e informações administrativas"
+    "id": "central",
+    "nome": "Central de Atendimento",
+    "tipo": "telefone",
+    "telefone": "(91) 3000-0000",
+    "email": "matriculas@colegioideal.com.br",
+    "descricao": "Atendimento geral e informações sobre matrícula",
+    "horario_funcionamento": "Segunda a sexta, 8h às 18h"
   },
   {
-    "id": "contato_financeiro",
-    "nome": "Departamento Financeiro",
-    "tipo": "financeiro",
-    "telefone": "551133334445",
-    "email": "financeiro@escolaideal.com.br",
-    "horario_funcionamento": "9h às 16h - Segunda a Quinta",
-    "descricao": "Informações sobre boletos, parcelamento e financiamento",
-    "ramal": "105"
+    "id": "matriculas",
+    "nome": "Departamento de Matrículas",
+    "tipo": "email",
+    "email": "matriculas@colegioideal.com.br",
+    "descricao": "Responsável por processar todas as solicitações de matrícula",
+    "disponibilidade": "Resposta em até 24 horas"
   },
   {
-    "id": "contato_pedagogico",
-    "nome": "Coordenação Pedagógica",
-    "tipo": "pedagogico",
-    "telefone": "551133334446",
-    "email": "pedagogia@escolaideal.com.br",
-    "horario_funcionamento": "8h às 16h - Segunda a Sexta",
-    "descricao": "Informações sobre currículo, desempenho escolar e orientação educacional",
-    "ramal": "203"
-  },
-  {
-    "id": "contato_direcao",
-    "nome": "Direção",
-    "tipo": "direcao",
-    "telefone": "551133334447",
-    "email": "direcao@escolaideal.com.br",
-    "horario_funcionamento": "8h às 17h - Segunda a Sexta",
-    "descricao": "Assuntos administrativos gerais e decisões institucionais",
-    "ramal": "100"
-  },
-  {
-    "id": "contato_whatsapp",
-    "nome": "WhatsApp Escolar",
-    "tipo": "whatsapp",
-    "telefone": "5511987654321",
-    "descricao": "Para comunicações rápidas com a escola (Segunda a Sexta, 8h às 17h)"
-  },
-  {
-    "id": "contato_emergencia",
-    "nome": "Emergência Escolar",
-    "tipo": "emergencia",
-    "telefone": "551133334448",
-    "email": "emergencia@escolaideal.com.br",
-    "descricao": "Atendimento 24h para situações de emergência com alunos",
-    "disponibilidade": "24 horas, 7 dias por semana"
+    "id": "site",
+    "nome": "Site Oficial",
+    "tipo": "website",
+    "telefone": "www.colegioideal.com.br",
+    "descricao": "Conheça mais sobre o Colégio Ideal, metodologia, infraestrutura e notícias",
+    "disponibilidade": "24 horas"
   }
 ]

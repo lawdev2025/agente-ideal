@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { loadKnowledgeBase, formatMensalidade, formatContato } from "./loader";
 
 export interface KBTool {
   name: string;
@@ -194,7 +195,7 @@ const contatosTool: KBTool = {
 const escalarTool: KBTool = {
   name: "escalate_to_specialist",
   description:
-    "Escala o atendimento para um especialista humano ou departamento específico",
+    "ÚLTIMO RECURSO. NÃO chame para perguntas sobre matrícula, valor, mensalidade, série, ano, turma, curso, fundamental, médio, pré-enem, ou para perguntas com números de série (5º ano, 7ª série, terceirão) — TODAS essas vão para get_enrollment_info. Chame APENAS quando: (a) cliente pergunta sobre educação infantil/maternal/jardim/berçário (não temos), (b) cliente fala explicitamente de bolsa/desconto/financiamento, (c) cliente pede pra falar com humano em palavras claras, (d) pergunta é totalmente fora do colégio (futebol, política, piada). Se a pergunta é sobre 'como matricular meu filho' — NÃO escale, isso é nosso negócio principal, responda com get_enrollment_info.",
   inputSchema: {
     type: "object",
     properties: {
@@ -237,15 +238,95 @@ const escalarTool: KBTool = {
   },
 };
 
+// Ferramenta: Consultar informações sobre cursos e mensalidades para matrícula
+const consultarMensalidadesTool: KBTool = {
+  name: "get_enrollment_info",
+  description:
+    "FERRAMENTA PRINCIPAL. Use SEMPRE que o cliente perguntar sobre valor, mensalidade, preço, custo, anuidade, curso, série, ano, turma, fundamental 1, fundamental 2, ensino médio, pré-enem, terceirão, cursinho, horário das aulas, turno, ou qualquer informação acadêmica das turmas regulares (do 1º ano do fundamental em diante). Aceita o argumento opcional 'nivel' com valores: 'Fundamental 1', 'Fundamental 2', 'Ensino Médio', 'Pré-Enem'. Se o cliente disse só 'valor' sem especificar nível, chame sem argumento (retorna resumo). MAPEIE em silêncio: '1º a 5º ano' → 'Fundamental 1'; '6º a 9º ano' → 'Fundamental 2'; '1ª/2ª série' → 'Ensino Médio'; 'terceirão/cursinho/pré-vestibular/3º ano' → 'Pré-Enem'.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      nivel: {
+        type: "string",
+        description:
+          "Nível de interesse: Fundamental 1, Fundamental 2, Médio, Pré-Enem (opcional)",
+      },
+    },
+    required: [],
+  },
+  execute: async (args) => {
+    try {
+      const kb = loadKnowledgeBase();
+      const { nivel } = args as { nivel?: string };
+
+      if (!nivel || nivel.toLowerCase() === "todos") {
+        // Retorna resumo de todos os cursos
+        const resumo = kb.mensalidades
+          .map(
+            (m) =>
+              `🎓 ${m.nivel} (${m.descricao})\n   Mensalidade: R$ ${m.preco_mensal}/mês\n`
+          )
+          .join("");
+        return `📚 CURSOS E MENSALIDADES DO COLÉGIO IDEAL:\n\n${resumo}`;
+      }
+
+      // Busca nível específico
+      const mensalidade = kb.mensalidades.find((m) =>
+        m.nivel.toLowerCase().includes(nivel.toLowerCase())
+      );
+
+      if (!mensalidade) {
+        return `Nível "${nivel}" não encontrado. Temos: Fundamental 1, Fundamental 2, Médio e Pré-Enem.`;
+      }
+
+      return formatMensalidade(mensalidade);
+    } catch (error) {
+      logger.error({ error }, "Error fetching enrollment info");
+      return "Desculpe, não consegui carregar as informações de matrícula. Por favor, entre em contato com nossa coordenação.";
+    }
+  },
+};
+
+// Ferramenta: Obter informações de contato para matrícula
+const consultarContatoMatriculaTool: KBTool = {
+  name: "get_enrollment_contact",
+  description:
+    "Obtém informações de contato para dúvidas sobre matrícula e inscrição",
+  inputSchema: {
+    type: "object",
+    properties: {},
+    required: [],
+  },
+  execute: async (args) => {
+    try {
+      const kb = loadKnowledgeBase();
+      const contatos = kb.contatos.map((c) => formatContato(c)).join("\n\n");
+      return `📞 ENTRE EM CONTATO:\n\n${contatos}`;
+    } catch (error) {
+      logger.error({ error }, "Error fetching contact info");
+      return "Telefone: (91) 3000-0000 | Email: matriculas@colegioideal.com.br";
+    }
+  },
+};
+
 export function getKBTools(): KBTool[] {
+  // ORDER MATTERS — Gemini biases toward earlier tools when descriptions
+  // overlap. We list the "answer the question" tools FIRST so the model
+  // reaches for them before considering escalation.
   return [
-    mensalidadeTool,
-    cronogramaTool,
-    materiaisTool,
-    contatosTool,
-    escalarTool,
+    consultarMensalidadesTool, // get_enrollment_info
+    consultarContatoMatriculaTool, // get_enrollment_contact
+    escalarTool, // escalate_to_specialist — last resort
   ];
 }
+
+// Legacy tools kept for tests/back-compat — not exposed to the LLM.
+export const legacyTools = {
+  mensalidadeTool,
+  cronogramaTool,
+  materiaisTool,
+  contatosTool,
+};
 
 export function getToolDefinitions() {
   return getKBTools().map((tool) => ({

@@ -40,3 +40,11 @@ temp/
 
 # Specific to this project
 .claude/
+
+# Generated simulation reports
+tests/simulation/
+
+# Local debug scripts
+test-webhook*.js
+server-output.log
+server-fresh.log

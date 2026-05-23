@@ -42,7 +42,19 @@ const TABLE_SCHEMAS = {
 document.addEventListener('DOMContentLoaded', async () => {
     initTabs();
     initTheme();
-    await initConnection();
+    
+    // Renderiza gráficos com dados demonstrativos logo de início
+    // para garantir feedback visual WOW instantâneo e evitar telas pretas/vazias
+    renderCharts();
+    
+    // Conecta em segundo plano de forma assíncrona
+    initConnection().then(connected => {
+        if (connected) {
+            console.log("Supabase conectado com sucesso. Dados reais carregados.");
+        } else {
+            console.log("Painel rodando em Modo de Demonstração (Local / Offline).");
+        }
+    });
 
     // Eventos do Banco de Dados
     document.querySelectorAll('.btn-db-nav').forEach(btn => {
@@ -155,7 +167,13 @@ async function initConnection() {
         const fetchUrls = ['/api/config', 'http://localhost:3000/api/config'];
         for (const fetchUrl of fetchUrls) {
             try {
-                const res = await fetch(fetchUrl);
+                // Timeout de 1 segundo para buscar a config local, evitando travamento de CORS
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1000);
+                
+                const res = await fetch(fetchUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
                 if (res.ok) {
                     const config = await res.json();
                     url = config.SUPABASE_URL;
@@ -181,39 +199,40 @@ async function initConnection() {
     if (!url || !key) {
         statusText.textContent = 'Supabase não configurado';
         statusIndicator.className = 'status-indicator offline';
-        showConfigAlert();
         return false;
     }
 
     try {
+        if (!window.supabase) {
+            throw new Error("SDK do Supabase não foi carregada no navegador.");
+        }
+        
         // Inicializa o cliente do Supabase
         supabase = window.supabase.createClient(url, key);
         
-        // Testa conexão simples buscando uma tabela ou contato
-        const { error } = await supabase.from('school_contacts').select('count', { count: 'exact', head: true });
+        // Timeout de 3 segundos para a consulta de validação do Supabase, evitando promessas infinitas do navegador (file://)
+        const checkConnectionPromise = supabase.from('school_contacts').select('count', { count: 'exact', head: true });
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout de conexão de 3 segundos atingido')), 3000)
+        );
+
+        const { error } = await Promise.race([checkConnectionPromise, timeoutPromise]);
         
         if (error) throw error;
 
         statusText.textContent = 'Conectado ao Supabase';
         statusIndicator.className = 'status-indicator online';
         
-        // Carrega dados iniciais da aba Dashboard
+        // Atualiza Dashboard com dados reais
         if (currentTab === 'dashboard') {
             loadDashboardStats();
         }
         return true;
     } catch (err) {
         console.error('Erro de conexão Supabase:', err);
-        statusText.textContent = 'Erro de Conexão';
+        statusText.textContent = 'Erro de Conexão (Modo Demo)';
         statusIndicator.className = 'status-indicator offline';
         return false;
-    }
-}
-
-function showConfigAlert() {
-    if (confirm('O painel precisa das credenciais do Supabase para funcionar. Ir para a aba de Configurações?')) {
-        const configTabLi = document.querySelector('.sidebar-menu li[data-tab="config"]');
-        if (configTabLi) configTabLi.click();
     }
 }
 
@@ -223,23 +242,23 @@ async function loadDashboardStats() {
 
     try {
         // 1. Total de mensagens
-        const { count: totalMessages, error: err1 } = await supabase
+        const { count: totalMessages } = await supabase
             .from('messages')
             .select('*', { count: 'exact', head: true });
 
         // 2. Contatos ativos
-        const { count: activeContacts, error: err2 } = await supabase
+        const { count: activeContacts } = await supabase
             .from('contacts')
             .select('*', { count: 'exact', head: true });
 
         // 3. Encaminhados / Escalações
-        const { count: escalations, error: err3 } = await supabase
+        const { count: escalations } = await supabase
             .from('contacts')
             .select('*', { count: 'exact', head: true })
             .eq('bot_paused', true);
 
         // 4. Erros do Telegram
-        const { data: errorLogs, error: err4 } = await supabase
+        const { data: errorLogs } = await supabase
             .from('messages')
             .select('content')
             .ilike('content', '%erro%');
@@ -261,7 +280,7 @@ async function loadDashboardStats() {
             trendElement.innerHTML = `<i class="fa-solid fa-circle-check"></i> Sem erros`;
         }
 
-        // Gera os gráficos
+        // Gera os gráficos com dados reais do Supabase
         await renderCharts();
     } catch (e) {
         console.error('Erro ao buscar estatísticas do Dashboard:', e);
@@ -269,37 +288,17 @@ async function loadDashboardStats() {
 }
 
 async function renderCharts() {
-    if (!supabase) return;
-
     try {
-        // Grafico 1: Histórico de Conversas (mensagens nos últimos 7 dias)
         const days = [];
         const msgCounts = [];
+        
+        // Define dias padrão dos últimos 7 dias
         for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
             days.push(d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' }));
-            
-            // Início e fim do dia
-            const startOfDay = new Date(d);
-            startOfDay.setHours(0,0,0,0);
-            const endOfDay = new Date(d);
-            endOfDay.setHours(23,59,59,999);
-
-            const { count, error } = await supabase
-                .from('messages')
-                .select('*', { count: 'exact', head: true })
-                .gte('created_at', startOfDay.getTime())
-                .lte('created_at', endOfDay.getTime());
-
-            msgCounts.push(count || 0);
+            msgCounts.push(0);
         }
-
-        // Gráfico 2: Assuntos Mais Selecionados (Dúvidas/Interesses mais comuns)
-        const { data: messages, error: errMsgs } = await supabase
-            .from('messages')
-            .select('content')
-            .eq('role', 'user');
 
         const subjects = {
             'Mensalidades / Valores': 0,
@@ -310,44 +309,81 @@ async function renderCharts() {
             'Outras dúvidas': 0
         };
 
-        if (messages) {
-            messages.forEach(msg => {
-                const text = msg.content.toLowerCase();
-                if (text.includes('mensal') || text.includes('preço') || text.includes('valor') || text.includes('pagamento') || text.includes('custo') || text.includes('mensalidade')) {
-                    subjects['Mensalidades / Valores']++;
-                } else if (text.includes('matrícula') || text.includes('matricula') || text.includes('vaga') || text.includes('inscrição') || text.includes('inscrever')) {
-                    subjects['Matrículas & Vagas']++;
-                } else if (text.includes('material') || text.includes('livro') || text.includes('apostila') || text.includes('caderno')) {
-                    subjects['Materiais / Livros']++;
-                } else if (text.includes('contato') || text.includes('telefone') || text.includes('whatsapp') || text.includes('secretaria') || text.includes('falar com')) {
-                    subjects['Contatos / Secretaria']++;
-                } else if (text.includes('horário') || text.includes('horario') || text.includes('aula') || text.includes('grade') || text.includes('calendário')) {
-                    subjects['Horários & Grade']++;
-                } else {
-                    subjects['Outras dúvidas']++;
+        let hasRealData = false;
+
+        // Tenta colher dados reais do Supabase se ele estiver ativo
+        if (supabase) {
+            try {
+                // Colhe estatísticas de linha do tempo
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - i);
+                    
+                    const startOfDay = new Date(d);
+                    startOfDay.setHours(0,0,0,0);
+                    const endOfDay = new Date(d);
+                    endOfDay.setHours(23,59,59,999);
+
+                    const { count } = await supabase
+                        .from('messages')
+                        .select('*', { count: 'exact', head: true })
+                        .gte('created_at', startOfDay.getTime())
+                        .lte('created_at', endOfDay.getTime());
+
+                    msgCounts[6 - i] = count || 0;
+                    if (count > 0) hasRealData = true;
                 }
-            });
+
+                // Colhe tópicos
+                const { data: messages } = await supabase
+                    .from('messages')
+                    .select('content')
+                    .eq('role', 'user');
+
+                if (messages && messages.length > 0) {
+                    hasRealData = true;
+                    messages.forEach(msg => {
+                        const text = msg.content ? msg.content.toLowerCase() : '';
+                        if (text.includes('mensal') || text.includes('preço') || text.includes('valor') || text.includes('pagamento') || text.includes('custo') || text.includes('mensalidade')) {
+                            subjects['Mensalidades / Valores']++;
+                        } else if (text.includes('matrícula') || text.includes('matricula') || text.includes('vaga') || text.includes('inscrição') || text.includes('inscrever')) {
+                            subjects['Matrículas & Vagas']++;
+                        } else if (text.includes('material') || text.includes('livro') || text.includes('apostila') || text.includes('caderno')) {
+                            subjects['Materiais / Livros']++;
+                        } else if (text.includes('contato') || text.includes('telefone') || text.includes('whatsapp') || text.includes('secretaria') || text.includes('falar com')) {
+                            subjects['Contatos / Secretaria']++;
+                        } else if (text.includes('horário') || text.includes('horario') || text.includes('aula') || text.includes('grade') || text.includes('calendário')) {
+                            subjects['Horários & Grade']++;
+                        } else {
+                            subjects['Outras dúvidas']++;
+                        }
+                    });
+                }
+            } catch (errDb) {
+                console.log("Não foi possível buscar dados reais de estatísticas (Offline).");
+            }
         }
 
-        const subjectLabels = Object.keys(subjects);
-        const subjectData = Object.values(subjects);
-        const sum = subjectData.reduce((a, b) => a + b, 0);
+        // Se não houver dados reais ou estiver offline, preenche com mocks elegantes de alta fidelidade
+        const lineData = hasRealData ? msgCounts : [12, 19, 15, 25, 22, 30, 28];
         
-        // Se estiver zerado, põe valores fictícios para demonstração
+        const subjectLabels = Object.keys(subjects);
+        let subjectData = Object.values(subjects);
+        const sum = subjectData.reduce((a, b) => a + b, 0);
         if (sum === 0) {
-            subjectData[0] = 35; // Mensalidades
-            subjectData[1] = 25; // Matrículas
-            subjectData[2] = 18; // Materiais
-            subjectData[3] = 12; // Contatos
-            subjectData[4] = 8;  // Horários
-            subjectData[5] = 5;  // Outros
+            subjectData = [35, 25, 18, 12, 8, 5]; // Valores fictícios
         }
 
-        // Destrói gráficos antigos se existirem
+        // Destrói instâncias velhas se existirem
         if (chartConversations) chartConversations.destroy();
         if (chartSubjects) chartSubjects.destroy();
 
-        // 1. Chart Historico
+        if (!window.Chart) {
+            console.warn("Chart.js não foi carregado. Ignorando renderização gráfica.");
+            return;
+        }
+
+        // 1. Chart Linha (Histórico)
         const ctx1 = document.getElementById('chart-conversations').getContext('2d');
         chartConversations = new Chart(ctx1, {
             type: 'line',
@@ -355,7 +391,7 @@ async function renderCharts() {
                 labels: days,
                 datasets: [{
                     label: 'Mensagens',
-                    data: msgCounts.every(v => v === 0) ? [12, 19, 15, 25, 22, 30, 28] : msgCounts,
+                    data: lineData,
                     borderColor: '#AF1411',
                     backgroundColor: 'rgba(175, 20, 17, 0.1)',
                     borderWidth: 3,
@@ -379,7 +415,7 @@ async function renderCharts() {
             }
         });
 
-        // 2. Chart Assuntos
+        // 2. Chart Doughnut (Assuntos)
         const ctx2 = document.getElementById('chart-subjects').getContext('2d');
         chartSubjects = new Chart(ctx2, {
             type: 'doughnut',

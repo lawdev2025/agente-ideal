@@ -1117,3 +1117,139 @@ html.dark .glass {
     border: 1px solid var(--border-color);
     display: block;
 }
+
+/* ==========================================================================
+   RESPONSIVIDADE GLOBAL (MÃ‰DIA QUERIES - PREMIUM FLUIDITY)
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+    .metrics-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .charts-grid {
+        grid-template-columns: 1fr !important;
+        gap: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-container {
+        flex-direction: column !important;
+        height: auto !important;
+        width: 100% !important;
+        overflow: auto !important;
+    }
+
+    .sidebar {
+        width: 100% !important;
+        height: auto !important;
+        padding: 16px !important;
+        border-right: none !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+
+    .sidebar-brand {
+        padding-bottom: 12px !important;
+        margin-bottom: 16px !important;
+        justify-content: center;
+    }
+
+    .sidebar-menu ul {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    .sidebar-menu li {
+        flex: 1 1 calc(50% - 8px) !important;
+        margin-bottom: 0 !important;
+        padding: 10px 12px !important;
+        justify-content: center !important;
+        border-radius: var(--radius-md) !important;
+    }
+
+    .sidebar-footer {
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        margin-top: 16px !important;
+        padding-top: 16px !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+
+    .theme-toggle {
+        margin-bottom: 0 !important;
+        padding: 8px 12px !important;
+    }
+
+    .main-content {
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    .content-header {
+        height: auto !important;
+        padding: 20px 16px !important;
+        flex-direction: column !important;
+        gap: 12px !important;
+        align-items: flex-start !important;
+        border-bottom: 1px solid var(--border-color) !important;
+    }
+
+    .tab-container {
+        padding: 16px !important;
+    }
+
+    .metrics-grid {
+        grid-template-columns: 1fr !important;
+        gap: 16px !important;
+    }
+
+    .conversations-wrapper {
+        flex-direction: column !important;
+        height: auto !important;
+        min-height: 600px;
+    }
+
+    .contacts-sidebar {
+        width: 100% !important;
+        border-right: none !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        height: 250px !important;
+        max-height: 250px !important;
+    }
+
+    .chat-window {
+        height: 450px !important;
+    }
+
+    .database-nav {
+        flex-direction: column !important;
+        gap: 16px !important;
+        align-items: stretch !important;
+    }
+
+    .table-selector {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+
+    .table-selector .btn {
+        width: 100% !important;
+    }
+
+    .database-table-container {
+        overflow-x: auto !important;
+    }
+
+    .db-table {
+        min-width: 600px;
+    }
+
+    .modal-card {
+        width: 95% !important;
+        margin: 10px !important;
+        max-height: 90vh !important;
+    }
+}
+

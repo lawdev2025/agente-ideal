@@ -48,6 +48,14 @@ export async function createWebhookServer(
     return { status: "ok" };
   });
 
+  // Get Supabase configurations
+  fastify.get("/api/config", async () => {
+    return {
+      SUPABASE_URL: config.database.supabaseUrl || "",
+      SUPABASE_ANON_KEY: config.database.supabaseAnonKey || "",
+    };
+  });
+
   // Get latest response for a user (for testing)
   fastify.get<{ Querystring: { userId: string } }>(
     "/api/response",

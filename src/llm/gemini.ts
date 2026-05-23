@@ -1,4 +1,4 @@
-import {
+﻿import {
   GoogleGenerativeAI,
   SchemaType,
   FunctionDeclaration,
@@ -11,10 +11,12 @@ import { logger } from "../logger";
 export class GeminiProvider implements LLMProvider {
   private client: GoogleGenerativeAI;
   private model: string;
+  private apiKey: string;
 
   constructor(apiKey: string, model: string = "gemini-2.0-flash") {
     this.client = new GoogleGenerativeAI(apiKey);
     this.model = model;
+    this.apiKey = apiKey;
   }
 
   async generateMessage(
@@ -34,6 +36,43 @@ export class GeminiProvider implements LLMProvider {
       arguments: Record<string, unknown>;
     }>;
   }> {
+    // Modo de Simulação Local quando a chave for fictícia
+    if (this.apiKey === "dummy_gemini_key" || this.apiKey.startsWith("dummy_")) {
+      logger.info({ userMessage }, "Gemini Mock Mode ativado (chave fictícia detectada)");
+      
+      let replyMessage = `Olá! Sou a Ana, assistente virtual do Colégio Ideal (Modo Simulado de Depuração).
+
+Como você está sem uma chave de API real no seu arquivo \`.env\`, eu entrei em modo de simulação automática para ajudar você a testar o fluxo completo!
+
+Você enviou a mensagem: "${userMessage}". Como posso te ajudar hoje?`;
+
+      const lower = userMessage.toLowerCase();
+      if (lower.includes("mensalidade") || lower.includes("pagar") || lower.includes("preço") || lower.includes("valor")) {
+        replyMessage = `Olá! Sou a Ana do Colégio Ideal (Modo Simulado).
+
+Sobre as mensalidades, o valor padrão para o ano letivo de 2026 é de R$ 1.200,00 com vencimento todo dia 05 de cada mês. Pagamentos realizados antecipadamente até o dia 01 possuem 5% de desconto especial!
+
+Deseja saber mais sobre as formas de pagamento?`;
+      } else if (lower.includes("aula") || lower.includes("cronograma") || lower.includes("horário") || lower.includes("calendário")) {
+        replyMessage = `Olá! Sou a Ana do Colégio Ideal (Modo Simulado).
+
+As nossas aulas ocorrem de segunda a sexta-feira nos seguintes horários:
+- **Ensino Fundamental**: 07:30 às 12:00
+- **Ensino Médio**: 13:15 às 17:45
+
+O calendário letivo e de provas está disponível no portal do aluno. Gostaria de tirar mais alguma dúvida?`;
+      } else if (lower.includes("suporte") || lower.includes("atendente") || lower.includes("humano") || lower.includes("falar com alguém")) {
+        replyMessage = `Entendido! Estou acionando a nossa equipe de suporte humana neste momento. Um especialista entrará em contato com você diretamente pelo WhatsApp! (Simulação de escalação para suporte via Telegram ativada com sucesso).`;
+      }
+
+      // Adiciona um pequeno delay de 600ms para simular a latência natural de uma chamada de IA
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      return {
+        message: replyMessage,
+      };
+    }
+
     try {
       const functionDeclarations: FunctionDeclaration[] = (tools || []).map(
         (tool) => ({

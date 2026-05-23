@@ -1,0 +1,286 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Controle - Colégio Ideal</title>
+    <!-- Google Fonts: Lato e Quicksand -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Quicksand:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome para ícones premium -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CSS Customizado -->
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar lateral escura com estética do Representa Plus -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-logo">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <h2>Colégio <span>Ideal</span></h2>
+            </div>
+            
+            <nav class="sidebar-menu">
+                <ul>
+                    <li class="active" data-tab="dashboard">
+                        <i class="fa-solid fa-chart-pie"></i>
+                        <span>Dashboard</span>
+                    </li>
+                    <li data-tab="conversas">
+                        <i class="fa-solid fa-comments"></i>
+                        <span>Conversas</span>
+                    </li>
+                    <li data-tab="banco">
+                        <i class="fa-solid fa-database"></i>
+                        <span>Gerenciar Banco</span>
+                    </li>
+                    <li data-tab="config">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>Configurações</span>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="theme-toggle" id="theme-toggle-btn">
+                    <i class="fa-solid fa-moon"></i>
+                    <span>Modo Escuro</span>
+                </div>
+                <div class="user-profile">
+                    <div class="avatar">A</div>
+                    <div class="user-info">
+                        <h4>Admin Ideal</h4>
+                        <p>Painel de Controle</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Área de Conteúdo Principal -->
+        <main class="main-content">
+            <!-- Header Superior -->
+            <header class="content-header">
+                <div class="header-title">
+                    <h1 id="tab-title">Painel de Controle</h1>
+                    <p id="tab-subtitle">Resumo estatístico do Agente Ideal e atendimento escolar</p>
+                </div>
+                <div class="header-status">
+                    <div class="status-indicator online">
+                        <span class="dot animate-pulse"></span>
+                        <span id="supabase-status-text">Conectando ao Supabase...</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- CONTEÚDO DAS ABAS -->
+            <div class="tab-container">
+                <!-- 1. Aba Dashboard -->
+                <section class="tab-content active" id="tab-dashboard">
+                    <!-- Cards de Métricas Superiores -->
+                    <div class="metrics-grid">
+                        <div class="metric-card glass">
+                            <div class="metric-info">
+                                <p>Total de Mensagens</p>
+                                <h3 id="stat-total-messages">0</h3>
+                                <span class="trend positive"><i class="fa-solid fa-arrow-up"></i> Conversas ativas</span>
+                            </div>
+                            <div class="metric-icon brand-subtle">
+                                <i class="fa-solid fa-message"></i>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass">
+                            <div class="metric-info">
+                                <p>Contatos Ativos</p>
+                                <h3 id="stat-active-contacts">0</h3>
+                                <span class="trend positive"><i class="fa-solid fa-users"></i> Alunos engajados</span>
+                            </div>
+                            <div class="metric-icon brand-subtle">
+                                <i class="fa-solid fa-user-check"></i>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass">
+                            <div class="metric-info">
+                                <p>Alertas de Erros</p>
+                                <h3 id="stat-telegram-errors">0</h3>
+                                <span class="trend negative" id="stat-telegram-trend"><i class="fa-solid fa-circle-exclamation"></i> Telegram offline</span>
+                            </div>
+                            <div class="metric-icon error-subtle">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass">
+                            <div class="metric-info">
+                                <p>Atendimentos Humanos</p>
+                                <h3 id="stat-escalations">0</h3>
+                                <span class="trend info"><i class="fa-solid fa-headset"></i> Encaminhados</span>
+                            </div>
+                            <div class="metric-icon info-subtle">
+                                <i class="fa-solid fa-user-gear"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Seção de Gráficos -->
+                    <div class="charts-grid">
+                        <div class="chart-card glass">
+                            <div class="chart-header">
+                                <h3><i class="fa-solid fa-chart-line"></i> Histórico de Conversas</h3>
+                                <p>Volume de mensagens processadas nos últimos 7 dias</p>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="chart-conversations"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-card glass">
+                            <div class="chart-header">
+                                <h3><i class="fa-solid fa-chart-pie"></i> Assuntos Mais Buscados</h3>
+                                <p>Distribuição de temas e dúvidas dos alunos e pais</p>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="chart-subjects"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. Aba Conversas -->
+                <section class="tab-content" id="tab-conversas">
+                    <div class="conversations-wrapper glass">
+                        <!-- Lista Lateral de Contatos -->
+                        <div class="contacts-sidebar">
+                            <div class="search-box">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="contact-search" placeholder="Buscar aluno...">
+                            </div>
+                            <div class="contacts-list" id="contacts-list-container">
+                                <!-- Contatos carregados dinamicamente -->
+                                <div class="loading-spinner">Carregando contatos...</div>
+                            </div>
+                        </div>
+
+                        <!-- Janela de Chat Principal -->
+                        <div class="chat-window">
+                            <div class="chat-window-header" id="chat-header-info" style="display: none;">
+                                <div class="chat-user-details">
+                                    <div class="chat-avatar" id="chat-user-avatar">U</div>
+                                    <div class="chat-user-meta">
+                                        <h4 id="chat-user-name">Carregando...</h4>
+                                        <p id="chat-user-status">WhatsApp: <span id="chat-user-phone">-</span></p>
+                                    </div>
+                                </div>
+                                <div class="chat-actions">
+                                    <button class="btn btn-pause" id="btn-toggle-bot">
+                                        <i class="fa-solid fa-pause"></i> <span>Pausar Bot</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="chat-messages-container" id="chat-messages-box">
+                                <div class="chat-placeholder">
+                                    <i class="fa-solid fa-comments"></i>
+                                    <h3>Nenhuma conversa selecionada</h3>
+                                    <p>Selecione um contato na barra lateral para visualizar o histórico de mensagens e gerenciar o bot.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. Aba Gerenciar Banco de Dados -->
+                <section class="tab-content" id="tab-banco">
+                    <div class="database-wrapper glass">
+                        <div class="database-nav">
+                            <div class="table-selector">
+                                <button class="btn btn-db-nav active" data-table="school_levels">
+                                    <i class="fa-solid fa-list-ol"></i> Mensalidades (Níveis)
+                                </button>
+                                <button class="btn btn-db-nav" data-table="school_contacts">
+                                    <i class="fa-solid fa-address-book"></i> Contatos do Colégio
+                                </button>
+                                <button class="btn btn-db-nav" data-table="school_materials">
+                                    <i class="fa-solid fa-book-open"></i> Materiais Escolares
+                                </button>
+                            </div>
+                            <button class="btn btn-brand" id="btn-add-row">
+                                <i class="fa-solid fa-plus"></i> Adicionar Registro
+                            </button>
+                        </div>
+
+                        <div class="database-table-container">
+                            <table class="db-table" id="db-data-table">
+                                <thead>
+                                    <!-- Cabeçalho dinâmico -->
+                                    <tr><th>Carregando...</th></tr>
+                                </thead>
+                                <tbody id="db-data-body">
+                                    <!-- Linhas dinâmicas -->
+                                    <tr><td>Carregando registros...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. Aba Configurações -->
+                <section class="tab-content" id="tab-config">
+                    <div class="config-wrapper glass">
+                        <div class="config-section">
+                            <h3><i class="fa-solid fa-cloud"></i> Integração com o Supabase</h3>
+                            <p class="section-desc">Insira a URL e a Chave Pública Anon do seu projeto no Supabase para gerenciar a base de dados em tempo real direto deste painel.</p>
+                            
+                            <form id="config-form" class="config-form">
+                                <div class="form-group">
+                                    <label for="input-supabase-url">SUPABASE_URL</label>
+                                    <input type="text" id="input-supabase-url" placeholder="https://xxxxxxxxxxxxxx.supabase.co" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="input-supabase-key">SUPABASE_ANON_KEY</label>
+                                    <input type="password" id="input-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsIn..." required>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-brand"><i class="fa-solid fa-floppy-disk"></i> Salvar Configuração</button>
+                                    <button type="button" class="btn btn-secondary" id="btn-clear-config"><i class="fa-solid fa-trash"></i> Limpar Salvos</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL DE ADICIONAR/EDITAR REGISTRO NO BANCO -->
+    <div class="modal-backdrop" id="db-modal" style="display: none;">
+        <div class="modal-card glass">
+            <div class="modal-header">
+                <h3 id="modal-title">Adicionar Novo Registro</h3>
+                <button class="modal-close-btn" id="btn-close-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="db-modal-form">
+                <div class="modal-body" id="modal-fields-container">
+                    <!-- Campos gerados dinamicamente com base na tabela -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Cancelar</button>
+                    <button type="submit" class="btn btn-brand" id="btn-save-modal">Salvar Registro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SDK do Supabase Client via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Chart.js via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lógica de Controle JS -->
+    <script src="admin.js"></script>
+</body>
+</html>

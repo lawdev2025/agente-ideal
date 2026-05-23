@@ -1,4 +1,5 @@
 import { logger } from "../logger";
+import { isSupabaseEnabled, getSupabase } from "../db/supabase";
 import { loadKnowledgeBase, formatMensalidade, formatContato } from "./loader";
 
 export interface KBTool {
@@ -242,47 +243,70 @@ const escalarTool: KBTool = {
 const consultarMensalidadesTool: KBTool = {
   name: "get_enrollment_info",
   description:
-    "FERRAMENTA PRINCIPAL. Use SEMPRE que o cliente perguntar sobre valor, mensalidade, preÃ§o, custo, anuidade, curso, sÃ©rie, ano, turma, fundamental 1, fundamental 2, ensino mÃ©dio, prÃ©-enem, terceirÃ£o, cursinho, horÃ¡rio das aulas, turno, ou qualquer informaÃ§Ã£o acadÃªmica das turmas regulares (do 1Âº ano do fundamental em diante). Aceita o argumento opcional 'nivel' com valores: 'Fundamental 1', 'Fundamental 2', 'Ensino MÃ©dio', 'PrÃ©-Enem'. Se o cliente disse sÃ³ 'valor' sem especificar nÃ­vel, chame sem argumento (retorna resumo). MAPEIE em silÃªncio: '1Âº a 5Âº ano' â†’ 'Fundamental 1'; '6Âº a 9Âº ano' â†’ 'Fundamental 2'; '1Âª/2Âª sÃ©rie' â†’ 'Ensino MÃ©dio'; 'terceirÃ£o/cursinho/prÃ©-vestibular/3Âº ano' â†’ 'PrÃ©-Enem'.",
+    "FERRAMENTA PRINCIPAL. Use SEMPRE que o cliente perguntar sobre valor, mensalidade, preço, custo, anuidade, curso, série, ano, turma, fundamental 1, fundamental 2, ensino médio, pró-enem, terceirão, cursinho, horário das aulas, turno, ou qualquer informação acadêmica das turmas regulares (do 1º ano do fundamental em diante). Aceita o argumento opcional 'nivel' com valores: 'Fundamental 1', 'Fundamental 2', 'Ensino Médio', 'Pró-Enem'. Se o cliente disse só 'valor' sem especificar nível, chame sem argumento (retorna resumo). MAPEIE em silêncio: '1º a 5º ano' -> 'Fundamental 1'; '6º a 9º ano' -> 'Fundamental 2'; '1º/2º série' -> 'Ensino Médio'; 'terceirão/cursinho/pró-vestibular/3º ano' -> 'Pró-Enem'.",
   inputSchema: {
     type: "object",
     properties: {
       nivel: {
         type: "string",
         description:
-          "NÃ­vel de interesse: Fundamental 1, Fundamental 2, MÃ©dio, PrÃ©-Enem (opcional)",
+          "Nível de interesse: Fundamental 1, Fundamental 2, Médio, Pró-Enem (opcional)",
       },
     },
     required: [],
   },
   execute: async (args) => {
     try {
-      const kb = loadKnowledgeBase();
       const { nivel } = args as { nivel?: string };
-
+      if (isSupabaseEnabled()) {
+        const supabase = getSupabase();
+        if (!nivel || nivel.toLowerCase() === "todos") {
+          const { data, error } = await supabase
+            .from("school_levels")
+            .select("*");
+          if (error) throw error;
+          if (data && data.length > 0) {
+            const resumo = data
+              .map(
+                (m) =>
+                  `?? ${m.nivel} (${m.descricao})\\n   Mensalidade: R$ ${m.preco_mensal}/mês\\n`
+              )
+              .join("");
+            return `?? CURSOS E MENSALIDADES DO COLÉGIO IDEAL:\\n\\n${resumo}`;
+          }
+        } else {
+          const { data, error } = await supabase
+            .from("school_levels")
+            .select("*");
+          if (error) throw error;
+          const mensalidade = data?.find((m) =>
+            m.nivel.toLowerCase().includes(nivel.toLowerCase())
+          );
+          if (mensalidade) {
+            return `?? **${mensalidade.nivel}** (${mensalidade.descricao})\\n?? Mensalidade: R$ ${mensalidade.preco_mensal}/mês\\n?? Semestral: R$ ${mensalidade.preco_semestral} | Anual: R$ ${mensalidade.preco_anual}\\n? Incluso no pacote:\\n${mensalidade.incluso.map((i: string) => `• ${i}`).join("\\n")}`;
+          }
+        }
+      }
+      const kb = loadKnowledgeBase();
       if (!nivel || nivel.toLowerCase() === "todos") {
-        // Retorna resumo de todos os cursos
         const resumo = kb.mensalidades
           .map(
             (m) =>
-              `ðŸŽ“ ${m.nivel} (${m.descricao})\n   Mensalidade: R$ ${m.preco_mensal}/mÃªs\n`
+              `?? ${m.nivel} (${m.descricao})\\n   Mensalidade: R$ ${m.preco_mensal}/mês\\n`
           )
           .join("");
-        return `ðŸ“š CURSOS E MENSALIDADES DO COLÃ‰GIO IDEAL:\n\n${resumo}`;
+        return `?? CURSOS E MENSALIDADES DO COLÉGIO IDEAL:\\n\\n${resumo}`;
       }
-
-      // Busca nÃ­vel especÃ­fico
       const mensalidade = kb.mensalidades.find((m) =>
         m.nivel.toLowerCase().includes(nivel.toLowerCase())
       );
-
       if (!mensalidade) {
-        return `NÃ­vel "${nivel}" nÃ£o encontrado. Temos: Fundamental 1, Fundamental 2, MÃ©dio e PrÃ©-Enem.`;
+        return `Nível "${nivel}" não encontrado. Temos: Fundamental 1, Fundamental 2, Médio e Pró-Enem.`;
       }
-
       return formatMensalidade(mensalidade);
     } catch (error) {
       logger.error({ error }, "Error fetching enrollment info");
-      return "Desculpe, nÃ£o consegui carregar as informaÃ§Ãµes de matrÃ­cula. Por favor, entre em contato com nossa coordenaÃ§Ã£o.";
+      return "Desculpe, não consegui carregar as informações de matrícula. Por favor, entre em contato com nossa coordenação.";
     }
   },
 };
@@ -291,7 +315,7 @@ const consultarMensalidadesTool: KBTool = {
 const consultarContatoMatriculaTool: KBTool = {
   name: "get_enrollment_contact",
   description:
-    "ObtÃ©m informaÃ§Ãµes de contato para dÃºvidas sobre matrÃ­cula e inscriÃ§Ã£o",
+    "Obtém informações de contato para dúvidas sobre matrícula e inscrição",
   inputSchema: {
     type: "object",
     properties: {},
@@ -299,9 +323,22 @@ const consultarContatoMatriculaTool: KBTool = {
   },
   execute: async (args) => {
     try {
+      if (isSupabaseEnabled()) {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from("school_contacts")
+          .select("*");
+        if (error) throw error;
+        if (data && data.length > 0) {
+          const contatos = data
+            .map((c) => `?? *${c.name}* (${c.role_title})\\n   Telefone: ${c.phone_number}`)
+            .join("\\n\\n");
+          return `?? ENTRE EM CONTATO:\\n\\n${contatos}`;
+        }
+      }
       const kb = loadKnowledgeBase();
-      const contatos = kb.contatos.map((c) => formatContato(c)).join("\n\n");
-      return `ðŸ“ž ENTRE EM CONTATO:\n\n${contatos}`;
+      const contatos = kb.contatos.map((c) => formatContato(c)).join("\\n\\n");
+      return `?? ENTRE EM CONTATO:\\n\\n${contatos}`;
     } catch (error) {
       logger.error({ error }, "Error fetching contact info");
       return "Telefone: (91) 3000-0000 | Email: matriculas@colegioideal.com.br";

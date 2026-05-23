@@ -1,6 +1,8 @@
 import { config } from "./config";
 import { logger } from "./logger";
 import { initDatabase } from "./db/connection";
+import { createSchema } from "./db/init";
+import { initSupabase } from "./db/supabase";
 import { createStateDb } from "./state/db";
 import { createQueueDb } from "./queue/db";
 import { StateRepository } from "./state/repository";
@@ -27,6 +29,8 @@ async function bootstrap() {
     // Initialize databases
     logger.info("Initializing databases");
     initDatabase();
+    createSchema();
+    initSupabase();
     const stateDb = await createStateDb();
     const queueDb = await createQueueDb();
 

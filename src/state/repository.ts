@@ -1,4 +1,6 @@
-import { getDatabase } from '../db/connection';
+﻿import { getDatabase } from '../db/connection';
+import { isSupabaseEnabled, getSupabase } from '../db/supabase';
+import { logger } from '../logger';
 
 export interface Message {
   id: number;
@@ -35,7 +37,31 @@ export class StateRepository {
     );
 
     const result = stmt.run(waId, role, content, createdAt);
-    return result.lastInsertRowid as number;
+    const messageId = result.lastInsertRowid as number;
+
+    // Sincronização em segundo plano com o Supabase
+    if (isSupabaseEnabled()) {
+      try {
+        const supabase = getSupabase();
+        supabase
+          .from('messages')
+          .insert({
+            wa_id: waId,
+            role,
+            content,
+            created_at: createdAt,
+          })
+          .then(({ error }) => {
+            if (error) {
+              logger.error({ error, waId }, 'Erro ao sincronizar mensagem com o Supabase');
+            }
+          });
+      } catch (err) {
+        logger.error({ error: err }, 'Erro ao iniciar sincronização com o Supabase');
+      }
+    }
+
+    return messageId;
   }
 
   /**
@@ -98,6 +124,29 @@ export class StateRepository {
 
     insertStmt.run(waId);
 
+    // Sincronização em segundo plano com o Supabase
+    if (isSupabaseEnabled()) {
+      try {
+        const supabase = getSupabase();
+        supabase
+          .from('contacts')
+          .upsert({
+            wa_id: waId,
+            bot_paused: false,
+            paused_reason: null,
+            paused_at: null,
+            last_seen_at: null,
+          })
+          .then(({ error }) => {
+            if (error) {
+              logger.error({ error, waId }, 'Erro ao sincronizar novo contato com o Supabase');
+            }
+          });
+      } catch (err) {
+        logger.error({ error: err }, 'Erro ao iniciar sincronização de contato com o Supabase');
+      }
+    }
+
     return {
       wa_id: waId,
       bot_paused: false,
@@ -124,6 +173,28 @@ export class StateRepository {
     );
 
     stmt.run(reason, pausedAt, waId);
+
+    // Sincronização em segundo plano com o Supabase
+    if (isSupabaseEnabled()) {
+      try {
+        const supabase = getSupabase();
+        supabase
+          .from('contacts')
+          .update({
+            bot_paused: true,
+            paused_reason: reason,
+            paused_at: pausedAt,
+          })
+          .eq('wa_id', waId)
+          .then(({ error }) => {
+            if (error) {
+              logger.error({ error, waId }, 'Erro ao sincronizar pausa do bot com o Supabase');
+            }
+          });
+      } catch (err) {
+        logger.error({ error: err }, 'Erro ao iniciar sincronização de pausa do bot com o Supabase');
+      }
+    }
   }
 
   /**
@@ -142,6 +213,28 @@ export class StateRepository {
     );
 
     stmt.run(waId);
+
+    // Sincronização em segundo plano com o Supabase
+    if (isSupabaseEnabled()) {
+      try {
+        const supabase = getSupabase();
+        supabase
+          .from('contacts')
+          .update({
+            bot_paused: false,
+            paused_reason: null,
+            paused_at: null,
+          })
+          .eq('wa_id', waId)
+          .then(({ error }) => {
+            if (error) {
+              logger.error({ error, waId }, 'Erro ao sincronizar retomada do bot com o Supabase');
+            }
+          });
+      } catch (err) {
+        logger.error({ error: err }, 'Erro ao iniciar sincronização de retomada do bot com o Supabase');
+      }
+    }
   }
 
   /**
@@ -178,5 +271,25 @@ export class StateRepository {
     );
 
     stmt.run(now, waId);
+
+    // Sincronização em segundo plano com o Supabase
+    if (isSupabaseEnabled()) {
+      try {
+        const supabase = getSupabase();
+        supabase
+          .from('contacts')
+          .update({
+            last_seen_at: now,
+          })
+          .eq('wa_id', waId)
+          .then(({ error }) => {
+            if (error) {
+              logger.error({ error, waId }, 'Erro ao sincronizar visualização com o Supabase');
+            }
+          });
+      } catch (err) {
+        logger.error({ error: err }, 'Erro ao iniciar sincronização de visualização com o Supabase');
+      }
+    }
   }
 }

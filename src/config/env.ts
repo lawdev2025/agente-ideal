@@ -37,6 +37,9 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production']).default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   DB_PATH: z.string().default('./data/agente.db'),
+  DATABASE_PROVIDER: z.enum(['sqlite', 'supabase']).default('sqlite'),
+  SUPABASE_URL: z.string().default(''),
+  SUPABASE_ANON_KEY: z.string().default(''),
   ADMIN_TOKEN: z.string().min(1),
 });
 

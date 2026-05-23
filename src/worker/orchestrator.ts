@@ -202,38 +202,33 @@ export class MessageOrchestrator {
     studentId: string,
     reason: string
   ): Promise<void> {
+    const history = this.stateRepository.getHistory(conversationId, 5);
+    const context = history.map((m) => `${m.role}: ${m.content}`).join("\n");
     try {
-      const history = this.stateRepository.getHistory(conversationId, 5);
-      const context = history.map((m) => `${m.role}: ${m.content}`).join("\n");
-
       await this.escalationHandler.escalateToGroup(studentId, reason, context);
-
-      // Mark the escalation in history so future turns of this conversation
-      // know we already handed off and don't redo it.
+      logger.info({ conversationId, studentId }, "Issue escalated to specialist via Telegram");
+    } catch (telegramError) {
+      logger.error({ error: telegramError }, "Failed to send escalation alert to Telegram (network/credentials error)");
+    }
+    try {
       this.stateRepository.appendMessage(
         conversationId,
         "tool",
         `Tool escalate_to_specialist result: ${reason}`
       );
-
       const handoffMessage =
-        "Vou pedir pra coordena√ß√£o te responder por aqui mesmo ‚Äî em instantes algu√©m da nossa equipe entra no atendimento. üôè";
-
+        "Vou pedir para a coordenaÁ„o do ColÈgio Ideal te responder por aqui mesmo ñ em instantes alguÈm da nossa equipe entra em contato com vocÍ. ??";
       this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
-
       if (!config.whatsapp.dryRun) {
         await this.whatsappClient.sendMessage(studentId, handoffMessage);
       } else {
         logger.info({ studentId, dryRun: true }, "WhatsApp notification skipped (DRY_RUN mode)");
       }
-
-      logger.info({ conversationId, studentId }, "Issue escalated to specialist");
-    } catch (escalationError) {
-      logger.error({ error: escalationError }, "Failed to escalate to specialist");
+    } catch (dbOrWsError) {
+      logger.error({ error: dbOrWsError }, "Error recording handoff message in database/WhatsApp client");
     }
   }
 }
-
 // Focused phrasing prompt ‚Äî used when we've already chosen the tool and just
 // need natural text. By stripping the production system prompt (which mentions
 // tool names) we avoid Gemini hallucinating function-call syntax in its reply.

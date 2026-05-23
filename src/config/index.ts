@@ -6,6 +6,9 @@ export interface Config {
   logLevel: string;
   database: {
     path: string;
+    provider: "sqlite" | "supabase";
+    supabaseUrl: string;
+    supabaseAnonKey: string;
   };
   institution: {
     name: string;
@@ -46,6 +49,9 @@ export const config: Config = {
   logLevel: rawConfig.LOG_LEVEL,
   database: {
     path: rawConfig.DB_PATH,
+    provider: rawConfig.DATABASE_PROVIDER,
+    supabaseUrl: rawConfig.SUPABASE_URL,
+    supabaseAnonKey: rawConfig.SUPABASE_ANON_KEY,
   },
   institution: {
     name: rawConfig.INSTITUTION_NAME,

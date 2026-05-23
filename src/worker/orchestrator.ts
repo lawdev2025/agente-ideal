@@ -216,8 +216,7 @@ export class MessageOrchestrator {
         "tool",
         `Tool escalate_to_specialist result: ${reason}`
       );
-      const handoffMessage =
-        "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo – em instantes alguém da nossa equipe entra em contato com você. ??";
+      const handoffMessage = "Vou pedir para a coordenaÃ§Ã£o do ColÃ©gio Ideal te responder por aqui mesmo - em instantes alguÃ©m da nossa equipe entra em contato com vocÃª. ğŸ˜Š";
       this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
       if (!config.whatsapp.dryRun) {
         await this.whatsappClient.sendMessage(studentId, handoffMessage);

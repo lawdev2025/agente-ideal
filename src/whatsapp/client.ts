@@ -2,6 +2,23 @@ import axios, { AxiosInstance } from "axios";
 import { logger } from "../logger";
 import { config } from "../config";
 
+/**
+ * Brasil tem 13 digitos pra celular (55 + AA + 9 + 8 digitos) mas o wa_id
+ * que a Meta entrega no webhook vem em formato legado de 12 digitos
+ * (55 + AA + 8 digitos, sem o 9 que ANATEL adicionou). Quando vamos ENVIAR
+ * de volta, a API exige o numero completo com o 9.
+ *
+ * Detecta: 12 digitos, comeca com 55. Insere '9' na posicao 4.
+ * Outros paises ou numeros ja com 13 digitos passam intactos.
+ */
+function normalizeBrazilMobile(wa: string): string {
+  const digits = wa.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("55")) {
+    return digits.slice(0, 4) + "9" + digits.slice(4);
+  }
+  return digits;
+}
+
 export interface WhatsAppMessage {
   messaging_product: string;
   recipient_type: string;
@@ -63,7 +80,7 @@ export class WhatsAppClient {
       const payload: WhatsAppMessage = {
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to,
+        to: normalizeBrazilMobile(to),
         type: "text",
         text: {
           body: text,

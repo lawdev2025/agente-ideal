@@ -95,9 +95,9 @@
 
                         <div class="metric-card glass">
                             <div class="metric-info">
-                                <p>Contatos Ativos</p>
+                                <p>Contatos Ativos (24h)</p>
                                 <h3 id="stat-active-contacts">0</h3>
-                                <span class="trend positive"><i class="fa-solid fa-users"></i> Alunos engajados</span>
+                                <span class="trend positive" id="stat-active-trend"><i class="fa-solid fa-users"></i> 0 inativos</span>
                             </div>
                             <div class="metric-icon brand-subtle">
                                 <i class="fa-solid fa-user-check"></i>
@@ -198,20 +198,40 @@
                 <section class="tab-content" id="tab-banco">
                     <div class="database-wrapper glass">
                         <div class="database-nav">
-                            <div class="table-selector">
-                                <button class="btn btn-db-nav active" data-table="school_levels">
-                                    <i class="fa-solid fa-list-ol"></i> Mensalidades (Níveis)
+                            <div class="table-selector-scroll">
+                                <div class="table-selector-group">
+                                    <span class="table-group-label">Produtos & Turmas</span>
+                                    <button class="btn btn-db-nav active" data-table="school_products">
+                                        <i class="fa-solid fa-tags"></i> Produtos
+                                    </button>
+                                </div>
+                                <div class="table-selector-divider"></div>
+                                <div class="table-selector-group">
+                                    <span class="table-group-label">Estrutura</span>
+                                    <button class="btn btn-db-nav" data-table="school_units">
+                                        <i class="fa-solid fa-building-columns"></i> Unidades
+                                    </button>
+                                    <button class="btn btn-db-nav" data-table="school_contacts">
+                                        <i class="fa-solid fa-address-book"></i> Contatos
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="db-action-btns">
+                                <button class="btn btn-secondary" id="btn-import-csv">
+                                    <i class="fa-solid fa-file-csv"></i> Importar CSV
                                 </button>
-                                <button class="btn btn-db-nav" data-table="school_contacts">
-                                    <i class="fa-solid fa-address-book"></i> Contatos do Colégio
-                                </button>
-                                <button class="btn btn-db-nav" data-table="school_materials">
-                                    <i class="fa-solid fa-book-open"></i> Materiais Escolares
+                                <button class="btn btn-brand" id="btn-add-row">
+                                    <i class="fa-solid fa-plus"></i> Adicionar Registro
                                 </button>
                             </div>
-                            <button class="btn btn-brand" id="btn-add-row">
-                                <i class="fa-solid fa-plus"></i> Adicionar Registro
-                            </button>
+                        </div>
+
+                        <!-- Filtro de unidade — aparece só quando estamos em school_products -->
+                        <div class="unit-filter-bar" id="unit-filter-bar" style="display:none;">
+                            <span class="unit-filter-label"><i class="fa-solid fa-building-columns"></i> Filtrar por unidade:</span>
+                            <div class="unit-filter-chips" id="unit-filter-chips">
+                                <!-- chips dinâmicos -->
+                            </div>
                         </div>
 
                         <div class="database-table-container">
@@ -257,6 +277,57 @@
         </main>
     </div>
 
+    <!-- MODAL DE IMPORTAR CSV -->
+    <div class="modal-backdrop" id="csv-modal" style="display: none;">
+        <div class="modal-card glass modal-large">
+            <div class="modal-header">
+                <h3 id="csv-modal-title">Importar CSV</h3>
+                <button class="modal-close-btn" id="btn-close-csv-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="csv-instructions">
+                    <div class="csv-example-banner">
+                        <div class="csv-example-info">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <div>
+                                <strong>Formato esperado</strong>
+                                <p>Baixe o modelo CSV para ver as colunas obrigatórias desta tabela preenchidas com exemplos reais.</p>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary" id="btn-download-csv-example">
+                            <i class="fa-solid fa-file-arrow-down"></i> Baixar Modelo CSV
+                        </button>
+                    </div>
+                    <label class="csv-drop-zone" id="csv-drop-zone" for="csv-file-input">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span id="csv-drop-label">Clique para selecionar ou arraste o arquivo CSV aqui</span>
+                        <small>.csv — codificado em UTF-8</small>
+                        <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none">
+                    </label>
+                </div>
+                <div id="csv-preview-section" style="display:none">
+                    <div class="csv-preview-header">
+                        <h4><i class="fa-solid fa-table"></i> Pré-visualização</h4>
+                        <span class="csv-row-count" id="csv-row-count"></span>
+                    </div>
+                    <div class="csv-preview-container">
+                        <table class="db-table" id="csv-preview-table">
+                            <thead id="csv-preview-head"></thead>
+                            <tbody id="csv-preview-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="csv-errors" class="csv-errors" style="display:none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="btn-cancel-csv-modal">Cancelar</button>
+                <button type="button" class="btn btn-brand" id="btn-import-csv-confirm" disabled>
+                    <i class="fa-solid fa-file-import"></i> Importar Dados
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL DE ADICIONAR/EDITAR REGISTRO NO BANCO -->
     <div class="modal-backdrop" id="db-modal" style="display: none;">
         <div class="modal-card glass">
@@ -280,7 +351,16 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Chart.js via CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Garante que __ADMIN_CONFIG__ existe antes do admin.js rodar -->
+    <script>window.__ADMIN_CONFIG__ = null;</script>
+    <!-- Carrega credenciais injetadas pelo backend SÍNCRONAMENTE — admin.js
+         precisa do ADMIN_TOKEN antes da primeira chamada à API. -->
+    <script>
+      if (location.protocol !== 'file:') {
+        document.write('<script src="/admin/config.js"><\/script>');
+      }
+    </script>
     <!-- Lógica de Controle JS -->
-    <script src="admin.js?v=2.0"></script>
+    <script src="admin.js?v=6.2"></script>
 </body>
 </html>

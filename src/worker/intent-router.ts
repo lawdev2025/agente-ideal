@@ -13,6 +13,7 @@ export type RoutedIntent =
   | {
       kind: "enrollment_info";
       nivel?: string;
+      unit?: string;
       /**
        * Secondary off-scope reason present in the same message (e.g. user
        * asked for "valor do Médio E desconto pra irmão"). We answer the
@@ -21,10 +22,17 @@ export type RoutedIntent =
       escalateAfter?: string;
     }
   | { kind: "enrollment_contact" }
+  | { kind: "unit_info"; unit?: string }
   | { kind: "escalate"; reason: string }
   | { kind: "ask_llm" };
 
 const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
+  // Educação Infantil (must come FIRST so maternal/jardim never reaches escalation)
+  {
+    regex:
+      /\b(maternal|jardim\s*[iI1]?\b|jardim\s+de\s+inf[âa]ncia|educa[çc][ãa]o\s+infantil|ber[çc][áa]rio|pr[ée][-\s]?escola|cre+che|infantil)\b/i,
+    nivel: "Educação Infantil",
+  },
   // Fundamental 1
   {
     regex:
@@ -52,11 +60,6 @@ const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
 ];
 
 const OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
-  {
-    regex:
-      /\b(maternal|jardim\s+de\s+inf[âa]ncia|jardim\s+i+|educa[çc][ãa]o\s+infantil|ber[çc][áa]rio|pr[ée][-\s]?escola|cre+che)\b/i,
-    reason: "Pergunta sobre educação infantil/maternal — não atendemos essa faixa",
-  },
   {
     regex: /\b(bolsa|bolsista|filantropi|isen[çc][ãa]o|gratuidade|financiament)/i,
     reason: "Pergunta sobre bolsa/desconto/financiamento",
@@ -96,7 +99,16 @@ const ENROLLMENT_KEYWORDS =
   /\b(mensalidade|valor|valores|pre[çc]o|custo|anuidade|semestral|matr[íi]cula|matricular|matriculando|s[ée]rie|turma|curso|aula|hor[áa]rio|turno|matutino|vespertino|integral|fundamental|m[ée]dio|enem|cursinho|terceir[ãa]o|pr[ée][-\s]?enem|incluso|material|simulado|colegial|anos?\s+iniciais|anos?\s+finais|[1-9][ºo°]\s*ano|[1-3][ªa]\s*s[ée]rie)\b/i;
 
 const CONTACT_KEYWORDS =
-  /\b(contato|telefone|fone|email|e-mail|endere[çc]o|onde\s+fica|como\s+chegar|hor[áa]rio\s+de\s+atendimento|whatsapp\s+oficial|site)\b/i;
+  /\b(contato|telefone|fone|email|e-mail|whatsapp\s+oficial|site|secretaria|coordena[çc][ãa]o\s+contato)\b/i;
+
+const UNIT_KEYWORDS =
+  /\b(unidade|unidades|sede|campus|campi|endere[çc]o|onde\s+fica|como\s+chegar|hor[áa]rio\s+de\s+funcionamento|hor[áa]rio\s+da\s+escola|hor[áa]rio\s+de\s+atendimento|infraestrutura|atividades|extracurricular|capacidade|quantos\s+alunos|quantidade\s+de\s+alunos|n[úu]mero\s+de\s+alunos|estrutura|laborat[óo]rio|quadra|gin[áa]sio|parquinho|brinquedoteca|batista|montenegro|cidade\s+nova|ananindeua)\b/i;
+
+const UNIT_NAME_PATTERNS: Array<{ regex: RegExp; unit: string }> = [
+  { regex: /\b(batista\s+campos?|sede)\b/i, unit: "Batista Campos" },
+  { regex: /\b(augusto\s+montenegro|montenegro)\b/i, unit: "Augusto Montenegro" },
+  { regex: /\b(cidade\s+nova|ananindeua)\b/i, unit: "Cidade Nova" },
+];
 
 const GREETING_ONLY =
   /^(oi|ol[áa]|opa|hey|e[ai]+|bom\s+dia|boa\s+tarde|boa\s+noite|tudo\s+bem|td\s+bom|salve)[\s!.,?]*$/i;
@@ -105,7 +117,6 @@ const GREETING_ONLY =
 // "Maternal" and "futebol" are absolute escalations — even if "valor" appears
 // in the same sentence, we never answer with a level price.
 const HARD_OFF_SCOPE_KEYS = new Set([
-  "Pergunta sobre educação infantil/maternal — não atendemos essa faixa",
   "Pergunta fora do escopo do colégio",
   "Cliente pediu humano explicitamente",
 ]);
@@ -133,6 +144,14 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
       break;
     }
   }
+  // Match unit name too — applies to enrollment_info AND unit_info.
+  let matchedUnit: string | undefined;
+  for (const { regex, unit: u } of UNIT_NAME_PATTERNS) {
+    if (regex.test(text)) {
+      matchedUnit = u;
+      break;
+    }
+  }
   const hasEnrollmentSignal =
     matchedNivel !== undefined || ENROLLMENT_KEYWORDS.test(text);
 
@@ -148,6 +167,7 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
     return {
       kind: "enrollment_info",
       nivel: matchedNivel,
+      unit: matchedUnit,
       escalateAfter: `${offScope.reason}. Mensagem: "${text}"`,
     };
   }
@@ -157,8 +177,29 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
     return { kind: "escalate", reason: `${offScope.reason}. Mensagem: "${text}"` };
   }
 
+  // Mixed: pergunta sobre VALOR/PRODUTO em uma unidade específica
+  // (ex: "mensalidade do maternal na cidade nova"). Vai para enrollment_info
+  // com unit, NÃO para unit_info (que retornaria endereço/horário).
+  if (hasEnrollmentSignal && matchedUnit) {
+    return { kind: "enrollment_info", nivel: matchedNivel, unit: matchedUnit };
+  }
+
+  // Unit/campus questions (address, hours, capacity, infrastructure) — check
+  // BEFORE enrollment so "horário de funcionamento da Batista Campos" goes to
+  // unit_info, not enrollment_info.
+  if (UNIT_KEYWORDS.test(text)) {
+    let unit: string | undefined;
+    for (const { regex, unit: u } of UNIT_NAME_PATTERNS) {
+      if (regex.test(text)) {
+        unit = u;
+        break;
+      }
+    }
+    return { kind: "unit_info", unit };
+  }
+
   if (hasEnrollmentSignal) {
-    return { kind: "enrollment_info", nivel: matchedNivel };
+    return { kind: "enrollment_info", nivel: matchedNivel, unit: matchedUnit };
   }
 
   if (CONTACT_KEYWORDS.test(text)) {

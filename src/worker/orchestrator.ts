@@ -31,6 +31,18 @@ export class MessageOrchestrator {
         "Processing message"
       );
 
+      // Bot pausado para este contato: NÃO responde. A mensagem do cliente
+      // já foi salva no histórico pelo webhook (pro atendente humano ver),
+      // então aqui só registramos e saímos. O atendente humano cuida no
+      // painel; quando ele clicar "Retomar Bot", o flag volta a 0.
+      if (this.stateRepository.isBotPaused(studentId)) {
+        logger.info(
+          { studentId },
+          "Bot paused for this contact — skipping LLM response"
+        );
+        return;
+      }
+
       const history = this.stateRepository.getHistory(conversationId);
       const conversationHistory: ConversationMessage[] = history.map((msg) => ({
         role: msg.role,
@@ -53,9 +65,13 @@ export class MessageOrchestrator {
         return;
       }
 
-      // Deterministic path: clear matrícula/contact questions go straight to
-      // the right tool — we don't trust the LLM to route correctly.
-      if (intent.kind === "enrollment_info" || intent.kind === "enrollment_contact") {
+      // Deterministic path: clear matrícula/contact/unit questions go straight
+      // to the right tool — we don't trust the LLM to route correctly.
+      if (
+        intent.kind === "enrollment_info" ||
+        intent.kind === "enrollment_contact" ||
+        intent.kind === "unit_info"
+      ) {
         await this.runDeterministicToolFlow(
           conversationId,
           studentId,
@@ -91,15 +107,22 @@ export class MessageOrchestrator {
     conversationId: string,
     studentId: string,
     userMessage: string,
-    intent: Extract<RoutedIntent, { kind: "enrollment_info" | "enrollment_contact" }>,
+    intent: Extract<RoutedIntent, { kind: "enrollment_info" | "enrollment_contact" | "unit_info" }>,
     conversationHistory: ConversationMessage[]
   ): Promise<void> {
     const toolName =
-      intent.kind === "enrollment_info" ? "get_enrollment_info" : "get_enrollment_contact";
-    const args =
-      intent.kind === "enrollment_info" && intent.nivel
-        ? { nivel: intent.nivel }
-        : {};
+      intent.kind === "enrollment_info"
+        ? "get_enrollment_info"
+        : intent.kind === "unit_info"
+        ? "get_unit_info"
+        : "get_enrollment_contact";
+    let args: Record<string, unknown> = {};
+    if (intent.kind === "enrollment_info") {
+      if (intent.nivel) args.nivel = intent.nivel;
+      if (intent.unit) args.unit = intent.unit;
+    } else if (intent.kind === "unit_info" && intent.unit) {
+      args = { unit: intent.unit };
+    }
 
     let toolResult: string;
     try {
@@ -158,6 +181,16 @@ export class MessageOrchestrator {
     // the off-scope part of a mixed-intent message (desconto, uniforme, etc.).
     if (escalateAfter) {
       await this.escalateToSpecialist(conversationId, studentId, escalateAfter);
+    } else if (!alreadyEscalatedInHistory(updatedConv) && isDeflectionReply(reply)) {
+      // The bot said "vou chamar a coordenação" but didn't actually escalate.
+      // Fire the real escalation so Telegram is notified and the contact is
+      // marked as awaiting human.
+      await this.escalateToSpecialist(
+        conversationId,
+        studentId,
+        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
+        { skipHandoffMessage: true }
+      );
     }
 
     void conversationHistory;
@@ -173,6 +206,22 @@ export class MessageOrchestrator {
     userMessage: string,
     conversationHistory: ConversationMessage[]
   ): Promise<void> {
+    // First contact — bypass the LLM entirely and send the official formal
+    // greeting. Avoids any risk of the model drifting from the script and
+    // saves a token round-trip on every new conversation.
+    const isFirstInteraction = !conversationHistory.some(
+      (m) => m.role === "assistant"
+    );
+    if (isFirstInteraction) {
+      const greeting =
+        "Olá! Seja muito bem-vindo(a) ao atendimento oficial do Colégio Ideal. 🎓\n" +
+        "Estamos aqui para te ajudar com informações sobre nossas turmas, valores, unidades e processo de matrícula para 2026.\n\n" +
+        "Para começar, por favor, qual é o seu nome?";
+      this.stateRepository.appendMessage(conversationId, "assistant", greeting);
+      await this.whatsappClient.sendMessage(studentId, greeting);
+      return;
+    }
+
     const chatPrompt = buildChatSystemPrompt();
     const response = await this.llmProvider.generateMessage(
       userMessage,
@@ -195,15 +244,35 @@ export class MessageOrchestrator {
 
     this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
+
+    // Same deflection check in the pure-chat path.
+    if (!alreadyEscalatedInHistory(conversationHistory) && isDeflectionReply(reply)) {
+      await this.escalateToSpecialist(
+        conversationId,
+        studentId,
+        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
+        { skipHandoffMessage: true }
+      );
+    }
   }
 
   private async escalateToSpecialist(
     conversationId: string,
     studentId: string,
-    reason: string
+    reason: string,
+    opts: { skipHandoffMessage?: boolean } = {}
   ): Promise<void> {
     const history = this.stateRepository.getHistory(conversationId, 5);
     const context = history.map((m) => `${m.role}: ${m.content}`).join("\n");
+
+    // Mark the contact as awaiting human attendance — this is what increments
+    // the "Atendimentos Humanos" counter in the admin panel.
+    try {
+      this.stateRepository.pauseBot(studentId, reason);
+    } catch (pauseError) {
+      logger.error({ error: pauseError, studentId }, "Failed to mark contact as bot_paused");
+    }
+
     try {
       await this.escalationHandler.escalateToGroup(studentId, reason, context);
       logger.info({ conversationId, studentId }, "Issue escalated to specialist via Telegram");
@@ -216,24 +285,51 @@ export class MessageOrchestrator {
         "tool",
         `Tool escalate_to_specialist result: ${reason}`
       );
-      const handoffMessage = "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo - em instantes alguém da nossa equipe entra em contato com você. 😊";
-      this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
-      if (!config.whatsapp.dryRun) {
-        await this.whatsappClient.sendMessage(studentId, handoffMessage);
-      } else {
-        logger.info({ studentId, dryRun: true }, "WhatsApp notification skipped (DRY_RUN mode)");
+      if (!opts.skipHandoffMessage) {
+        const handoffMessage = "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo - em instantes alguém da nossa equipe entra em contato com você. 😊";
+        this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
+        if (!config.whatsapp.dryRun) {
+          await this.whatsappClient.sendMessage(studentId, handoffMessage);
+        } else {
+          logger.info({ studentId, dryRun: true }, "WhatsApp notification skipped (DRY_RUN mode)");
+        }
       }
     } catch (dbOrWsError) {
       logger.error({ error: dbOrWsError }, "Error recording handoff message in database/WhatsApp client");
     }
   }
 }
+
+// Detects when the assistant's reply is a "deflection" to human staff — i.e.
+// it didn't actually answer and is punting to coordenação/secretaria. When
+// this happens we still want a real escalation to fire (Telegram + counter).
+function isDeflectionReply(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  const patterns = [
+    /coordena[çc][ãa]o\s+(te|vai|j[áa])/,
+    /quem\s+te\s+(confirma|passa|responde)/,
+    /vou\s+(pedir|chamar|avisar)\s+(pra|para|a|o)/,
+    /j[áa]\s+vou\s+(pedir|chamar|avisar)/,
+    /n[ãa]o\s+tenho\s+(essa|essas|esse|esses|a)\s+informa[çc]/,
+    /n[ãa]o\s+(tenho|possuo|sei)\s+(essa|esse|essas|esses|o|a)\s+(dado|detalhe|valor|informa)/,
+    /entre\s+em\s+contato\s+com\s+(a|o)\s+(coordena|secretaria|secret)/,
+    /pe[çc]o\s+(que|para)\s+(a|o)\s+(coordena|secretaria)/,
+    /vou\s+(direcionar|encaminhar|repassar)/,
+  ];
+  return patterns.some((p) => p.test(t));
+}
+
+function alreadyEscalatedInHistory(history: ConversationMessage[]): boolean {
+  return history.some(
+    (m) => m.role === "tool" && m.content.includes("escalate_to_specialist")
+  );
+}
 // Focused phrasing prompt — used when we've already chosen the tool and just
 // need natural text. By stripping the production system prompt (which mentions
 // tool names) we avoid Gemini hallucinating function-call syntax in its reply.
 function buildPhrasingSystemPrompt(escalateAfter?: string): string {
   const lines = [
-    "Você é Ana, atendente do Colégio Ideal. Sua única tarefa é responder ao cliente em UMA mensagem natural de WhatsApp, usando EXCLUSIVAMENTE o que está no resultado da ferramenta no histórico (role=tool).",
+    "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'). Sua única tarefa é responder ao cliente em UMA mensagem natural de WhatsApp, usando EXCLUSIVAMENTE o que está no resultado da ferramenta no histórico (role=tool).",
     "",
     "REGRAS DURAS:",
     "- Responda em 1-3 frases curtas, tom WhatsApp informal.",
@@ -260,7 +356,7 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
 // keeping the conversation moving without inventing data.
 function buildChatSystemPrompt(): string {
   return [
-    "Você é Ana, atendente do Colégio Ideal, conversando por WhatsApp. Nesta mensagem você está apenas conversando — outras decisões já foram tratadas pelo sistema.",
+    "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'), conversando por WhatsApp. Nesta mensagem você está apenas conversando — outras decisões já foram tratadas pelo sistema.",
     "",
     "REGRAS:",
     "- Tom WhatsApp natural, 1-2 frases curtas.",

@@ -48,3 +48,7 @@ tests/simulation/
 test-webhook*.js
 server-output.log
 server-fresh.log
+
+
+# Ignore all data directory
+data/

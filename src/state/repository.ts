@@ -12,6 +12,8 @@ export interface Message {
 
 export interface Contact {
   wa_id: string;
+  name: string | null;
+  phone: string | null;
   bot_paused: boolean;
   paused_reason: string | null;
   paused_at: number | null;
@@ -88,18 +90,19 @@ export class StateRepository {
    * Gets or creates a contact record. Returns the contact.
    * If the contact doesn't exist, it creates one with default values.
    */
-  getOrCreateContact(waId: string): Contact {
+  getOrCreateContact(waId: string, name?: string, phone?: string): Contact {
     const db = getDatabase();
 
-    // Try to get existing contact
     const getStmt = db.prepare(
-      `SELECT wa_id, bot_paused, paused_reason, paused_at, last_seen_at
+      `SELECT wa_id, name, phone, bot_paused, paused_reason, paused_at, last_seen_at
        FROM contacts
        WHERE wa_id = ?`
     );
 
     const existing = getStmt.get(waId) as {
       wa_id: string;
+      name: string | null;
+      phone: string | null;
       bot_paused: number;
       paused_reason: string | null;
       paused_at: number | null;
@@ -107,8 +110,21 @@ export class StateRepository {
     } | undefined;
 
     if (existing) {
+      // Update name/phone if provided and currently unknown
+      if ((name && !existing.name) || (phone && !existing.phone)) {
+        db.prepare(`UPDATE contacts SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE wa_id = ?`)
+          .run(name ?? null, phone ?? null, waId);
+        if (isSupabaseEnabled()) {
+          try {
+            getSupabase().from('contacts').update({ name: name ?? existing.name, phone: phone ?? existing.phone }).eq('wa_id', waId)
+              .then(({ error }) => { if (error) logger.error({ error, waId }, 'Erro ao atualizar name/phone no Supabase'); });
+          } catch {}
+        }
+      }
       return {
         wa_id: existing.wa_id,
+        name: name ?? existing.name,
+        phone: phone ?? existing.phone,
         bot_paused: existing.bot_paused === 1,
         paused_reason: existing.paused_reason,
         paused_at: existing.paused_at,
@@ -117,12 +133,10 @@ export class StateRepository {
     }
 
     // Create new contact
-    const insertStmt = db.prepare(
-      `INSERT INTO contacts (wa_id, bot_paused, paused_reason, paused_at, last_seen_at)
-       VALUES (?, 0, NULL, NULL, NULL)`
-    );
-
-    insertStmt.run(waId);
+    db.prepare(
+      `INSERT INTO contacts (wa_id, name, phone, bot_paused, paused_reason, paused_at, last_seen_at)
+       VALUES (?, ?, ?, 0, NULL, NULL, NULL)`
+    ).run(waId, name ?? null, phone ?? null);
 
     // Sincronização em segundo plano com o Supabase
     if (isSupabaseEnabled()) {
@@ -132,6 +146,8 @@ export class StateRepository {
           .from('contacts')
           .upsert({
             wa_id: waId,
+            name: name ?? null,
+            phone: phone ?? null,
             bot_paused: false,
             paused_reason: null,
             paused_at: null,
@@ -149,6 +165,8 @@ export class StateRepository {
 
     return {
       wa_id: waId,
+      name: name ?? null,
+      phone: phone ?? null,
       bot_paused: false,
       paused_reason: null,
       paused_at: null,

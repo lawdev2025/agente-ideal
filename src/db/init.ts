@@ -36,12 +36,18 @@ export function createSchema(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS contacts (
       wa_id TEXT PRIMARY KEY,
+      name TEXT,
+      phone TEXT,
       bot_paused INTEGER NOT NULL DEFAULT 0,
       paused_reason TEXT,
       paused_at INTEGER,
       last_seen_at INTEGER
     );
   `);
+
+  // Migrate existing databases: add name/phone columns if missing
+  try { db.exec(`ALTER TABLE contacts ADD COLUMN name TEXT`); } catch {}
+  try { db.exec(`ALTER TABLE contacts ADD COLUMN phone TEXT`); } catch {}
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS dead_letter (

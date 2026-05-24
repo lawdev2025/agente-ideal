@@ -1,0 +1,5 @@
+id,nivel,descricao,preco_mensal,preco_semestral,preco_anual,incluso
+ef1,Ensino Fundamental 1,1º ao 5º ano,1200,7200,14400,"Material didático,Acompanhamento pedagógico,Simulados periódicos"
+ef2,Ensino Fundamental 2,6º ao 9º ano,1400,8400,16800,"Material didático,Acompanhamento pedagógico,Simulados periódicos,Preparação EM"
+em,Ensino Médio,1ª e 2ª série,1700,10200,20400,"Material didático,Simulados mensais,Plataforma digital"
+pre-enem,Pré-Enem (Eixo),Terceirão e Cursinho,1900,11400,22800,"Material especializado,Acompanhamento intensivo,Simulados mensais"

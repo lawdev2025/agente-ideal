@@ -68,35 +68,56 @@ export class StateRepository {
       .maybeSingle();
 
     if (existing) {
+      // So tenta atualizar name/phone se a coluna existir no schema
+      // (tabelas legadas podem nao ter esses campos — silenciamos o erro)
       if ((name && !existing.name) || (phone && !existing.phone)) {
         const patch: Record<string, unknown> = {};
         if (name && !existing.name) patch.name = name;
         if (phone && !existing.phone) patch.phone = phone;
-        const { data: updated } = await supabase
+        const { data: updated, error: updErr } = await supabase
           .from("contacts")
           .update(patch)
           .eq("wa_id", waId)
           .select()
           .single();
+        if (updErr && updErr.code !== "PGRST204") {
+          logger.warn({ error: updErr, waId }, "Update opcional de name/phone falhou (nao critico)");
+        }
         return this.normalize(updated || existing);
       }
       return this.normalize(existing);
     }
 
+    // Insert minimo — so wa_id e bot_paused. Outras colunas (name, phone,
+    // last_seen_at) podem ou nao existir; sao atualizadas depois.
+    const insertPayload: Record<string, unknown> = {
+      wa_id: waId,
+      bot_paused: false,
+    };
     const { data: inserted, error } = await supabase
       .from("contacts")
-      .insert({
-        wa_id: waId,
-        name: name ?? null,
-        phone: phone ?? null,
-        bot_paused: false,
-      })
+      .insert(insertPayload)
       .select()
       .single();
     if (error) {
       logger.error({ error, waId }, "Erro ao criar contato no Supabase");
       throw error;
     }
+
+    // Tenta atualizar name/phone separadamente (silencia se coluna nao existe)
+    if (name || phone) {
+      const patch: Record<string, unknown> = {};
+      if (name) patch.name = name;
+      if (phone) patch.phone = phone;
+      const { error: updErr } = await supabase
+        .from("contacts")
+        .update(patch)
+        .eq("wa_id", waId);
+      if (updErr && updErr.code !== "PGRST204") {
+        logger.warn({ error: updErr, waId }, "Update opcional de name/phone falhou");
+      }
+    }
+
     return this.normalize(inserted);
   }
 

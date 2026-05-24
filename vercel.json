@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/admin", "destination": "/admin/index.html" }
+    { "source": "/admin", "destination": "/admin/index.html" },
+    { "source": "/webhook", "destination": "/api/webhook" }
   ],
   "functions": {
     "api/webhook.ts": { "maxDuration": 30 }

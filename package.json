@@ -7,14 +7,10 @@
     "doc": "docs"
   },
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "dev": "vercel dev",
     "test": "vitest",
     "test:run": "vitest run",
-    "smoke": "tsx scripts/smoke.ts",
-    "simulate": "tsx scripts/simulate-chats.ts",
-    "worker": "tsx src/worker/poller.ts",
     "lint": "tsc --noEmit"
   },
   "repository": {
@@ -30,22 +26,17 @@
   "homepage": "https://github.com/lawdev2025/agente-ideal#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
-    "@fastify/cors": "^11.2.0",
-    "@fastify/static": "^9.1.3",
     "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.106.1",
     "axios": "^1.16.1",
-    "better-sqlite3": "^12.10.0",
     "dotenv": "^16.0.0",
-    "fastify": "^5.0.0",
     "pino": "^9.0.0",
-    "pino-pretty": "^11.0.0",
     "undici": "^6.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.19",
+    "@vercel/node": "^5.8.4",
     "tsx": "^4.22.3",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9"

@@ -35,7 +35,7 @@ export class MessageOrchestrator {
       // já foi salva no histórico pelo webhook (pro atendente humano ver),
       // então aqui só registramos e saímos. O atendente humano cuida no
       // painel; quando ele clicar "Retomar Bot", o flag volta a 0.
-      if (this.stateRepository.isBotPaused(studentId)) {
+      if (await this.stateRepository.isBotPaused(studentId)) {
         logger.info(
           { studentId },
           "Bot paused for this contact — skipping LLM response"
@@ -43,7 +43,7 @@ export class MessageOrchestrator {
         return;
       }
 
-      const history = this.stateRepository.getHistory(conversationId);
+      const history = await this.stateRepository.getHistory(conversationId);
       const conversationHistory: ConversationMessage[] = history.map((msg) => ({
         role: msg.role,
         content: msg.content,
@@ -146,13 +146,13 @@ export class MessageOrchestrator {
       return;
     }
 
-    this.stateRepository.appendMessage(
+    await this.stateRepository.appendMessage(
       conversationId,
       "tool",
       `Tool ${toolName} result: ${toolResult}`
     );
 
-    const updatedHistory = this.stateRepository.getHistory(conversationId);
+    const updatedHistory = await this.stateRepository.getHistory(conversationId);
     const updatedConv: ConversationMessage[] = updatedHistory.map((m) => ({
       role: m.role,
       content: m.content,
@@ -174,7 +174,7 @@ export class MessageOrchestrator {
 
     if (!reply) reply = toolResult;
 
-    this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
 
     // After answering the primary question, fire the queued escalation for
@@ -217,7 +217,7 @@ export class MessageOrchestrator {
         "Olá! Seja muito bem-vindo(a) ao atendimento oficial do Colégio Ideal. 🎓\n" +
         "Estamos aqui para te ajudar com informações sobre nossas turmas, valores, unidades e processo de matrícula para 2026.\n\n" +
         "Para começar, por favor, qual é o seu nome?";
-      this.stateRepository.appendMessage(conversationId, "assistant", greeting);
+      await this.stateRepository.appendMessage(conversationId, "assistant", greeting);
       await this.whatsappClient.sendMessage(studentId, greeting);
       return;
     }
@@ -242,7 +242,7 @@ export class MessageOrchestrator {
       return;
     }
 
-    this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
 
     // Same deflection check in the pure-chat path.
@@ -262,13 +262,13 @@ export class MessageOrchestrator {
     reason: string,
     opts: { skipHandoffMessage?: boolean } = {}
   ): Promise<void> {
-    const history = this.stateRepository.getHistory(conversationId, 5);
+    const history = await this.stateRepository.getHistory(conversationId, 5);
     const context = history.map((m) => `${m.role}: ${m.content}`).join("\n");
 
     // Mark the contact as awaiting human attendance — this is what increments
     // the "Atendimentos Humanos" counter in the admin panel.
     try {
-      this.stateRepository.pauseBot(studentId, reason);
+      await this.stateRepository.pauseBot(studentId, reason);
     } catch (pauseError) {
       logger.error({ error: pauseError, studentId }, "Failed to mark contact as bot_paused");
     }
@@ -280,14 +280,14 @@ export class MessageOrchestrator {
       logger.error({ error: telegramError }, "Failed to send escalation alert to Telegram (network/credentials error)");
     }
     try {
-      this.stateRepository.appendMessage(
+      await this.stateRepository.appendMessage(
         conversationId,
         "tool",
         `Tool escalate_to_specialist result: ${reason}`
       );
       if (!opts.skipHandoffMessage) {
         const handoffMessage = "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo - em instantes alguém da nossa equipe entra em contato com você. 😊";
-        this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
+        await this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
         if (!config.whatsapp.dryRun) {
           await this.whatsappClient.sendMessage(studentId, handoffMessage);
         } else {

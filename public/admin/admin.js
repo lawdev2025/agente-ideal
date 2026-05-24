@@ -125,22 +125,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (file) { document.getElementById('csv-file-input').files = e.dataTransfer.files; handleCSVFile(file); }
     });
 
-    // Sincronização periódica automática em tempo real (polling a cada 2 segundos)
-    // - Aba conversas: atualiza lista de contatos e chat ativo
-    // - Aba dashboard: atualiza stats e gráficos
-    setInterval(async () => {
-        if (currentTab === 'conversas') {
-            await refreshContactsList();
-            if (activeContactId) {
-                const activeContact = allContacts.find(c => c.wa_id === activeContactId);
-                if (activeContact) {
-                    await refreshActiveChat(activeContact);
-                }
-            }
-        } else if (currentTab === 'dashboard') {
-            await loadDashboardStats();
-        }
-    }, 2000);
+    // Realtime via Supabase: subscriptions substituem o polling de 2s.
+    // Fallback automatico pra polling de 30s se o canal nao subir em 10s.
+    initRealtimeSubscriptions();
 });
 
 // 2. ABAS
@@ -1462,4 +1449,100 @@ function clearConfig() {
     document.querySelector('.status-indicator').className = 'status-indicator offline';
     _sb = null;
     alert('Credenciais removidas do cache do navegador.');
+}
+
+// =============================================================
+// REALTIME - substitui polling 2s, zero invocacao Vercel
+// =============================================================
+let realtimeFallbackPolling = null;
+let realtimeChannel = null;
+
+function initRealtimeSubscriptions() {
+    if (!_sb) {
+        // Sem Supabase, ativa o polling de 30s como fallback
+        activateFallbackPolling();
+        return;
+    }
+    try {
+        realtimeChannel = _sb.channel('admin-conversations')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' },
+                (payload) => onRealtimeMessageInsert(payload.new))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' },
+                (payload) => onRealtimeContactChange(payload.new, payload.eventType))
+            .subscribe((status) => {
+                console.log('[Realtime] status:', status);
+                if (status === 'SUBSCRIBED') {
+                    deactivateFallbackPolling();
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                    activateFallbackPolling();
+                }
+            });
+
+        // Failsafe: se em 10s nao virou SUBSCRIBED, liga fallback
+        setTimeout(() => {
+            if (!realtimeChannel || realtimeChannel.state !== 'joined') {
+                console.warn('[Realtime] nao conectou em 10s, ativando polling fallback');
+                activateFallbackPolling();
+            }
+        }, 10000);
+    } catch (e) {
+        console.error('[Realtime] erro ao subscrever:', e);
+        activateFallbackPolling();
+    }
+}
+
+function onRealtimeMessageInsert(msg) {
+    if (currentTab === 'dashboard') {
+        // Bump rapido nos contadores sem refetch completo
+        const totalEl = document.getElementById('stat-total-messages');
+        if (totalEl) {
+            const n = parseInt(totalEl.textContent, 10) || 0;
+            totalEl.textContent = n + 1;
+        }
+        // Atualiza grafico do dia em background
+        loadDashboardStats();
+    }
+    if (currentTab === 'conversas') {
+        // Se eh da conversa ativa, append direto
+        if (msg.wa_id === activeContactId) {
+            const activeContact = allContacts.find(c => c.wa_id === activeContactId);
+            if (activeContact) {
+                refreshActiveChat(activeContact);
+            }
+        }
+        // Atualiza lista lateral
+        refreshContactsList();
+    }
+}
+
+function onRealtimeContactChange(contact, eventType) {
+    if (currentTab === 'conversas') {
+        refreshContactsList();
+    }
+    if (currentTab === 'dashboard') {
+        loadDashboardStats();
+    }
+}
+
+function activateFallbackPolling() {
+    if (realtimeFallbackPolling) return;
+    console.log('[Realtime] polling fallback ATIVO (30s)');
+    realtimeFallbackPolling = setInterval(async () => {
+        if (currentTab === 'conversas') {
+            await refreshContactsList();
+            if (activeContactId) {
+                const c = allContacts.find(x => x.wa_id === activeContactId);
+                if (c) await refreshActiveChat(c);
+            }
+        } else if (currentTab === 'dashboard') {
+            await loadDashboardStats();
+        }
+    }, 30000);
+}
+
+function deactivateFallbackPolling() {
+    if (!realtimeFallbackPolling) return;
+    console.log('[Realtime] polling fallback DESATIVADO (Realtime SUBSCRIBED)');
+    clearInterval(realtimeFallbackPolling);
+    realtimeFallbackPolling = null;
 }

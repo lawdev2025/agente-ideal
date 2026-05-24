@@ -1,5 +1,5 @@
 import { logger } from "../logger";
-import { isSupabaseEnabled, getSupabase } from "../db/supabase";
+import { isSupabaseEnabled, getSupabase } from "../db/supabase-client";
 import { loadKnowledgeBase, formatMensalidade, formatContato } from "./loader";
 
 export interface KBTool {

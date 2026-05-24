@@ -1,0 +1,11 @@
+node_modules
+data
+dist
+*.db
+*.db-*
+.env
+docs
+scripts
+tests
+chat-test.html
+simu_data.html

@@ -69,13 +69,90 @@ export async function createWebhookServer(
     return { status: "ok" };
   });
 
-  // Get Supabase configurations (also exposes ADMIN_TOKEN for the admin panel)
+  // Get configurations for the admin panel
   fastify.get("/api/config", async () => {
     return {
       SUPABASE_URL: config.database.supabaseUrl || "",
       SUPABASE_ANON_KEY: config.database.supabaseAnonKey || "",
       ADMIN_TOKEN: config.adminToken || "",
+      LLM_PROVIDER: config.llmProvider || "claude",
+      ANTHROPIC_API_KEY: config.claude.apiKey || "",
+      GEMINI_API_KEY: config.gemini.apiKey || "",
+      TELEGRAM_BOT_TOKEN: config.telegram.botToken || "",
+      TELEGRAM_CHAT_ID: config.telegram.chatId || "",
+      WHATSAPP_PHONE_NUMBER_ID: config.whatsapp.phoneNumberId || "",
+      WHATSAPP_ACCESS_TOKEN: config.whatsapp.accessToken || "",
+      WHATSAPP_VERIFY_TOKEN: config.webhook.verifyToken || "",
     };
+  });
+
+  // Admin: update config variables in .env (writes directly to .env on the server)
+  fastify.post<{
+    Body: {
+      supabaseUrl?: string;
+      supabaseAnonKey?: string;
+      llmProvider?: string;
+      anthropicApiKey?: string;
+      geminiApiKey?: string;
+      telegramBotToken?: string;
+      telegramChatId?: string;
+      whatsappPhoneNumberId?: string;
+      whatsappAccessToken?: string;
+      whatsappVerifyToken?: string;
+      adminToken?: string;
+    };
+  }>("/api/admin/config", async (request, reply) => {
+    const authHeader = request.headers["authorization"] || "";
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token || token !== config.adminToken) {
+      reply.code(401).send({ error: "Unauthorized" });
+      return;
+    }
+
+    const body = request.body;
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      
+      const envPath = path.resolve(process.cwd(), ".env");
+      let envContent = "";
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, "utf-8");
+      }
+
+      // Helper function to update or add keys in .env
+      const updateEnvKey = (key: string, value: string | undefined) => {
+        if (value === undefined) return;
+        const regex = new RegExp(`^${key}=.*$`, "m");
+        const cleanValue = value.includes(" ") ? `"${value}"` : value;
+        if (regex.test(envContent)) {
+          envContent = envContent.replace(regex, `${key}=${cleanValue}`);
+        } else {
+          envContent += `\n${key}=${cleanValue}`;
+        }
+      };
+
+      updateEnvKey("SUPABASE_URL", body.supabaseUrl);
+      updateEnvKey("SUPABASE_ANON_KEY", body.supabaseAnonKey);
+      updateEnvKey("LLM_PROVIDER", body.llmProvider);
+      updateEnvKey("ANTHROPIC_API_KEY", body.anthropicApiKey);
+      updateEnvKey("GEMINI_API_KEY", body.geminiApiKey);
+      updateEnvKey("TELEGRAM_BOT_TOKEN", body.telegramBotToken);
+      updateEnvKey("TELEGRAM_CHAT_ID", body.telegramChatId);
+      updateEnvKey("WHATSAPP_PHONE_NUMBER_ID", body.whatsappPhoneNumberId);
+      updateEnvKey("WHATSAPP_ACCESS_TOKEN", body.whatsappAccessToken);
+      updateEnvKey("WHATSAPP_VERIFY_TOKEN", body.whatsappVerifyToken);
+      updateEnvKey("ADMIN_TOKEN", body.adminToken);
+
+      // Save back to .env
+      fs.writeFileSync(envPath, envContent.trim() + "\n", "utf-8");
+
+      reply.send({ ok: true });
+    } catch (error) {
+      logger.error({ error }, "Error updating .env config via admin panel");
+      reply.code(500).send({ error: "Internal server error" });
+      return;
+    }
   });
 
   // Admin: toggle bot pause for a contact

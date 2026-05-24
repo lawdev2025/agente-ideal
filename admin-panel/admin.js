@@ -206,27 +206,37 @@ async function initConnection() {
     let key = _injected.SUPABASE_ANON_KEY || null;
     if (_injected.ADMIN_TOKEN) adminToken = _injected.ADMIN_TOKEN;
 
-    if (!url || !key) {
-        url = localStorage.getItem('SUPABASE_URL');
-        key = localStorage.getItem('SUPABASE_ANON_KEY');
-    }
+    url = localStorage.getItem('SUPABASE_URL') || url;
+    key = localStorage.getItem('SUPABASE_ANON_KEY') || key;
 
-    if (!url || !key) {
-        for (const fetchUrl of ['/api/config', `${BACKEND_URL}/api/config`]) {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
-                const res = await fetch(fetchUrl, { signal: controller.signal });
-                clearTimeout(timeoutId);
-                if (res.ok) {
-                    const cfg = await res.json();
-                    url = cfg.SUPABASE_URL;
-                    key = cfg.SUPABASE_ANON_KEY;
-                    if (cfg.ADMIN_TOKEN) adminToken = cfg.ADMIN_TOKEN;
-                    if (url && key) { localStorage.setItem('SUPABASE_URL', url); localStorage.setItem('SUPABASE_ANON_KEY', key); break; }
-                }
-            } catch (e) { /* sem servidor disponível */ }
-        }
+    // Tenta sempre obter as credenciais reais do .env do servidor local
+    for (const fetchUrl of ['/api/config', `${BACKEND_URL}/api/config`]) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const res = await fetch(fetchUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                const cfg = await res.json();
+                if (cfg.SUPABASE_URL && !url) url = cfg.SUPABASE_URL;
+                if (cfg.SUPABASE_ANON_KEY && !key) key = cfg.SUPABASE_ANON_KEY;
+                if (cfg.ADMIN_TOKEN) adminToken = cfg.ADMIN_TOKEN;
+
+                // Popula os campos do formulário na aba de configurações
+                if (cfg.SUPABASE_URL) document.getElementById('input-supabase-url').value = cfg.SUPABASE_URL;
+                if (cfg.SUPABASE_ANON_KEY) document.getElementById('input-supabase-key').value = cfg.SUPABASE_ANON_KEY;
+                if (cfg.LLM_PROVIDER) document.getElementById('select-llm-provider').value = cfg.LLM_PROVIDER;
+                if (cfg.ANTHROPIC_API_KEY) document.getElementById('input-anthropic-key').value = cfg.ANTHROPIC_API_KEY;
+                if (cfg.GEMINI_API_KEY) document.getElementById('input-gemini-key').value = cfg.GEMINI_API_KEY;
+                if (cfg.TELEGRAM_BOT_TOKEN) document.getElementById('input-telegram-token').value = cfg.TELEGRAM_BOT_TOKEN;
+                if (cfg.TELEGRAM_CHAT_ID) document.getElementById('input-telegram-chat-id').value = cfg.TELEGRAM_CHAT_ID;
+                if (cfg.WHATSAPP_PHONE_NUMBER_ID) document.getElementById('input-whatsapp-phone-id').value = cfg.WHATSAPP_PHONE_NUMBER_ID;
+                if (cfg.WHATSAPP_ACCESS_TOKEN) document.getElementById('input-whatsapp-token').value = cfg.WHATSAPP_ACCESS_TOKEN;
+                if (cfg.WHATSAPP_VERIFY_TOKEN) document.getElementById('input-whatsapp-verify-token').value = cfg.WHATSAPP_VERIFY_TOKEN;
+                if (cfg.ADMIN_TOKEN) document.getElementById('input-admin-token').value = cfg.ADMIN_TOKEN;
+                break;
+            }
+        } catch (e) { /* silent fail se o servidor local estiver offline */ }
     }
 
     if (url) document.getElementById('input-supabase-url').value = url;
@@ -243,26 +253,20 @@ async function initConnection() {
         _sb = window.supabase.createClient(url, key);
 
         const checkPromise = _sb.from('school_contacts').select('count', { count: 'exact', head: true });
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
-        const { error } = await Promise.race([checkPromise, timeoutPromise]);
-        if (error) throw error;
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ao conectar ao Supabase')), 4000));
+        
+        await Promise.race([checkPromise, timeoutPromise]);
 
         statusText.textContent = 'Conectado ao Supabase';
         statusIndicator.className = 'status-indicator online';
         return true;
     } catch (err) {
-        console.error('Erro de conexão Supabase:', err);
         statusText.textContent = 'Erro de Conexão';
         statusIndicator.className = 'status-indicator offline';
+        console.error('Erro de conexão Supabase:', err);
         _sb = null;
         return false;
     }
-}
-
-// 5. DASHBOARD — apenas dados reais
-function showOfflineBanner(containerId) {
-    const el = document.getElementById(containerId);
-    if (el) el.innerHTML = `<div class="offline-banner"><i class="fa-solid fa-plug-circle-xmark"></i><h3>Sem conexão ao Supabase</h3><p>Vá em <strong>Configurações</strong> e insira suas credenciais para ver os dados reais.</p></div>`;
 }
 
 async function loadDashboardStats() {
@@ -1377,31 +1381,85 @@ function showToast(message, type = 'success') {
 }
 
 // 9. CONFIGURAÇÕES
-function saveConfigForm(e) {
+async function saveConfigForm(e) {
     e.preventDefault();
-    const url = document.getElementById('input-supabase-url').value.trim();
-    const key = document.getElementById('input-supabase-key').value.trim();
-    if (url && key) {
-        localStorage.setItem('SUPABASE_URL', url);
-        localStorage.setItem('SUPABASE_ANON_KEY', key);
-        alert('Configurações salvas! Tentando conectar...');
-        initConnection().then(success => {
-            if (success) {
-                loadDashboardStats();
-                document.querySelector('.sidebar-menu li[data-tab="dashboard"]').click();
-            }
-        });
+    const supabaseUrl = document.getElementById('input-supabase-url').value.trim();
+    const supabaseAnonKey = document.getElementById('input-supabase-key').value.trim();
+    
+    const configPayload = {
+        supabaseUrl,
+        supabaseAnonKey,
+        llmProvider: document.getElementById('select-llm-provider').value,
+        anthropicApiKey: document.getElementById('input-anthropic-key').value.trim(),
+        geminiApiKey: document.getElementById('input-gemini-key').value.trim(),
+        telegramBotToken: document.getElementById('input-telegram-token').value.trim(),
+        telegramChatId: document.getElementById('input-telegram-chat-id').value.trim(),
+        whatsappPhoneNumberId: document.getElementById('input-whatsapp-phone-id').value.trim(),
+        whatsappAccessToken: document.getElementById('input-whatsapp-token').value.trim(),
+        whatsappVerifyToken: document.getElementById('input-whatsapp-verify-token').value.trim(),
+        adminToken: document.getElementById('input-admin-token').value.trim(),
+    };
+
+    // Primeiro salva localmente no localStorage para conexão instantânea do painel
+    if (supabaseUrl && supabaseAnonKey) {
+        localStorage.setItem('SUPABASE_URL', supabaseUrl);
+        localStorage.setItem('SUPABASE_ANON_KEY', supabaseAnonKey);
     }
+
+    // Salva no .env local do servidor via chamada de API
+    if (adminToken && BACKEND_URL !== undefined) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/config`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${adminToken}`
+                },
+                body: JSON.stringify(configPayload)
+            });
+            if (res.ok) {
+                if (configPayload.adminToken) {
+                    adminToken = configPayload.adminToken;
+                }
+                alert('Configurações salvas no servidor local com sucesso! O servidor está reiniciando para aplicar as mudanças...');
+            } else {
+                const errData = await res.json();
+                alert(`Aviso: não foi possível salvar no .env do servidor: ${errData.error || 'Erro desconhecido'}`);
+            }
+        } catch (err) {
+            console.warn('Erro ao salvar no servidor (.env):', err);
+            alert('Aviso: Salvo no cache do navegador, mas o servidor backend não respondeu para salvar no .env.');
+        }
+    } else {
+        alert('Configurações salvas localmente no navegador!');
+    }
+
+    // Reconecta
+    initConnection().then(success => {
+        if (success) {
+            loadDashboardStats();
+            document.querySelector('.sidebar-menu li[data-tab="dashboard"]').click();
+        }
+    });
 }
 
 function clearConfig() {
-    if (!confirm('Limpar as credenciais do Supabase salvas neste navegador?')) return;
+    if (!confirm('Limpar todas as credenciais salvas neste navegador?')) return;
     localStorage.removeItem('SUPABASE_URL');
     localStorage.removeItem('SUPABASE_ANON_KEY');
     document.getElementById('input-supabase-url').value = '';
     document.getElementById('input-supabase-key').value = '';
+    document.getElementById('select-llm-provider').value = 'claude';
+    document.getElementById('input-anthropic-key').value = '';
+    document.getElementById('input-gemini-key').value = '';
+    document.getElementById('input-telegram-token').value = '';
+    document.getElementById('input-telegram-chat-id').value = '';
+    document.getElementById('input-whatsapp-phone-id').value = '';
+    document.getElementById('input-whatsapp-token').value = '';
+    document.getElementById('input-whatsapp-verify-token').value = '';
+    document.getElementById('input-admin-token').value = '';
     document.getElementById('supabase-status-text').textContent = 'Desconectado';
     document.querySelector('.status-indicator').className = 'status-indicator offline';
     _sb = null;
-    alert('Credenciais removidas.');
+    alert('Credenciais removidas do cache do navegador.');
 }

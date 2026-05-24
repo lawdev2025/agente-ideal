@@ -251,26 +251,88 @@
 
                 <!-- 4. Aba Configurações -->
                 <section class="tab-content" id="tab-config">
-                    <div class="config-wrapper glass">
-                        <div class="config-section">
-                            <h3><i class="fa-solid fa-cloud"></i> Integração com o Supabase</h3>
-                            <p class="section-desc">Insira a URL e a Chave Pública Anon do seu projeto no Supabase para gerenciar a base de dados em tempo real direto deste painel.</p>
-                            
-                            <form id="config-form" class="config-form">
-                                <div class="form-group">
-                                    <label for="input-supabase-url">SUPABASE_URL</label>
-                                    <input type="text" id="input-supabase-url" placeholder="https://xxxxxxxxxxxxxx.supabase.co" required>
+                    <div class="config-wrapper">
+                        <form id="config-form" class="config-form-extended">
+                            <div class="config-grid">
+                                
+                                <!-- Card 1: Integração Supabase -->
+                                <div class="config-card glass">
+                                    <h3><i class="fa-solid fa-cloud"></i> Integração Supabase</h3>
+                                    <p class="card-desc">Chaves públicas para sincronização em tempo real e visualização de tabelas.</p>
+                                    <div class="form-group">
+                                        <label for="input-supabase-url">SUPABASE_URL</label>
+                                        <input type="text" id="input-supabase-url" placeholder="https://xxxxxxxxxxxxxx.supabase.co">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-supabase-key">SUPABASE_ANON_KEY</label>
+                                        <input type="password" id="input-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsIn...">
+                                    </div>
                                 </div>
-                                <div class="form-group">
-                                    <label for="input-supabase-key">SUPABASE_ANON_KEY</label>
-                                    <input type="password" id="input-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsIn..." required>
+
+                                <!-- Card 2: Provedor de Inteligência Artificial (LLM) -->
+                                <div class="config-card glass">
+                                    <h3><i class="fa-solid fa-robot"></i> Inteligência Artificial (LLM)</h3>
+                                    <p class="card-desc">Selecione o provedor ativo do agente e configure as chaves de API correspondentes.</p>
+                                    <div class="form-group">
+                                        <label for="select-llm-provider">Provedor Ativo</label>
+                                        <select id="select-llm-provider" class="form-control-select">
+                                            <option value="claude">Claude (Anthropic)</option>
+                                            <option value="gemini">Gemini (Google)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-anthropic-key">ANTHROPIC_API_KEY (Claude)</label>
+                                        <input type="password" id="input-anthropic-key" placeholder="sk-ant-...">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-gemini-key">GEMINI_API_KEY (Gemini)</label>
+                                        <input type="password" id="input-gemini-key" placeholder="AIzaSy...">
+                                    </div>
                                 </div>
-                                <div class="form-actions">
-                                    <button type="submit" class="btn btn-brand"><i class="fa-solid fa-floppy-disk"></i> Salvar Configuração</button>
-                                    <button type="button" class="btn btn-secondary" id="btn-clear-config"><i class="fa-solid fa-trash"></i> Limpar Salvos</button>
+
+                                <!-- Card 3: WhatsApp Cloud API -->
+                                <div class="config-card glass">
+                                    <h3><i class="fa-brands fa-whatsapp"></i> WhatsApp Cloud API</h3>
+                                    <p class="card-desc">Chaves de integração com o serviço oficial do WhatsApp Cloud API.</p>
+                                    <div class="form-group">
+                                        <label for="input-whatsapp-phone-id">ID do Número de Telefone</label>
+                                        <input type="text" id="input-whatsapp-phone-id" placeholder="Ex: 1234567890">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-whatsapp-token">Token de Acesso Cloud API</label>
+                                        <input type="password" id="input-whatsapp-token" placeholder="EAAW...">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-whatsapp-verify-token">Token de Verificação Webhook</label>
+                                        <input type="text" id="input-whatsapp-verify-token" placeholder="Verify Token configurado no webhook">
+                                    </div>
                                 </div>
-                            </form>
-                        </div>
+
+                                <!-- Card 4: Telegram Handoff & Segurança -->
+                                <div class="config-card glass">
+                                    <h3><i class="fa-solid fa-headset"></i> Telegram & Segurança</h3>
+                                    <p class="card-desc">Token do bot do Telegram para alertas de atendimento humano e proteção do painel.</p>
+                                    <div class="form-group">
+                                        <label for="input-telegram-token">Telegram Bot Token (Handoff)</label>
+                                        <input type="password" id="input-telegram-token" placeholder="123456:ABC-...">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-telegram-chat-id">Telegram Chat ID (Notificações)</label>
+                                        <input type="text" id="input-telegram-chat-id" placeholder="Ex: -100xxxxxxxxxx">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-admin-token">Token de Administrador (Painel Admin)</label>
+                                        <input type="password" id="input-admin-token" placeholder="Token de autorização JWT">
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div class="form-actions-extended glass">
+                                <button type="submit" class="btn btn-brand"><i class="fa-solid fa-floppy-disk"></i> Salvar Todas as Configurações no Servidor</button>
+                                <button type="button" class="btn btn-secondary" id="btn-clear-config"><i class="fa-solid fa-trash"></i> Limpar Salvos</button>
+                            </div>
+                        </form>
                     </div>
                 </section>
             </div>

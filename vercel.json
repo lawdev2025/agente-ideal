@@ -4,6 +4,9 @@
     { "source": "/admin", "destination": "/admin/index.html" },
     { "source": "/webhook", "destination": "/api/webhook" }
   ],
+  "redirects": [
+    { "source": "/", "destination": "/admin", "permanent": false }
+  ],
   "functions": {
     "api/webhook.ts": { "maxDuration": 30 }
   },

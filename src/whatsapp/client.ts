@@ -31,8 +31,10 @@ export class WhatsAppClient {
     this.phoneNumberId = phoneNumberId;
     this.businessAccountId = businessAccountId;
 
+    // WhatsApp Cloud API: graph.facebook.com (NAO instagram), endpoint
+    // por phoneNumberId (NAO businessAccountId), versao v22 ou mais recente.
     this.client = axios.create({
-      baseURL: `https://graph.instagram.com/v18.0/${businessAccountId}`,
+      baseURL: `https://graph.facebook.com/v22.0/${phoneNumberId}`,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",

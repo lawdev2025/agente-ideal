@@ -410,8 +410,9 @@ function renderCharts(msgCounts, subjects, days) {
         chartConversations.options.scales.y.ticks.stepSize = Math.max(1, Math.round(ceil / 10));
         chartConversations.update('none');
 
-        const subjectLabels = subjects ? Object.keys(subjects) : [];
-        const subjectData   = subjects ? Object.values(subjects) : [];
+        const subjectEntries = subjects ? Object.entries(subjects).filter(([k]) => !k.toLowerCase().includes('outras')) : [];
+        const subjectLabels  = subjectEntries.map(([k]) => k);
+        const subjectData    = subjectEntries.map(([, v]) => v);
         chartSubjects.data.labels = subjectLabels;
         chartSubjects.data.datasets[0].data = subjectData;
         chartSubjects.update('none');

@@ -269,7 +269,7 @@ async function loadDashboardStats() {
             });
             if (res.ok) {
                 const s = await res.json();
-                document.getElementById('stat-total-messages').textContent = s.totalMessages ?? 0;
+                document.getElementById('stat-total-messages').textContent = s.totalContacts ?? 0;
                 document.getElementById('stat-active-contacts').textContent = s.activeContacts ?? 0;
                 const activeTrend = document.getElementById('stat-active-trend');
                 if (activeTrend) {
@@ -307,14 +307,14 @@ async function loadDashboardStats() {
     }
 
     try {
-        const [{ count: totalMessages }, { count: activeContacts }, { count: escalations }, { data: errorLogs }] = await Promise.all([
-            _sb.from('messages').select('*', { count: 'exact', head: true }),
+        const [{ count: totalContacts }, { count: activeContacts }, { count: escalations }, { data: errorLogs }] = await Promise.all([
+            _sb.from('contacts').select('*', { count: 'exact', head: true }),
             _sb.from('contacts').select('*', { count: 'exact', head: true }),
             _sb.from('contacts').select('*', { count: 'exact', head: true }).eq('bot_paused', true),
             _sb.from('messages').select('content').ilike('content', '%erro%')
         ]);
 
-        document.getElementById('stat-total-messages').textContent = totalMessages ?? 0;
+        document.getElementById('stat-total-messages').textContent = totalContacts ?? 0;
         document.getElementById('stat-active-contacts').textContent = activeContacts ?? 0;
         document.getElementById('stat-escalations').textContent = escalations ?? 0;
 
@@ -434,7 +434,7 @@ function renderCharts(msgCounts, subjects, days) {
         data: {
             labels: days,
             datasets: [{
-                label: 'Usuários únicos',
+                label: 'Contatos',
                 data: msgCounts || [],
                 borderColor: '#AF1411',
                 backgroundColor: 'rgba(175,20,17,0.08)',
@@ -538,7 +538,32 @@ async function loadContactsList() {
         return;
     }
     try {
-        const { data: contacts, error } = await _sb.from('contacts').select('*');
+        // Backfill no client: cria rows em `contacts` pra wa_ids que existem em
+        // `messages` mas não em `contacts` (caso ADMIN_TOKEN esteja torto e o
+        // backend nunca tenha rodado o backfill server-side em api/admin/contacts.ts).
+        const { data: msgRows } = await _sb
+            .from('messages')
+            .select('wa_id, created_at')
+            .order('created_at', { ascending: false });
+        const { data: existing } = await _sb.from('contacts').select('wa_id');
+        const existingSet = new Set((existing || []).map(c => c.wa_id));
+        const seen = new Set();
+        const orphans = [];
+        for (const m of msgRows || []) {
+            if (!m.wa_id || seen.has(m.wa_id)) continue;
+            seen.add(m.wa_id);
+            if (!existingSet.has(m.wa_id)) {
+                orphans.push({ wa_id: m.wa_id, bot_paused: false, last_seen_at: m.created_at });
+            }
+        }
+        if (orphans.length > 0) {
+            await _sb.from('contacts').insert(orphans);
+        }
+
+        const { data: contacts, error } = await _sb
+            .from('contacts')
+            .select('*')
+            .order('last_seen_at', { ascending: false, nullsFirst: false });
         if (error) throw error;
         allContacts = contacts || [];
         renderContactsList(allContacts);

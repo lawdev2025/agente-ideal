@@ -84,12 +84,12 @@
                     <div class="metrics-grid">
                         <div class="metric-card glass">
                             <div class="metric-info">
-                                <p>Total de Mensagens</p>
+                                <p>Total de Contatos</p>
                                 <h3 id="stat-total-messages">0</h3>
                                 <span class="trend positive"><i class="fa-solid fa-arrow-up"></i> Conversas ativas</span>
                             </div>
                             <div class="metric-icon brand-subtle">
-                                <i class="fa-solid fa-message"></i>
+                                <i class="fa-solid fa-address-book"></i>
                             </div>
                         </div>
 
@@ -132,7 +132,7 @@
                         <div class="chart-card glass">
                             <div class="chart-header">
                                 <h3><i class="fa-solid fa-chart-line"></i> Histórico de Conversas</h3>
-                                <p>Usuários únicos por dia nos últimos 7 dias</p>
+                                <p>Contatos únicos por dia nos últimos 7 dias</p>
                             </div>
                             <div class="chart-wrapper">
                                 <canvas id="chart-conversations"></canvas>
@@ -203,6 +203,12 @@
                                     <span class="table-group-label">Produtos & Turmas</span>
                                     <button class="btn btn-db-nav active" data-table="school_products">
                                         <i class="fa-solid fa-tags"></i> Produtos
+                                    </button>
+                                    <button class="btn btn-db-nav" data-table="school_levels">
+                                        <i class="fa-solid fa-layer-group"></i> Níveis
+                                    </button>
+                                    <button class="btn btn-db-nav" data-table="school_materials">
+                                        <i class="fa-solid fa-book"></i> Materiais
                                     </button>
                                 </div>
                                 <div class="table-selector-divider"></div>
@@ -449,16 +455,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Chart.js via CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Garante que __ADMIN_CONFIG__ existe antes do admin.js rodar -->
+    <!-- Garante que __ADMIN_CONFIG__ existe antes do admin.js rodar.
+         As credenciais são buscadas async via /api/config em initConnection(). -->
     <script>window.__ADMIN_CONFIG__ = null;</script>
-    <!-- Carrega credenciais injetadas pelo backend SÍNCRONAMENTE — admin.js
-         precisa do ADMIN_TOKEN antes da primeira chamada à API. -->
-    <script>
-      if (location.protocol !== 'file:') {
-        document.write('<script src="/admin/config.js"><\/script>');
-      }
-    </script>
     <!-- Lógica de Controle JS -->
-    <script src="/admin/admin.js?v=7.2"></script>
+    <script src="/admin/admin.js?v=7.3"></script>
 </body>
 </html>

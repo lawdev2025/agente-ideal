@@ -488,37 +488,71 @@ const consultarMensalidadesTool: KBTool = {
   },
 };
 
-// Ferramenta: Obter informações de contato para matrícula
+// Ferramenta: Obter informações de contato dos setores do colégio
 const consultarContatoMatriculaTool: KBTool = {
   name: "get_enrollment_contact",
   description:
-    "Obt�m informa��es de contato para d�vidas sobre matr�cula e inscri��o",
+    "Obtém contatos dos setores do colégio cadastrados na tabela school_contacts. Aceita argumento opcional 'assunto' (palavra-chave) para filtrar UM setor específico — exemplos: 'secretaria', 'matriculas', 'financeiro', 'coordenacao'. Sem argumento retorna a lista completa. IMPORTANTE: se o cliente pediu UM setor específico (ex: 'número da secretaria'), SEMPRE passe 'assunto' — nunca devolva lista de 3+ contatos pra um pedido pontual. Se nenhum setor casar o filtro, o tool retorna lista vazia explicando — não invente contatos.",
   inputSchema: {
     type: "object",
-    properties: {},
+    properties: {
+      assunto: {
+        type: "string",
+        description:
+          "Palavra-chave do setor (secretaria, matriculas, financeiro, coordenacao, etc). Tool faz match case-insensitive em name e role_title.",
+      },
+    },
     required: [],
   },
   execute: async (args) => {
     try {
+      const { assunto } = args as { assunto?: string };
+      let rows: Array<{ name: string; role_title: string; phone_number: string }> = [];
+
       if (isSupabaseEnabled()) {
         const supabase = getSupabase();
         const { data, error } = await supabase
           .from("school_contacts")
-          .select("*");
+          .select("name, role_title, phone_number");
         if (error) throw error;
-        if (data && data.length > 0) {
-          const contatos = data
-            .map((c) => `?? *${c.name}* (${c.role_title})\\n   Telefone: ${c.phone_number}`)
-            .join("\\n\\n");
-          return `?? ENTRE EM CONTATO:\\n\\n${contatos}`;
-        }
+        rows = (data as any) || [];
+      } else {
+        const kb = loadKnowledgeBase();
+        rows = kb.contatos.map((c) => ({
+          name: c.nome,
+          role_title: c.descricao || c.tipo,
+          phone_number: c.telefone || c.email || "",
+        }));
       }
-      const kb = loadKnowledgeBase();
-      const contatos = kb.contatos.map((c) => formatContato(c)).join("\\n\\n");
-      return `?? ENTRE EM CONTATO:\\n\\n${contatos}`;
+
+      if (rows.length === 0) {
+        return "Nenhum contato cadastrado na base. Avise o cliente que vai pedir pra coordenação retornar.";
+      }
+
+      if (assunto) {
+        const q = assunto.toLowerCase().trim();
+        const match = rows.find(
+          (r) =>
+            (r.name || "").toLowerCase().includes(q) ||
+            (r.role_title || "").toLowerCase().includes(q)
+        );
+        if (match) {
+          return `${match.name} (${match.role_title}) — ${match.phone_number}`;
+        }
+        // Não encontrou — devolve lista pra modelo escolher escalar
+        const lista = rows
+          .map((r) => `• ${r.name} (${r.role_title})`)
+          .join("\n");
+        return `Nenhum setor com "${assunto}". Setores cadastrados:\n${lista}\nSe nenhum servir, escale.`;
+      }
+
+      const contatos = rows
+        .map((c) => `📞 *${c.name}* (${c.role_title}) — ${c.phone_number}`)
+        .join("\n");
+      return `ENTRE EM CONTATO:\n${contatos}`;
     } catch (error) {
       logger.error({ error }, "Error fetching contact info");
-      return "Telefone: (91) 3000-0000 | Email: matriculas@colegioideal.com.br";
+      return "Não consegui carregar contatos agora. Escale para coordenação.";
     }
   },
 };

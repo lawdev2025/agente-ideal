@@ -92,10 +92,14 @@ export class MessageOrchestrator {
       );
     } catch (error) {
       logger.error({ error, conversationId }, "Error processing message");
+      // Erro tecnico transitorio (timeout, token expirado, rede): notifica
+      // Telegram mas NAO pausa o bot — proxima msg do mesmo contato deve ser
+      // tentada normalmente assim que o problema for resolvido.
       await this.escalateToSpecialist(
         conversationId,
         studentId,
-        `Error processing message: ${error instanceof Error ? error.message : String(error)}`
+        `Error processing message: ${error instanceof Error ? error.message : String(error)}`,
+        { skipPause: true }
       );
     }
   }
@@ -260,17 +264,20 @@ export class MessageOrchestrator {
     conversationId: string,
     studentId: string,
     reason: string,
-    opts: { skipHandoffMessage?: boolean } = {}
+    opts: { skipHandoffMessage?: boolean; skipPause?: boolean } = {}
   ): Promise<void> {
     const history = await this.stateRepository.getHistory(conversationId, 5);
     const context = history.map((m) => `${m.role}: ${m.content}`).join("\n");
 
-    // Mark the contact as awaiting human attendance — this is what increments
-    // the "Atendimentos Humanos" counter in the admin panel.
-    try {
-      await this.stateRepository.pauseBot(studentId, reason);
-    } catch (pauseError) {
-      logger.error({ error: pauseError, studentId }, "Failed to mark contact as bot_paused");
+    // Mark the contact as awaiting human attendance — incrementa o contador
+    // "Atendimentos Humanos" no painel. Pulado em erros tecnicos transitorios
+    // pra nao deixar o bot mudo permanentemente por uma falha pontual.
+    if (!opts.skipPause) {
+      try {
+        await this.stateRepository.pauseBot(studentId, reason);
+      } catch (pauseError) {
+        logger.error({ error: pauseError, studentId }, "Failed to mark contact as bot_paused");
+      }
     }
 
     try {

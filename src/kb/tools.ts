@@ -1,4 +1,4 @@
-import { logger } from "../logger";
+﻿import { logger } from "../logger";
 import { isSupabaseEnabled, getSupabase } from "../db/supabase-client";
 import { loadKnowledgeBase, formatMensalidade, formatContato } from "./loader";
 
@@ -163,7 +163,7 @@ const materiaisTool: KBTool = {
 const contatosTool: KBTool = {
   name: "get_contact_info",
   description:
-    "Obtém informações de contato para suporte, coordenação e especialistas",
+    "Obtém informações de contato dinâmicas do banco de dados para suporte, coordenação, financeiro e professores",
   inputSchema: {
     type: "object",
     properties: {
@@ -179,6 +179,51 @@ const contatosTool: KBTool = {
     const { type } = args as { type: string };
 
     logger.info({ type }, "Fetching contact info");
+
+    try {
+      if (isSupabaseEnabled()) {
+        const supabase = getSupabase();
+        const { data, error } = await supabase
+          .from("school_contacts")
+          .select("*");
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          let matched: any = null;
+          
+          if (type === "support") {
+            // Busca Secretaria, Suporte, Financeiro, Mensalidades ou o primeiro disponível
+            matched = data.find((c: any) => 
+              c.name.toLowerCase().includes("secretaria") || 
+              c.role_title.toLowerCase().includes("matrículas") || 
+              c.role_title.toLowerCase().includes("suporte") ||
+              c.name.toLowerCase().includes("financeiro") ||
+              c.role_title.toLowerCase().includes("mensalidades")
+            ) || data[0];
+          } else if (type === "coordination") {
+            // Busca Coordenação Pedagógica
+            matched = data.find((c: any) => 
+              c.name.toLowerCase().includes("coordenação") || 
+              c.role_title.toLowerCase().includes("pedagógico")
+            ) || data.find((c: any) => c.name.toLowerCase().includes("coord")) || data[2] || data[0];
+          } else if (type === "teacher") {
+            // Busca Professores ou docentes
+            matched = data.find((c: any) => 
+              c.name.toLowerCase().includes("professor") || 
+              c.role_title.toLowerCase().includes("professor") ||
+              c.name.toLowerCase().includes("docente")
+            );
+          }
+          
+          if (matched) {
+            return `Contato ${type}: Setor: ${matched.name} | ${matched.role_title} | Telefone: ${matched.phone_number}`;
+          }
+        }
+      }
+    } catch (dbErr) {
+      logger.error({ dbErr }, "Erro ao consultar school_contacts no get_contact_info");
+    }
 
     const contacts: Record<string, string> = {
       support: "Email: suporte@plataforma.com | Tel: (11) 3000-0000",

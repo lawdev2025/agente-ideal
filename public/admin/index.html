@@ -326,6 +326,42 @@
                                     </div>
                                 </div>
 
+                                <!-- Card 5: Integração Vercel API -->
+                                <div class="config-card glass">
+                                    <h3><i class="fa-solid fa-caret-up"></i> Integração Vercel API</h3>
+                                    <p class="card-desc">Token de acesso pessoal da Vercel e ID do projeto para sincronização automática de variáveis de ambiente.</p>
+                                    <div class="form-group">
+                                        <label for="input-vercel-token">Vercel Auth Token (Personal Access Token)</label>
+                                        <input type="password" id="input-vercel-token" placeholder="Ex: eR9k...">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-vercel-project-id">Vercel Project ID ou Name</label>
+                                        <input type="text" id="input-vercel-project-id" placeholder="Ex: prj_xxxxxxxxxxxx">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-vercel-team-id">Vercel Team ID (Opcional)</label>
+                                        <input type="text" id="input-vercel-team-id" placeholder="Ex: team_xxxxxxxxxxxx">
+                                    </div>
+                                </div>
+
+                                <!-- Card 6: Robô & Instituição -->
+                                <div class="config-card glass">
+                                    <h3><i class="fa-solid fa-school"></i> Bot & Instituição</h3>
+                                    <p class="card-desc">Personalize o nome da instituição de ensino, o nome do assistente virtual e o período final de matrícula.</p>
+                                    <div class="form-group">
+                                        <label for="input-institution-name">Nome da Instituição</label>
+                                        <input type="text" id="input-institution-name" placeholder="Ex: Colégio Ideal">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-persona-name">Nome da Persona (Bot)</label>
+                                        <input type="text" id="input-persona-name" placeholder="Ex: Ana">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="input-enrollment-period-end">Fim do Período de Matrícula</label>
+                                        <input type="text" id="input-enrollment-period-end" placeholder="Ex: 2026-12-15">
+                                    </div>
+                                </div>
+
                             </div>
 
                             <div class="form-actions-extended glass">
@@ -423,6 +459,6 @@
       }
     </script>
     <!-- Lógica de Controle JS -->
-    <script src="/admin/admin.js?v=7.0"></script>
+    <script src="/admin/admin.js?v=7.1"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-// ==========================================================================
+﻿// ==========================================================================
 // PAINEL ADMIN - COLÉGIO IDEAL
 // Todos os dados vêm exclusivamente do Supabase. Sem dados fictícios.
 // ==========================================================================
@@ -153,6 +153,7 @@ function initTabs() {
             if (currentTab === 'dashboard') loadDashboardStats();
             else if (currentTab === 'conversas') loadConversationsTab();
             else if (currentTab === 'banco') loadDatabaseTable();
+            else if (currentTab === 'config') loadServerConfig();
         });
     });
 }
@@ -465,8 +466,9 @@ function renderCharts(msgCounts, subjects, days) {
         }
     });
 
-    const subjectLabels = subjects ? Object.keys(subjects) : [];
-    const subjectData   = subjects ? Object.values(subjects) : [];
+    const subjectEntries = subjects ? Object.entries(subjects).filter(([k]) => k !== 'Outras dúvidas') : [];
+    const subjectLabels  = subjectEntries.map(([k]) => k);
+    const subjectData    = subjectEntries.map(([, v]) => v);
     const isDark = document.documentElement.classList.contains('dark');
     const pieColors = ['#AF1411','#D32F2F','#F44336','#E57373','#FFCDD2', isDark ? '#555555' : '#9CA3AF'];
 
@@ -1368,6 +1370,39 @@ function showToast(message, type = 'success') {
 }
 
 // 9. CONFIGURAÇÕES
+async function loadServerConfig() {
+    if (!adminToken) return;
+    try {
+        const res = await fetch(${BACKEND_URL}/api/admin/config, {
+            headers: { 'Authorization': Bearer  }
+        });
+        if (res.ok) {
+            const cfg = await res.json();
+            if (cfg.SUPABASE_URL !== undefined) document.getElementById('input-supabase-url').value = cfg.SUPABASE_URL;
+            if (cfg.SUPABASE_ANON_KEY !== undefined) document.getElementById('input-supabase-key').value = cfg.SUPABASE_ANON_KEY;
+            if (cfg.LLM_PROVIDER !== undefined) document.getElementById('select-llm-provider').value = cfg.LLM_PROVIDER;
+            if (cfg.ANTHROPIC_API_KEY !== undefined) document.getElementById('input-anthropic-key').value = cfg.ANTHROPIC_API_KEY;
+            if (cfg.GEMINI_API_KEY !== undefined) document.getElementById('input-gemini-key').value = cfg.GEMINI_API_KEY;
+            if (cfg.TELEGRAM_BOT_TOKEN !== undefined) document.getElementById('input-telegram-token').value = cfg.TELEGRAM_BOT_TOKEN;
+            if (cfg.TELEGRAM_CHAT_ID !== undefined) document.getElementById('input-telegram-chat-id').value = cfg.TELEGRAM_CHAT_ID;
+            if (cfg.WHATSAPP_PHONE_NUMBER_ID !== undefined) document.getElementById('input-whatsapp-phone-id').value = cfg.WHATSAPP_PHONE_NUMBER_ID;
+            if (cfg.WHATSAPP_ACCESS_TOKEN !== undefined) document.getElementById('input-whatsapp-token').value = cfg.WHATSAPP_ACCESS_TOKEN;
+            if (cfg.WHATSAPP_VERIFY_TOKEN !== undefined) document.getElementById('input-whatsapp-verify-token').value = cfg.WHATSAPP_VERIFY_TOKEN;
+            if (cfg.ADMIN_TOKEN !== undefined) document.getElementById('input-admin-token').value = cfg.ADMIN_TOKEN;
+            
+            // Novos campos
+            if (cfg.VERCEL_AUTH_TOKEN !== undefined) document.getElementById('input-vercel-token').value = cfg.VERCEL_AUTH_TOKEN;
+            if (cfg.VERCEL_PROJECT_ID !== undefined) document.getElementById('input-vercel-project-id').value = cfg.VERCEL_PROJECT_ID;
+            if (cfg.VERCEL_TEAM_ID !== undefined) document.getElementById('input-vercel-team-id').value = cfg.VERCEL_TEAM_ID;
+            if (cfg.INSTITUTION_NAME !== undefined) document.getElementById('input-institution-name').value = cfg.INSTITUTION_NAME;
+            if (cfg.PERSONA_NAME !== undefined) document.getElementById('input-persona-name').value = cfg.PERSONA_NAME;
+            if (cfg.ENROLLMENT_PERIOD_END !== undefined) document.getElementById('input-enrollment-period-end').value = cfg.ENROLLMENT_PERIOD_END;
+        }
+    } catch (err) {
+        console.error('Erro ao carregar configurações do servidor:', err);
+    }
+}
+
 async function saveConfigForm(e) {
     e.preventDefault();
     const supabaseUrl = document.getElementById('input-supabase-url').value.trim();
@@ -1385,33 +1420,50 @@ async function saveConfigForm(e) {
         whatsappAccessToken: document.getElementById('input-whatsapp-token').value.trim(),
         whatsappVerifyToken: document.getElementById('input-whatsapp-verify-token').value.trim(),
         adminToken: document.getElementById('input-admin-token').value.trim(),
+        // Novos campos
+        vercelAuthToken: document.getElementById('input-vercel-token').value.trim(),
+        vercelProjectId: document.getElementById('input-vercel-project-id').value.trim(),
+        vercelTeamId: document.getElementById('input-vercel-team-id').value.trim(),
+        institutionName: document.getElementById('input-institution-name').value.trim(),
+        personaName: document.getElementById('input-persona-name').value.trim(),
+        enrollmentPeriodEnd: document.getElementById('input-enrollment-period-end').value.trim(),
     };
 
-    // Primeiro salva localmente no localStorage para conexão instantânea do painel
     if (supabaseUrl && supabaseAnonKey) {
         localStorage.setItem('SUPABASE_URL', supabaseUrl);
         localStorage.setItem('SUPABASE_ANON_KEY', supabaseAnonKey);
     }
 
-    // Salva no .env local do servidor via chamada de API
     if (adminToken && BACKEND_URL !== undefined) {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/admin/config`, {
+            const res = await fetch(${BACKEND_URL}/api/admin/config, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${adminToken}`
+                    'Authorization': Bearer 
                 },
                 body: JSON.stringify(configPayload)
             });
             if (res.ok) {
+                const result = await res.json();
                 if (configPayload.adminToken) {
                     adminToken = configPayload.adminToken;
                 }
-                alert('Configurações salvas no servidor local com sucesso! O servidor está reiniciando para aplicar as mudanças...');
+                
+                let message = 'Configurações salvas com sucesso!';
+                if (result.localUpdated) {
+                    message += '\n• Servidor local (.env) atualizado.';
+                }
+                if (result.vercelSynced) {
+                    message += \n• Sincronizado com a Vercel com sucesso! ( variáveis atualizadas na Vercel).;
+                } else if (result.vercelError) {
+                    message += \n• Aviso da Vercel: ;
+                }
+                
+                alert(message);
             } else {
                 const errData = await res.json();
-                alert(`Aviso: não foi possível salvar no .env do servidor: ${errData.error || 'Erro desconhecido'}`);
+                alert(Aviso: não foi possível salvar no .env do servidor: );
             }
         } catch (err) {
             console.warn('Erro ao salvar no servidor (.env):', err);
@@ -1421,7 +1473,6 @@ async function saveConfigForm(e) {
         alert('Configurações salvas localmente no navegador!');
     }
 
-    // Reconecta
     initConnection().then(success => {
         if (success) {
             loadDashboardStats();
@@ -1445,6 +1496,15 @@ function clearConfig() {
     document.getElementById('input-whatsapp-token').value = '';
     document.getElementById('input-whatsapp-verify-token').value = '';
     document.getElementById('input-admin-token').value = '';
+    
+    // Limpar novos campos
+    document.getElementById('input-vercel-token').value = '';
+    document.getElementById('input-vercel-project-id').value = '';
+    document.getElementById('input-vercel-team-id').value = '';
+    document.getElementById('input-institution-name').value = '';
+    document.getElementById('input-persona-name').value = '';
+    document.getElementById('input-enrollment-period-end').value = '';
+    
     document.getElementById('supabase-status-text').textContent = 'Desconectado';
     document.querySelector('.status-indicator').className = 'status-indicator offline';
     _sb = null;

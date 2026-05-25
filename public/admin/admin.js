@@ -1,4 +1,4 @@
-// ==========================================================================
+﻿// ==========================================================================
 // PAINEL ADMIN - COLÉGIO IDEAL
 // Todos os dados vêm exclusivamente do Supabase. Sem dados fictícios.
 // ==========================================================================
@@ -16,7 +16,11 @@ let cachedUnits = [];          // [{id, name}, ...] carregado do Supabase
 
 const _injected = window.__ADMIN_CONFIG__ || {};
 let adminToken = _injected.ADMIN_TOKEN || '';
-const BACKEND_URL = _injected.BACKEND_URL !== undefined ? _injected.BACKEND_URL : 'http://localhost:3000';
+const BACKEND_URL = _injected.BACKEND_URL !== undefined 
+    ? _injected.BACKEND_URL 
+    : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:3000'
+        : window.location.origin;
 
 const TABLE_SCHEMAS = {
     school_products: [

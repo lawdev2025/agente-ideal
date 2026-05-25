@@ -152,7 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           for (const [envKey, envVal] of Object.entries(mappedPayload)) {
-            if (envVal === undefined || envVal === null) continue;
+            if (envVal === undefined || envVal === null || envVal.trim() === "") continue;
 
             // Variáveis operacionais da Vercel em si não precisam ser sincronizadas de volta nela
             if (["VERCEL_AUTH_TOKEN", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"].includes(envKey)) {

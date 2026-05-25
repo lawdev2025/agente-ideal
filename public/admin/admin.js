@@ -469,7 +469,7 @@ function renderCharts(msgCounts, subjects, days) {
         }
     });
 
-    const subjectEntries = subjects ? Object.entries(subjects).filter(([k]) => k !== 'Outras dúvidas') : [];
+    const subjectEntries = subjects ? Object.entries(subjects).filter(([k]) => !k.toLowerCase().includes('outras')) : [];
     const subjectLabels  = subjectEntries.map(([k]) => k);
     const subjectData    = subjectEntries.map(([, v]) => v);
     const isDark = document.documentElement.classList.contains('dark');

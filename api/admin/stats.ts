@@ -33,12 +33,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select("*", { count: "exact", head: true })
         .eq("role", "tool")
         .like("content", "%escalate_to_specialist%"),
-      sb.from("messages").select("content, created_at").eq("role", "user"),
+      sb.from("messages").select("content, created_at, wa_id").eq("role", "user"),
     ]);
 
     const inactiveContacts = (totalContacts ?? 0) - (activeContacts ?? 0);
 
-    // Last 7 days msg counts
+    // Últimos 7 dias: contagem de USUÁRIOS ÚNICOS por dia (não de mensagens).
+    // Cada dia conta cada wa_id no máximo uma vez, mesmo que ele mande 50 msgs.
     const days: string[] = [];
     const msgCounts: number[] = [];
     const dayLabels = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -51,11 +52,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const end = new Date(d);
       end.setHours(23, 59, 59, 999);
       days.push(`${dayLabels[d.getDay()]} ${d.getDate()}`);
-      const c = (userMsgs || []).filter(
-        (m: any) =>
-          m.created_at >= start.getTime() && m.created_at <= end.getTime()
-      ).length;
-      msgCounts.push(c);
+      const uniqueUsers = new Set<string>();
+      for (const m of userMsgs || []) {
+        const ts = (m as any).created_at;
+        if (ts >= start.getTime() && ts <= end.getTime()) {
+          const id = (m as any).wa_id;
+          if (id) uniqueUsers.add(id);
+        }
+      }
+      msgCounts.push(uniqueUsers.size);
     }
 
     // Topic buckets

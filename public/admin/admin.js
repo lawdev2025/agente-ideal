@@ -329,7 +329,7 @@ async function loadDashboardStats() {
             trendEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Sem erros';
         }
 
-        // Busca dados dos gráficos
+        // Histórico de 7 dias: usuários únicos por dia (não mensagens totais).
         const days = [];
         const msgCounts = [];
         for (let i = 6; i >= 0; i--) {
@@ -338,9 +338,11 @@ async function loadDashboardStats() {
             days.push(d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' }));
             const start = new Date(d); start.setHours(0,0,0,0);
             const end = new Date(d); end.setHours(23,59,59,999);
-            const { count } = await _sb.from('messages').select('*', { count: 'exact', head: true })
+            const { data: dayMsgs } = await _sb.from('messages').select('wa_id')
+                .eq('role', 'user')
                 .gte('created_at', start.getTime()).lte('created_at', end.getTime());
-            msgCounts.push(count || 0);
+            const uniq = new Set((dayMsgs || []).map(r => r.wa_id).filter(Boolean));
+            msgCounts.push(uniq.size);
         }
 
         const subjects = { 'Mensalidades / Valores': 0, 'Matrículas & Vagas': 0, 'Materiais / Livros': 0, 'Contatos / Secretaria': 0, 'Horários & Grade': 0, 'Outras dúvidas': 0 };
@@ -432,7 +434,7 @@ function renderCharts(msgCounts, subjects, days) {
         data: {
             labels: days,
             datasets: [{
-                label: 'Mensagens',
+                label: 'Usuários únicos',
                 data: msgCounts || [],
                 borderColor: '#AF1411',
                 backgroundColor: 'rgba(175,20,17,0.08)',

@@ -90,6 +90,21 @@ export class MessageOrchestrator {
         intent.kind === "enrollment_contact" ||
         intent.kind === "unit_info"
       ) {
+        // Pergunta de valor (mensalidade, matrícula, material): resposta FIXA
+        // por ordem do colégio — valores APENAS presencialmente, para todas as
+        // unidades e segmentos. Sem LLM, sem escalação. Vale para qualquer
+        // intent que tenha sinal de preço/material na mensagem original.
+        if (isPriceOrMaterialQuestion(userMessage)) {
+          const reply =
+            "Os valores de *mensalidade*, *matrícula* e *material didático* nós informamos *somente presencialmente*, " +
+            "em qualquer uma das 3 unidades e para todos os segmentos. 🤝\n\n" +
+            "Assim a equipe consegue te apresentar as melhores condições com calma. " +
+            "Quer que eu te passe o telefone da unidade mais próxima pra você agendar uma visita?";
+          await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+          await this.whatsappClient.sendMessage(studentId, reply);
+          return;
+        }
+
         // Pedido de telefone/secretaria sem unidade: responde determinístico
         // perguntando qual unidade — não dispara LLM, não dispara escalação.
         if (intent.kind === "enrollment_contact" && !intent.unit) {
@@ -399,6 +414,14 @@ function isResumeCommand(text: string): boolean {
   return triggers.some(
     (t) => normalized === t || normalized.startsWith(t + " ")
   );
+}
+
+// Detecta se a mensagem é sobre valor (mensalidade/matrícula/material). Quando
+// é, devolvemos a resposta fixa "valores só presencialmente" e nunca chamamos
+// LLM nem escalamos — ordem do colégio.
+function isPriceOrMaterialQuestion(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  return /\b(valor|valores|mensalidade|mensalidades|pre[çc]o|pre[çc]os|custo|custa|quanto\s+(custa|fica|sai|paga)|anuidade|semestralidade|matr[íi]cula|taxa\s+de\s+matr[íi]cula|material\s+did[áa]tico|material\s+escolar|kit\s+escolar)\b/.test(t);
 }
 
 function alreadyEscalatedInHistory(history: ConversationMessage[]): boolean {

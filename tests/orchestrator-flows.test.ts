@@ -97,6 +97,37 @@ describe("Orchestrator: pedido de número/secretaria sem unidade", () => {
   });
 });
 
+describe("Orchestrator: valor/mensalidade/matrícula/material → resposta fixa presencial", () => {
+  const perguntas = [
+    "qual o valor da mensalidade?",
+    "quanto custa o ensino medio?",
+    "valor da matricula do maternal",
+    "qual a anuidade do fundamental 2",
+    "preco do material didatico",
+    "valores da Cidade Nova",
+    "quanto sai o terceirao",
+    "taxa de matricula",
+  ];
+  for (const p of perguntas) {
+    it(`'${p}' responde só presencial, sem LLM, sem escalar`, async () => {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Olá! Aqui é o atendimento oficial do Grupo Ideal" }],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", p, "u1");
+      const sent = (m.whatsapp.sendMessage as any).mock.calls[0][1] as string;
+      expect(sent).toMatch(/presencialmente/i);
+      expect(sent).toMatch(/mensalidade|matr[íi]cula|material/i);
+      // Não deve citar valor numérico
+      expect(sent).not.toMatch(/R\$/);
+      // Não pode escalar
+      expect(m.escalation.escalateToGroup).not.toHaveBeenCalled();
+      // Não pode chamar LLM
+      expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    });
+  }
+});
+
 describe("Intent router: detecta unit em pergunta de contato", () => {
   it("'numero da secretaria da Cidade Nova' → enrollment_contact com unit", () => {
     const r = routeIntent("numero da secretaria da Cidade Nova", false);

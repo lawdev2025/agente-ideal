@@ -50,6 +50,13 @@ CREATE TABLE IF NOT EXISTS school_levels (
   incluso          TEXT NOT NULL DEFAULT ''
 );
 
+-- Se a tabela ja existia (schema legado sem DEFAULT), garante que as
+-- colunas de preço aceitam 0 sem precisar do usuario informar valor.
+ALTER TABLE school_levels ALTER COLUMN preco_mensal     SET DEFAULT 0;
+ALTER TABLE school_levels ALTER COLUMN preco_semestral  SET DEFAULT 0;
+ALTER TABLE school_levels ALTER COLUMN preco_anual      SET DEFAULT 0;
+ALTER TABLE school_levels ALTER COLUMN incluso          SET DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS school_products (
   id           BIGSERIAL PRIMARY KEY,
   category     TEXT NOT NULL,
@@ -85,13 +92,16 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_materials') THEN CREATE POLICY "allow_all_school_materials" ON school_materials FOR ALL USING (true) WITH CHECK (true); END IF;
 END $$;
 
--- Seed nivel apenas com nomes (sem valores — política do colégio)
-INSERT INTO school_levels (id, nivel, descricao, incluso) VALUES
-  ('inf', 'Educação Infantil',  'Maternal, Jardim I e II',                          'Material didático Poliedro'),
-  ('ef1', 'Fundamental 1',      '1º ao 5º ano',                                     'Material didático Poliedro, simulados, acompanhamento'),
-  ('ef2', 'Fundamental 2',      '6º ao 9º ano',                                     'Material didático Poliedro, simulados, preparação para EM'),
-  ('em',  'Ensino Médio',       '1ª, 2ª e 3ª série',                                'Material didático Poliedro, simulados semanais, preparação ENEM'),
-  ('eixo','Pré-Enem (Eixo)',    'Terceirão e cursinho',                             'Material especializado, simulados semanais, turno integral')
+-- Seed nivel apenas com nomes — valores ficam 0 porque a política do
+-- colégio é nunca expor R$ no atendimento automatizado. O bot já está
+-- programado pra responder "valores na secretaria" quando o cliente
+-- pergunta sobre preço.
+INSERT INTO school_levels (id, nivel, descricao, preco_mensal, preco_semestral, preco_anual, incluso) VALUES
+  ('inf',  'Educação Infantil', 'Maternal, Jardim I e II',  0, 0, 0, 'Material didático Poliedro'),
+  ('ef1',  'Fundamental 1',     '1º ao 5º ano',             0, 0, 0, 'Material didático Poliedro, simulados, acompanhamento'),
+  ('ef2',  'Fundamental 2',     '6º ao 9º ano',             0, 0, 0, 'Material didático Poliedro, simulados, preparação para EM'),
+  ('em',   'Ensino Médio',      '1ª, 2ª e 3ª série',        0, 0, 0, 'Material didático Poliedro, simulados semanais, preparação ENEM'),
+  ('eixo', 'Pré-Enem (Eixo)',   'Terceirão e cursinho',     0, 0, 0, 'Material especializado, simulados semanais, turno integral')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Contatos oficiais ─────────────────────────────────────────

@@ -10,7 +10,11 @@
 -- Cria as tabelas se não existirem antes de popular.
 -- =============================================================
 
--- ── Garante schema ────────────────────────────────────────────
+-- ── Garante schema completo do bot ────────────────────────────
+-- Cria todas as tabelas que o bot do colégio precisa, sem conflitar
+-- com tabelas pré-existentes (ex: 'contatos' em português do app
+-- cívico vs 'contacts' em inglês do bot).
+
 CREATE TABLE IF NOT EXISTS school_contacts (
   id           BIGSERIAL PRIMARY KEY,
   name         TEXT NOT NULL,
@@ -35,17 +39,60 @@ CREATE TABLE IF NOT EXISTS school_units (
   capacity         TEXT
 );
 
-ALTER TABLE school_contacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE school_units    ENABLE ROW LEVEL SECURITY;
+-- Tabelas adicionais que o bot espera (mesmo sem dados ainda)
+CREATE TABLE IF NOT EXISTS school_levels (
+  id               TEXT PRIMARY KEY,
+  nivel            TEXT NOT NULL,
+  descricao        TEXT NOT NULL,
+  preco_mensal     NUMERIC(10,2) NOT NULL DEFAULT 0,
+  preco_semestral  NUMERIC(10,2) NOT NULL DEFAULT 0,
+  preco_anual      NUMERIC(10,2) NOT NULL DEFAULT 0,
+  incluso          TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS school_products (
+  id           BIGSERIAL PRIMARY KEY,
+  category     TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  description  TEXT,
+  monthly_fee  NUMERIC(10,2),
+  material_fee NUMERIC(10,2),
+  schedule     TEXT,
+  image_url    TEXT,
+  unit_id      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS school_materials (
+  id           BIGSERIAL PRIMARY KEY,
+  nivel        TEXT NOT NULL,
+  subject      TEXT NOT NULL,
+  title        TEXT NOT NULL,
+  download_url TEXT NOT NULL,
+  image_url    TEXT
+);
+
+ALTER TABLE school_contacts  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_units     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_levels    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_products  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_materials ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_contacts') THEN
-    CREATE POLICY "allow_all_school_contacts" ON school_contacts FOR ALL USING (true) WITH CHECK (true);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_units') THEN
-    CREATE POLICY "allow_all_school_units" ON school_units FOR ALL USING (true) WITH CHECK (true);
-  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_contacts')  THEN CREATE POLICY "allow_all_school_contacts"  ON school_contacts  FOR ALL USING (true) WITH CHECK (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_units')     THEN CREATE POLICY "allow_all_school_units"     ON school_units     FOR ALL USING (true) WITH CHECK (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_levels')    THEN CREATE POLICY "allow_all_school_levels"    ON school_levels    FOR ALL USING (true) WITH CHECK (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_products')  THEN CREATE POLICY "allow_all_school_products"  ON school_products  FOR ALL USING (true) WITH CHECK (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_materials') THEN CREATE POLICY "allow_all_school_materials" ON school_materials FOR ALL USING (true) WITH CHECK (true); END IF;
 END $$;
+
+-- Seed nivel apenas com nomes (sem valores — política do colégio)
+INSERT INTO school_levels (id, nivel, descricao, incluso) VALUES
+  ('inf', 'Educação Infantil',  'Maternal, Jardim I e II',                          'Material didático Poliedro'),
+  ('ef1', 'Fundamental 1',      '1º ao 5º ano',                                     'Material didático Poliedro, simulados, acompanhamento'),
+  ('ef2', 'Fundamental 2',      '6º ao 9º ano',                                     'Material didático Poliedro, simulados, preparação para EM'),
+  ('em',  'Ensino Médio',       '1ª, 2ª e 3ª série',                                'Material didático Poliedro, simulados semanais, preparação ENEM'),
+  ('eixo','Pré-Enem (Eixo)',    'Terceirão e cursinho',                             'Material especializado, simulados semanais, turno integral')
+ON CONFLICT (id) DO NOTHING;
 
 -- ── Contatos oficiais ─────────────────────────────────────────
 -- Limpa entradas anteriores que possam ter sido cadastradas com
@@ -117,6 +164,12 @@ ON CONFLICT (id) DO UPDATE SET
   capacity       = EXCLUDED.capacity;
 
 -- ── Verificação ───────────────────────────────────────────────
-SELECT 'school_contacts' AS tabela, COUNT(*) AS linhas FROM school_contacts
+SELECT 'school_contacts'  AS tabela, COUNT(*) AS linhas FROM school_contacts
 UNION ALL
-SELECT 'school_units',              COUNT(*)            FROM school_units;
+SELECT 'school_units',               COUNT(*)            FROM school_units
+UNION ALL
+SELECT 'school_levels',              COUNT(*)            FROM school_levels
+UNION ALL
+SELECT 'school_products',            COUNT(*)            FROM school_products
+UNION ALL
+SELECT 'school_materials',           COUNT(*)            FROM school_materials;

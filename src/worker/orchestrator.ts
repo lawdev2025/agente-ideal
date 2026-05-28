@@ -35,12 +35,15 @@ export class MessageOrchestrator {
       // com saudação curta. Esse comando funciona MESMO se o bot estiver
       // pausado — é a porta de saída do cliente. Avaliado ANTES do isBotPaused.
       if (isResumeCommand(userMessage)) {
+        logger.info({ studentId, userMessage }, "Resume command detected — unpausing bot");
         try {
           await this.stateRepository.resumeBot(studentId);
         } catch (err) {
           logger.error({ err, studentId }, "Falha ao retomar bot via comando reiniciar");
         }
-        const ack = "Atendimento automático retomado. 🤖✨ Em que posso te ajudar?";
+        const ack =
+          "Pronto! Voltamos ao atendimento automático do *Grupo Ideal*. 🤖✨\n" +
+          "Como posso te ajudar agora?";
         await this.stateRepository.appendMessage(conversationId, "assistant", ack);
         await this.whatsappClient.sendMessage(studentId, ack);
         return;
@@ -87,6 +90,19 @@ export class MessageOrchestrator {
         intent.kind === "enrollment_contact" ||
         intent.kind === "unit_info"
       ) {
+        // Pedido de telefone/secretaria sem unidade: responde determinístico
+        // perguntando qual unidade — não dispara LLM, não dispara escalação.
+        if (intent.kind === "enrollment_contact" && !intent.unit) {
+          const ask =
+            "Claro! Temos 3 unidades — me diz qual você prefere que eu te passe o número:\n\n" +
+            "🏫 *Sede (Batista Campos)*\n" +
+            "🏫 *Augusto Montenegro*\n" +
+            "🏫 *Cidade Nova (Ananindeua)*\n\n" +
+            "Ou, se preferir o WhatsApp central que atende as 3, é só dizer *WhatsApp*. 😊";
+          await this.stateRepository.appendMessage(conversationId, "assistant", ask);
+          await this.whatsappClient.sendMessage(studentId, ask);
+          return;
+        }
         await this.runDeterministicToolFlow(
           conversationId,
           studentId,
@@ -141,6 +157,8 @@ export class MessageOrchestrator {
       if (intent.unit) args.unit = intent.unit;
     } else if (intent.kind === "unit_info" && intent.unit) {
       args = { unit: intent.unit };
+    } else if (intent.kind === "enrollment_contact" && intent.unit) {
+      args = { assunto: intent.unit };
     }
 
     let toolResult: string;
@@ -234,9 +252,9 @@ export class MessageOrchestrator {
     );
     if (isFirstInteraction) {
       const greeting =
-        "Olá! Seja muito bem-vindo(a) ao atendimento oficial do Colégio Ideal. 🎓\n" +
-        "Estamos aqui para te ajudar com informações sobre nossas turmas, valores, unidades e processo de matrícula para 2026.\n\n" +
-        "Para começar, por favor, qual é o seu nome?";
+        "Olá! Aqui é o atendimento oficial do *Grupo Ideal* 🎓✨\n" +
+        "É um prazer falar com você! Estamos prontos pra te ajudar com informações sobre nossas turmas, unidades e o processo de matrícula 2026.\n\n" +
+        "Pra começar, como posso te chamar? 😊";
       await this.stateRepository.appendMessage(conversationId, "assistant", greeting);
       await this.whatsappClient.sendMessage(studentId, greeting);
       return;
@@ -358,15 +376,29 @@ function isResumeCommand(text: string): boolean {
     .trim();
   const triggers = [
     "reiniciar",
+    "reinicia",
+    "reset",
+    "resetar",
+    "restart",
     "reiniciar atendimento",
     "reiniciar conversa",
     "reiniciar bot",
     "voltar ao bot",
     "voltar pro bot",
-    "atendimento automatico",
+    "voltar para o bot",
+    "voltar bot",
+    "voltar para o atendimento automatico",
+    "voltar ao atendimento automatico",
     "voltar atendimento",
+    "atendimento automatico",
+    "modo automatico",
+    "ativar bot",
+    "chamar bot",
   ];
-  return triggers.some((t) => normalized === t || normalized.startsWith(t + " "));
+  // Match exato OR começa com o gatilho seguido de espaço/pontuação
+  return triggers.some(
+    (t) => normalized === t || normalized.startsWith(t + " ")
+  );
 }
 
 function alreadyEscalatedInHistory(history: ConversationMessage[]): boolean {

@@ -21,7 +21,7 @@ export type RoutedIntent =
        */
       escalateAfter?: string;
     }
-  | { kind: "enrollment_contact" }
+  | { kind: "enrollment_contact"; unit?: string }
   | { kind: "unit_info"; unit?: string }
   | { kind: "escalate"; reason: string }
   | { kind: "ask_llm" };
@@ -184,6 +184,13 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
     return { kind: "enrollment_info", nivel: matchedNivel, unit: matchedUnit };
   }
 
+  // Pergunta de contato (telefone/secretaria/whatsapp) tem prioridade sobre
+  // unit_info quando ambos batem. Ex: "telefone da Sede" — o usuário quer o
+  // número, não endereço/horário/infraestrutura.
+  if (CONTACT_KEYWORDS.test(text)) {
+    return { kind: "enrollment_contact", unit: matchedUnit };
+  }
+
   // Unit/campus questions (address, hours, capacity, infrastructure) — check
   // BEFORE enrollment so "horário de funcionamento da Batista Campos" goes to
   // unit_info, not enrollment_info.
@@ -200,10 +207,6 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
 
   if (hasEnrollmentSignal) {
     return { kind: "enrollment_info", nivel: matchedNivel, unit: matchedUnit };
-  }
-
-  if (CONTACT_KEYWORDS.test(text)) {
-    return { kind: "enrollment_contact" };
   }
 
   void hasName;

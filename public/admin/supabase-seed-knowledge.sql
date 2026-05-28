@@ -1,5 +1,5 @@
 -- =============================================================
--- SEED DE CONHECIMENTO REAL — COLÉGIO IDEAL
+-- SEED DE CONHECIMENTO REAL — COLÉGIO IDEAL (versão defensiva)
 -- Popula school_contacts e school_units com os dados oficiais
 -- coletados em maio/2026 (ver docs/ROTEIRO-CONHECIMENTO-ESCOLA.md).
 --
@@ -7,7 +7,45 @@
 -- https://supabase.com/dashboard/project/<seu-projeto>/sql/new
 --
 -- Idempotente: pode rodar mais de uma vez sem duplicar.
+-- Cria as tabelas se não existirem antes de popular.
 -- =============================================================
+
+-- ── Garante schema ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS school_contacts (
+  id           BIGSERIAL PRIMARY KEY,
+  name         TEXT NOT NULL,
+  role_title   TEXT NOT NULL,
+  phone_number TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS school_units (
+  id               TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  address          TEXT NOT NULL,
+  phone            TEXT,
+  whatsapp         TEXT,
+  hours            TEXT,
+  levels           TEXT,
+  system           TEXT,
+  enrollment_fee   NUMERIC(10,2),
+  monthly_fee      NUMERIC(10,2),
+  material_annual  NUMERIC(10,2),
+  infrastructure   TEXT,
+  activities       TEXT,
+  capacity         TEXT
+);
+
+ALTER TABLE school_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_units    ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_contacts') THEN
+    CREATE POLICY "allow_all_school_contacts" ON school_contacts FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_units') THEN
+    CREATE POLICY "allow_all_school_units" ON school_units FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- ── Contatos oficiais ─────────────────────────────────────────
 -- Limpa entradas anteriores que possam ter sido cadastradas com

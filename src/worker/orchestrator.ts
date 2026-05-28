@@ -186,14 +186,15 @@ export class MessageOrchestrator {
     if (escalateAfter) {
       await this.escalateToSpecialist(conversationId, studentId, escalateAfter);
     } else if (!alreadyEscalatedInHistory(updatedConv) && isDeflectionReply(reply)) {
-      // The bot said "vou chamar a coordenação" but didn't actually escalate.
-      // Fire the real escalation so Telegram is notified and the contact is
-      // marked as awaiting human.
+      // O bot disse algo tipo "vou chamar a coordenação" mas sem ter realmente
+      // chamado a tool de escalação. Notificamos o Telegram pra coordenação
+      // saber, MAS NÃO pausamos o bot — porque essa detecção é heurística
+      // (regex) e false-positives bloqueiam atendimentos legítimos.
       await this.escalateToSpecialist(
         conversationId,
         studentId,
         `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
-        { skipHandoffMessage: true }
+        { skipHandoffMessage: true, skipPause: true }
       );
     }
 
@@ -249,13 +250,15 @@ export class MessageOrchestrator {
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
 
-    // Same deflection check in the pure-chat path.
+    // Same deflection check in the pure-chat path. Não pausa o bot — só
+    // notifica o Telegram pra coordenação ficar ciente. Heurística regex,
+    // sujeita a falso positivo.
     if (!alreadyEscalatedInHistory(conversationHistory) && isDeflectionReply(reply)) {
       await this.escalateToSpecialist(
         conversationId,
         studentId,
         `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
-        { skipHandoffMessage: true }
+        { skipHandoffMessage: true, skipPause: true }
       );
     }
   }
@@ -346,7 +349,7 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
     "- NUNCA escreva texto que pareça uma chamada de função (ex: 'escalate_to_specialist(...)'). Você só escreve português natural.",
     "- NÃO repita o resumo bruto da ferramenta — extraia o ponto que o cliente perguntou.",
     "- PROIBIDO inventar dados que não estão no resultado da ferramenta. Não tem na ferramenta? Não responda esse ponto.",
-    "  Especificamente PROIBIDO: inventar taxa de matrícula, valor de matrícula, datas de vencimento, políticas de desconto, regras de pagamento, datas de início das aulas, lista de documentos, link de cadastro, prazo de resposta. Se o cliente perguntar qualquer um desses, diga: 'Essa parte quem te confirma é a coordenação, já vou pedir pra eles te chamarem aqui.' — e nada mais.",
+    "  Especificamente PROIBIDO: inventar taxa de matrícula, valor de matrícula, datas de vencimento, políticas de desconto, regras de pagamento, datas de início das aulas, lista de documentos, link de cadastro, prazo de resposta. Se o cliente perguntar valor/mensalidade/preço/taxa, responda EXATAMENTE: 'Os valores são informados somente na secretaria pra te dar a melhor condição. Posso te passar o telefone pra você falar direto com a equipe?' — e nada mais. Para os outros casos (documentos, datas, política), use: 'Pra essa informação específica, o melhor é falar direto com a secretaria — quer o telefone?'",
     "- Termine com no MÁXIMO uma pergunta curta de avanço (ou nenhuma pergunta).",
   ];
   if (escalateAfter) {
@@ -376,7 +379,7 @@ function buildChatSystemPrompt(): string {
     "- Tom WhatsApp natural, 1-2 frases curtas.",
     "- Se o cliente já disse o nome (em mensagens anteriores), USE o nome.",
     "- Se o cliente está confirmando algo ou agradecendo, responda curto e simpático.",
-    "- ❗ Se o cliente perguntar VALOR / MENSALIDADE / TAXA / PREÇO / QUANTO CUSTA, responda SEMPRE: 'Os valores são informados apenas na secretaria pra te dar a melhor condição. Quer que eu te passe o telefone da unidade mais próxima?' — NUNCA cite R$.",
+    "- ❗ Se o cliente perguntar VALOR / MENSALIDADE / TAXA / PREÇO / QUANTO CUSTA, responda SEMPRE: 'Os valores são informados somente na secretaria pra te dar a melhor condição. Posso te passar o telefone pra você falar direto com a equipe?' — NUNCA cite R$. NÃO use as frases 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
     "- ❗ Se o cliente perguntar TELEFONE / NÚMERO / SECRETARIA / WHATSAPP, devolva UM dos números acima — escolha a Sede por padrão a menos que o cliente especifique outra unidade. NUNCA invente número.",
     "- Se o cliente está perguntando algo CONCRETO que não está acima (taxa, prazo, documento específico), diga: 'Essa parte quem te confirma é a secretaria — quer o telefone?'",
     "- PROIBIDO inventar QUALQUER número de telefone com DDD diferente de 91. (11), (21), (31)... TODOS proibidos. Se você escreveu (11)... você quebrou a regra.",

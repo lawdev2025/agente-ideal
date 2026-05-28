@@ -49,6 +49,19 @@ export class MessageOrchestrator {
         return;
       }
 
+      // ORDEM DO COLÉGIO (regra dura): pergunta sobre valor/mensalidade/
+      // matrícula/material → SEMPRE resposta presencial fixa. Sem LLM, sem
+      // escalação, sem intermediário "coordenação te chama". Avaliado ANTES
+      // do isBotPaused, ANTES do roteamento, ANTES de qualquer LLM — não há
+      // caminho que escape isso.
+      if (isPriceOrMaterialQuestion(userMessage)) {
+        logger.info({ studentId }, "Price/material question — sending presential reply");
+        const reply = PRESENTIAL_VALUES_REPLY;
+        await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+        await this.whatsappClient.sendMessage(studentId, reply);
+        return;
+      }
+
       // Bot pausado para este contato: NÃO responde. A mensagem do cliente
       // já foi salva no histórico pelo webhook (pro atendente humano ver),
       // então aqui só registramos e saímos. O atendente humano cuida no
@@ -94,17 +107,6 @@ export class MessageOrchestrator {
         // por ordem do colégio — valores APENAS presencialmente, para todas as
         // unidades e segmentos. Sem LLM, sem escalação. Vale para qualquer
         // intent que tenha sinal de preço/material na mensagem original.
-        if (isPriceOrMaterialQuestion(userMessage)) {
-          const reply =
-            "Os valores de *mensalidade*, *matrícula* e *material didático* nós informamos *somente presencialmente*, " +
-            "em qualquer uma das 3 unidades e para todos os segmentos. 🤝\n\n" +
-            "Assim a equipe consegue te apresentar as melhores condições com calma. " +
-            "Quer que eu te passe o telefone da unidade mais próxima pra você agendar uma visita?";
-          await this.stateRepository.appendMessage(conversationId, "assistant", reply);
-          await this.whatsappClient.sendMessage(studentId, reply);
-          return;
-        }
-
         // Pedido de telefone/secretaria sem unidade: responde determinístico
         // perguntando qual unidade — não dispara LLM, não dispara escalação.
         if (intent.kind === "enrollment_contact" && !intent.unit) {
@@ -226,6 +228,14 @@ export class MessageOrchestrator {
 
     if (!reply) reply = toolResult;
 
+    // Rede de segurança: se o LLM ainda escapou e disse algo do tipo
+    // "vou pedir pra coordenação", REESCREVEMOS pela resposta presencial.
+    // Nada de mandar o cliente pra fila — atendimento direto, sempre.
+    if (isDeflectionReply(reply)) {
+      logger.warn({ original: reply }, "LLM produced deflection text — overriding with presential reply");
+      reply = PRESENTIAL_VALUES_REPLY;
+    }
+
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
 
@@ -233,17 +243,6 @@ export class MessageOrchestrator {
     // the off-scope part of a mixed-intent message (desconto, uniforme, etc.).
     if (escalateAfter) {
       await this.escalateToSpecialist(conversationId, studentId, escalateAfter);
-    } else if (!alreadyEscalatedInHistory(updatedConv) && isDeflectionReply(reply)) {
-      // O bot disse algo tipo "vou chamar a coordenação" mas sem ter realmente
-      // chamado a tool de escalação. Notificamos o Telegram pra coordenação
-      // saber, MAS NÃO pausamos o bot — porque essa detecção é heurística
-      // (regex) e false-positives bloqueiam atendimentos legítimos.
-      await this.escalateToSpecialist(
-        conversationId,
-        studentId,
-        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
-        { skipHandoffMessage: true, skipPause: true }
-      );
     }
 
     void conversationHistory;
@@ -283,7 +282,7 @@ export class MessageOrchestrator {
       { systemPromptOverride: chatPrompt }
     );
 
-    const reply = sanitizeReply(response.message?.trim() ?? "");
+    let reply = sanitizeReply(response.message?.trim() ?? "");
     if (!reply) {
       // Empty reply on an ambiguous-but-pure-chat message means something
       // unusual — escalate so the client gets a human, not silence.
@@ -295,20 +294,16 @@ export class MessageOrchestrator {
       return;
     }
 
+    // Rede de segurança: se o LLM produziu deflexão pra coordenação,
+    // sobrescreve com a resposta presencial fixa. Nada de empurrar
+    // pra fila.
+    if (isDeflectionReply(reply)) {
+      logger.warn({ original: reply }, "LLM produced deflection text — overriding with presential reply");
+      reply = PRESENTIAL_VALUES_REPLY;
+    }
+
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
-
-    // Same deflection check in the pure-chat path. Não pausa o bot — só
-    // notifica o Telegram pra coordenação ficar ciente. Heurística regex,
-    // sujeita a falso positivo.
-    if (!alreadyEscalatedInHistory(conversationHistory) && isDeflectionReply(reply)) {
-      await this.escalateToSpecialist(
-        conversationId,
-        studentId,
-        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
-        { skipHandoffMessage: true, skipPause: true }
-      );
-    }
   }
 
   private async escalateToSpecialist(
@@ -416,6 +411,14 @@ function isResumeCommand(text: string): boolean {
   );
 }
 
+// Resposta canônica para qualquer pergunta de valor. Centralizada aqui pra
+// nunca divergir entre paths (top-level, sanitizer, fallback).
+const PRESENTIAL_VALUES_REPLY =
+  "Os valores de *mensalidade*, *matrícula* e *material didático* nós informamos *somente presencialmente*, " +
+  "em qualquer uma das 3 unidades e para todos os segmentos. 🤝\n\n" +
+  "Assim a equipe consegue te apresentar as melhores condições com calma. " +
+  "Quer que eu te passe o telefone da unidade mais próxima pra você agendar uma visita?";
+
 // Detecta se a mensagem é sobre valor (mensalidade/matrícula/material). Quando
 // é, devolvemos a resposta fixa "valores só presencialmente" e nunca chamamos
 // LLM nem escalamos — ordem do colégio.
@@ -424,11 +427,6 @@ function isPriceOrMaterialQuestion(text: string): boolean {
   return /\b(valor|valores|mensalidade|mensalidades|pre[çc]o|pre[çc]os|custo|custa|quanto\s+(custa|fica|sai|paga)|anuidade|semestralidade|matr[íi]cula|taxa\s+de\s+matr[íi]cula|material\s+did[áa]tico|material\s+escolar|kit\s+escolar)\b/.test(t);
 }
 
-function alreadyEscalatedInHistory(history: ConversationMessage[]): boolean {
-  return history.some(
-    (m) => m.role === "tool" && m.content.includes("escalate_to_specialist")
-  );
-}
 // Focused phrasing prompt — used when we've already chosen the tool and just
 // need natural text. By stripping the production system prompt (which mentions
 // tool names) we avoid Gemini hallucinating function-call syntax in its reply.

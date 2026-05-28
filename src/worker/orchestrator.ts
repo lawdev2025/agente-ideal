@@ -31,6 +31,21 @@ export class MessageOrchestrator {
         "Processing message"
       );
 
+      // Cliente digitou "reiniciar" (ou variações). Despausa o bot e responde
+      // com saudação curta. Esse comando funciona MESMO se o bot estiver
+      // pausado — é a porta de saída do cliente. Avaliado ANTES do isBotPaused.
+      if (isResumeCommand(userMessage)) {
+        try {
+          await this.stateRepository.resumeBot(studentId);
+        } catch (err) {
+          logger.error({ err, studentId }, "Falha ao retomar bot via comando reiniciar");
+        }
+        const ack = "Atendimento automático retomado. 🤖✨ Em que posso te ajudar?";
+        await this.stateRepository.appendMessage(conversationId, "assistant", ack);
+        await this.whatsappClient.sendMessage(studentId, ack);
+        return;
+      }
+
       // Bot pausado para este contato: NÃO responde. A mensagem do cliente
       // já foi salva no histórico pelo webhook (pro atendente humano ver),
       // então aqui só registramos e saímos. O atendente humano cuida no
@@ -296,7 +311,9 @@ export class MessageOrchestrator {
         `Tool escalate_to_specialist result: ${reason}`
       );
       if (!opts.skipHandoffMessage) {
-        const handoffMessage = "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo - em instantes alguém da nossa equipe entra em contato com você. 😊";
+        const handoffMessage =
+          "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo — em instantes alguém da nossa equipe entra em contato com você. 😊\n\n" +
+          "*Para retornar ao atendimento automático, escreva \"reiniciar\".*";
         await this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
         if (!config.whatsapp.dryRun) {
           await this.whatsappClient.sendMessage(studentId, handoffMessage);
@@ -329,6 +346,29 @@ function isDeflectionReply(text: string): boolean {
   return patterns.some((p) => p.test(t));
 }
 
+// Detecta se o cliente está pedindo pra retomar o atendimento automatizado.
+// Aceita variações comuns. Case-insensitive, ignora pontuação/acentos.
+function isResumeCommand(text: string): boolean {
+  const normalized = (text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // remove acentos
+    .replace(/[^a-z0-9\s]/g, " ")    // remove pontuação
+    .replace(/\s+/g, " ")
+    .trim();
+  const triggers = [
+    "reiniciar",
+    "reiniciar atendimento",
+    "reiniciar conversa",
+    "reiniciar bot",
+    "voltar ao bot",
+    "voltar pro bot",
+    "atendimento automatico",
+    "voltar atendimento",
+  ];
+  return triggers.some((t) => normalized === t || normalized.startsWith(t + " "));
+}
+
 function alreadyEscalatedInHistory(history: ConversationMessage[]): boolean {
   return history.some(
     (m) => m.role === "tool" && m.content.includes("escalate_to_specialist")
@@ -339,17 +379,24 @@ function alreadyEscalatedInHistory(history: ConversationMessage[]): boolean {
 // tool names) we avoid Gemini hallucinating function-call syntax in its reply.
 function buildPhrasingSystemPrompt(escalateAfter?: string): string {
   const lines = [
-    "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'). Sua única tarefa é responder ao cliente em UMA mensagem natural de WhatsApp, usando EXCLUSIVAMENTE o que está no resultado da ferramenta no histórico (role=tool).",
+    "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'). Sua única tarefa é responder ao cliente em UMA mensagem natural de WhatsApp, usando EXCLUSIVAMENTE o que está no resultado da ferramenta no histórico (role=tool) E nos DADOS OFICIAIS abaixo.",
+    "",
+    "DADOS OFICIAIS DO COLÉGIO (use estes valores VERBATIM — NUNCA invente outros):",
+    "• Telefones reais: Sede (Batista Campos) (91) 3323-5000 · WhatsApp central (91) 99389-8000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
+    "• Endereços: Sede em Batista Campos, Belém · Augusto Montenegro nº 130, Parque Verde, Belém · Cidade Nova II, Av. SN-3 esq. WE-21, 3277, Ananindeua.",
+    "• 3 unidades no total. Todas oferecem do Maternal ao Pré-Enem (Eixo). Sistema Poliedro.",
+    "• Aulas começam 07:30 com 30 min de tolerância, igual nas 3 unidades.",
     "",
     "REGRAS DURAS:",
     "- Responda em 1-3 frases curtas, tom WhatsApp informal.",
     "- Use o nome do cliente se ele já apareceu na conversa.",
-    "- Se há valor numérico no resultado, formate como 'R$ 1.200/mês'.",
     "- NÃO escreva 'aguarde', 'um momento', 'vou verificar'.",
     "- NUNCA escreva texto que pareça uma chamada de função (ex: 'escalate_to_specialist(...)'). Você só escreve português natural.",
     "- NÃO repita o resumo bruto da ferramenta — extraia o ponto que o cliente perguntou.",
-    "- PROIBIDO inventar dados que não estão no resultado da ferramenta. Não tem na ferramenta? Não responda esse ponto.",
-    "  Especificamente PROIBIDO: inventar taxa de matrícula, valor de matrícula, datas de vencimento, políticas de desconto, regras de pagamento, datas de início das aulas, lista de documentos, link de cadastro, prazo de resposta. Se o cliente perguntar valor/mensalidade/preço/taxa, responda EXATAMENTE: 'Os valores são informados somente na secretaria pra te dar a melhor condição. Posso te passar o telefone pra você falar direto com a equipe?' — e nada mais. Para os outros casos (documentos, datas, política), use: 'Pra essa informação específica, o melhor é falar direto com a secretaria — quer o telefone?'",
+    "- ❗ Se o cliente perguntou TELEFONE / NÚMERO / SECRETARIA / WHATSAPP, devolva os números acima literalmente (priorize Sede e WhatsApp central). NUNCA diga 'não tenho essa informação' — você tem essa informação aí em cima.",
+    "- ❗ Se o cliente perguntar valor/mensalidade/preço/taxa, responda EXATAMENTE: 'Os valores são informados somente na secretaria pra te dar a melhor condição. Posso te passar o telefone pra você falar direto com a equipe?' — NUNCA cite R$. NÃO use 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
+    "- ❗ Se o cliente perguntou DUAS coisas (ex: valor + número da secretaria), RESPONDA AS DUAS na mesma mensagem usando os dados acima.",
+    "- PROIBIDO inventar taxa de matrícula, datas de vencimento, políticas de desconto, regras de pagamento, datas de início das aulas, lista de documentos, link de cadastro, prazo de resposta. Pra esses, diga: 'Pra essa informação específica, o melhor é falar direto com a secretaria pelo (91) 99389-8000.'",
     "- Termine com no MÁXIMO uma pergunta curta de avanço (ou nenhuma pergunta).",
   ];
   if (escalateAfter) {

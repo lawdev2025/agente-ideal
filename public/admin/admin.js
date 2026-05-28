@@ -55,7 +55,7 @@ const TABLE_SCHEMAS = {
         { name: 'id', label: 'ID (Auto)', type: 'text', readonly: true, hiddenOnAdd: true },
         { name: 'name', label: 'Nome do Setor/Pessoa', type: 'text', required: true },
         { name: 'role_title', label: 'Descrição de Suporte', type: 'text', required: true },
-        { name: 'phone_number', label: 'Telefone (ex: 5511999998888)', type: 'text', required: true }
+        { name: 'phone_number', label: 'Telefone (formato internacional, ex: 5591993898000)', type: 'text', required: true }
     ],
     school_materials: [
         { name: 'id', label: 'ID (Auto)', type: 'text', readonly: true, hiddenOnAdd: true },
@@ -1170,9 +1170,10 @@ const CSV_EXAMPLES = {
     ],
     school_contacts: [
         ['name', 'role_title', 'phone_number'],
-        ['Secretaria Geral', 'Matrículas, documentos e informações gerais', '5511999998888'],
-        ['Coordenação Pedagógica', 'Dúvidas sobre notas, faltas e turmas', '5511888887777'],
-        ['Financeiro', 'Boletos, mensalidades e negociações', '5511777776666']
+        ['Atendimento Sede', 'Telefone fixo Sede (Batista Campos)', '559133235000'],
+        ['Atendimento WhatsApp', 'WhatsApp central (atende as 3 unidades)', '5591993898000'],
+        ['Atendimento Augusto Montenegro', 'Telefone fixo unidade Augusto Montenegro', '559132730667'],
+        ['Atendimento Cidade Nova', 'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222']
     ],
     school_materials: [
         ['nivel', 'subject', 'title', 'download_url', 'image_url'],
@@ -1183,9 +1184,9 @@ const CSV_EXAMPLES = {
     ],
     school_units: [
         ['id', 'name', 'address', 'phone', 'whatsapp', 'hours', 'levels', 'infrastructure', 'activities', 'capacity'],
-        ['sede', 'Sede (Batista Campos)', 'Rua dos Mundurucus, 1412', '(91) 3222-0000', '(91) 98888-0000', 'Seg-Sex: 07h-19h / Sáb: 08h-12h', 'Infantil ao Pré-Vestibular (Eixo) e Militares', '"Lousas digitais,ginásio,laboratórios,auditório"', '"Robótica,Educação Financeira,Esportes"', '1.500 alunos'],
-        ['augusto-montenegro', 'Augusto Montenegro', 'Rod. Augusto Montenegro, 130', '(91) 3333-0000', '(91) 99999-0000', 'Seg-Sex: 07h-18h / Sáb: 08h-12h', 'Educação Infantil ao Ensino Médio', '"Parquinho,quadras auxiliares,lab de informática"', '"Robótica,Dança,Artes"', '1.200 alunos'],
-        ['cidade-nova', 'Cidade Nova', 'Av. SN-3, 3277 (Ananindeua)', '(91) 3444-0000', '(91) 97777-0000', 'Seg-Sex: 07h-18h / Sáb: 08h-12h', 'Educação Infantil ao Ensino Médio', '"Brinquedoteca,quadra coberta,lab prático"', '"Música,Futsal,Robótica"', '1.000 alunos']
+        ['sede', 'Sede (Batista Campos)', 'Batista Campos, Belém — PA', '(91) 3323-5000', '(91) 99389-8000', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE (Núcleo de Artes e Empreendedorismo) a partir de 2027"', 'A confirmar'],
+        ['augusto-montenegro', 'Augusto Montenegro', 'Rod. Augusto Montenegro, 130 — Parque Verde, Belém', '(91) 3273-0667', '(91) 99389-8000', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE a partir de 2027"', 'A confirmar'],
+        ['cidade-nova', 'Cidade Nova (Ananindeua)', 'Conj. Cidade Nova II, Av. SN-3 esq. WE-21, 3277 — Ananindeua', '(91) 3273-0222', '(91) 99389-8000', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE a partir de 2027"', 'A confirmar']
     ]
 };
 

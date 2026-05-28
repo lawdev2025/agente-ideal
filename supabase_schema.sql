@@ -104,9 +104,10 @@ INSERT INTO school_schedule (student_id, day_of_week, class_time, subject) VALUE
 ON CONFLICT DO NOTHING;
 
 INSERT INTO school_contacts (name, role_title, phone_number) VALUES
-('Secretaria Geral', 'Atendimento de Matrículas e Transferências', '5511999998888'),
-('Departamento Financeiro', 'Dúvidas sobre Mensalidades e Acordos', '5511999997777'),
-('Coordenação Pedagógica', 'Suporte Pedagógico e Escalação de Alunos', '5511999996666')
+('Atendimento Sede',                'Telefone fixo Sede (Batista Campos)',           '559133235000'),
+('Atendimento WhatsApp',            'WhatsApp central (atende as 3 unidades)',       '5591993898000'),
+('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559132730667'),
+('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO school_materials (nivel, subject, title, download_url, image_url) VALUES

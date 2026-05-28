@@ -230,8 +230,9 @@ export class MessageOrchestrator {
 
     // Rede de segurança: se o LLM ainda escapou e disse algo do tipo
     // "vou pedir pra coordenação", REESCREVEMOS pela resposta presencial.
-    // Nada de mandar o cliente pra fila — atendimento direto, sempre.
-    if (isDeflectionReply(reply)) {
+    // O cliente NÃO ve a frase de deflexão — só a presencial.
+    const deflected = isDeflectionReply(reply);
+    if (deflected) {
       logger.warn({ original: reply }, "LLM produced deflection text — overriding with presential reply");
       reply = PRESENTIAL_VALUES_REPLY;
     }
@@ -243,6 +244,15 @@ export class MessageOrchestrator {
     // the off-scope part of a mixed-intent message (desconto, uniforme, etc.).
     if (escalateAfter) {
       await this.escalateToSpecialist(conversationId, studentId, escalateAfter);
+    } else if (deflected) {
+      // Notifica coordenação no Telegram (NÃO pausa o bot, NÃO manda handoff
+      // pro cliente). É só pra equipe ver no grupo que o bot tropeçou.
+      await this.escalateToSpecialist(
+        conversationId,
+        studentId,
+        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
+        { skipHandoffMessage: true, skipPause: true }
+      );
     }
 
     void conversationHistory;
@@ -295,15 +305,26 @@ export class MessageOrchestrator {
     }
 
     // Rede de segurança: se o LLM produziu deflexão pra coordenação,
-    // sobrescreve com a resposta presencial fixa. Nada de empurrar
-    // pra fila.
-    if (isDeflectionReply(reply)) {
+    // sobrescreve com a resposta presencial fixa antes de enviar.
+    const deflected = isDeflectionReply(reply);
+    if (deflected) {
       logger.warn({ original: reply }, "LLM produced deflection text — overriding with presential reply");
       reply = PRESENTIAL_VALUES_REPLY;
     }
 
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
+
+    // Avisa coordenação no Telegram que o bot tropeçou (não pausa, não
+    // manda handoff pro cliente — só notifica a equipe).
+    if (deflected) {
+      await this.escalateToSpecialist(
+        conversationId,
+        studentId,
+        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
+        { skipHandoffMessage: true, skipPause: true }
+      );
+    }
   }
 
   private async escalateToSpecialist(

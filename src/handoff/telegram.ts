@@ -159,11 +159,16 @@ export class EscalationHandler {
       const message = `
 🔔 <b>Escalação de Suporte</b>
 
-👤 <b>Aluno:</b> ${studentId}
+👤 <b>Aluno:</b> <code>${studentId}</code>
 📋 <b>Motivo:</b> ${reason}
 
 📝 <b>Contexto:</b>
 <code>${context}</code>
+
+🤖 <b>Para devolver pro bot</b>, qualquer um destes funciona:
+• Cliente digita <b>reiniciar</b> no WhatsApp
+• Você manda aqui no grupo: <code>/retomar ${studentId}</code>
+• Painel admin → contato ${studentId} → botão Retomar bot
       `.trim();
 
       const result = await this.telegramClient.sendMessage(

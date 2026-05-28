@@ -128,6 +128,36 @@ describe("Orchestrator: valor/mensalidade/matrícula/material → resposta fixa 
   }
 });
 
+describe("Orchestrator: deflexão LLM → cliente vê presencial + Telegram avisado", () => {
+  it("LLM diz 'vou pedir pra coordenação' em chat livre → reescreve + notifica Telegram", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Oi" },
+        { role: "user", content: "tudo bem?" },
+      ],
+    });
+    // LLM gera deflexão clássica
+    (m.llm.generateMessage as any) = vi.fn(async () => ({
+      message: "Essa parte quem te confirma é a coordenação, já vou pedir pra eles te chamarem aqui.",
+      toolCalls: [],
+    }));
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    // mensagem ambígua que cai no chat path (não dispara isPriceOrMaterialQuestion)
+    await orch.processMessage("u1", "ola tudo bem?", "u1");
+
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    // Cliente NUNCA vê a frase de deflexão original
+    expect(sent).not.toMatch(/coordena[çc][ãa]o/i);
+    expect(sent).not.toMatch(/vou pedir/i);
+    // E vê a presencial
+    expect(sent).toMatch(/presencialmente/i);
+    // Telegram foi avisado
+    expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+    // Bot NÃO foi pausado (skipPause:true) — cliente segue podendo responder
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+  });
+});
+
 describe("Intent router: detecta unit em pergunta de contato", () => {
   it("'numero da secretaria da Cidade Nova' → enrollment_contact com unit", () => {
     const r = routeIntent("numero da secretaria da Cidade Nova", false);

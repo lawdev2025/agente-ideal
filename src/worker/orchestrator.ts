@@ -365,28 +365,52 @@ function buildChatSystemPrompt(): string {
   return [
     "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'), conversando por WhatsApp. Nesta mensagem você está apenas conversando — outras decisões já foram tratadas pelo sistema.",
     "",
+    "DADOS REAIS DO COLÉGIO (use APENAS estes — nada fora daqui existe):",
+    "• Telefones: Sede (Batista Campos) (91) 3323-5000 · WhatsApp central (91) 99389-8000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
+    "• Endereços: Sede em Batista Campos, Belém · Augusto Montenegro nº 130, Parque Verde, Belém · Cidade Nova II, Av. SN-3 esq. WE-21, 3277, Ananindeua.",
+    "• Níveis: Maternal, Jardim I/II, Fundamental 1 (1º-5º), Fundamental 2 (6º-9º), Ensino Médio, Pré-Enem (Eixo). Todos disponíveis nas 3 unidades.",
+    "• Início das aulas: 07:30 com 30 min de tolerância. Iguais nas 3 unidades.",
+    "• Sistema: Poliedro. Material comprado direto na escola. Uniforme na malharia das unidades.",
+    "",
     "REGRAS:",
     "- Tom WhatsApp natural, 1-2 frases curtas.",
-    "- Se o cliente ainda não disse o nome dele e essa parece ser a primeira interação, pergunte: 'Como é seu nome?'",
     "- Se o cliente já disse o nome (em mensagens anteriores), USE o nome.",
     "- Se o cliente está confirmando algo ou agradecendo, responda curto e simpático.",
-    "- Se o cliente está perguntando algo CONCRETO que você não consegue responder com base no histórico (taxa, prazo, política, documento, data específica), diga: 'Essa parte quem te confirma é a coordenação, eles te respondem aqui em instantes.'",
-    "- PROIBIDO inventar números, datas, taxas, políticas, ou qualquer dado.",
+    "- ❗ Se o cliente perguntar VALOR / MENSALIDADE / TAXA / PREÇO / QUANTO CUSTA, responda SEMPRE: 'Os valores são informados apenas na secretaria pra te dar a melhor condição. Quer que eu te passe o telefone da unidade mais próxima?' — NUNCA cite R$.",
+    "- ❗ Se o cliente perguntar TELEFONE / NÚMERO / SECRETARIA / WHATSAPP, devolva UM dos números acima — escolha a Sede por padrão a menos que o cliente especifique outra unidade. NUNCA invente número.",
+    "- Se o cliente está perguntando algo CONCRETO que não está acima (taxa, prazo, documento específico), diga: 'Essa parte quem te confirma é a secretaria — quer o telefone?'",
+    "- PROIBIDO inventar QUALQUER número de telefone com DDD diferente de 91. (11), (21), (31)... TODOS proibidos. Se você escreveu (11)... você quebrou a regra.",
+    "- PROIBIDO inventar valores em R$. NUNCA escreva 'R$' na resposta.",
+    "- PROIBIDO inventar datas, taxas, políticas, ou qualquer dado fora da lista acima.",
     "- PROIBIDO escrever texto que pareça chamada de função (escalate_to_specialist(...), get_enrollment_info(...), etc).",
-    "- PROIBIDO copiar markdown bruto de resultado de ferramenta (** ** com Preços: Mensal: ...). Sempre reformule em português corrido.",
+    "- PROIBIDO copiar markdown bruto de resultado de ferramenta. Sempre reformule em português corrido.",
     "- PROIBIDO dizer 'aguarde', 'um momento', 'vou verificar'.",
   ].join("\n");
 }
 
 // Belt-and-suspenders: strip lines that look like function calls in case
-// Gemini still emits them despite the phrasing prompt.
+// Gemini still emits them despite the phrasing prompt. ALSO neutraliza
+// alucinações de telefone (qualquer DDD ≠ 91) e qualquer valor em R$
+// que o modelo possa ter inventado.
 function sanitizeReply(text: string): string {
-  // Drop any line containing a parenthesised name=value list that looks like
-  // a tool invocation (e.g. `escalate_to_specialist(reason="other", ...)`).
-  const cleaned = text
+  // 1. Drop function-call-shaped lines
+  let cleaned = text
     .split("\n")
     .filter((line) => !/[a-z_]+\([a-z_]+\s*=\s*["']/i.test(line))
-    .join("\n")
-    .trim();
-  return cleaned;
+    .join("\n");
+
+  // 2. Substitui qualquer DDD que NÃO seja 91. Padrão: (XX) XXXX-XXXX,
+  //    (XX) XXXXX-XXXX, XX XXXXX-XXXX, XX 9XXXX-XXXX. Se DDD ≠ 91, vira [contato].
+  cleaned = cleaned.replace(
+    /\(?\b(\d{2})\)?\s?9?\s?\d{4,5}[\s-]?\d{4}\b/g,
+    (match, ddd) => (ddd === "91" ? match : "[contato confirmado na secretaria]")
+  );
+
+  // 3. Neutraliza qualquer "R$" + número que o modelo tenha inventado.
+  cleaned = cleaned.replace(
+    /R\$\s?[\d.,]+(?:\s?(?:\/m[êe]s|por m[êe]s|mensal|anual|semestral))?/gi,
+    "(valor informado na secretaria)"
+  );
+
+  return cleaned.trim();
 }

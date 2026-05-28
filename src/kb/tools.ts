@@ -81,178 +81,49 @@ const consultarMensalidadesTool: KBTool = {
     try {
       const { nivel, unit } = args as { nivel?: string; unit?: string };
 
-      if (isSupabaseEnabled()) {
-        const supabase = getSupabase();
+      // POLÍTICA DO COLÉGIO: NUNCA expor valores monetários no atendimento
+      // automatizado. Sempre orientar a cliente a confirmar valores com a
+      // secretaria. Esta tool retorna apenas confirmação da existência do
+      // nível e oferece os contatos. Não chama Supabase.
+      const niveis: Record<string, string> = {
+        "maternal":         "Educação Infantil (Maternal)",
+        "jardim":           "Educação Infantil (Jardim I/II)",
+        "infantil":         "Educação Infantil",
+        "educação infantil":"Educação Infantil",
+        "educacao infantil":"Educação Infantil",
+        "fundamental 1":    "Ensino Fundamental 1 (1º ao 5º ano)",
+        "fundamental1":     "Ensino Fundamental 1 (1º ao 5º ano)",
+        "fund 1":           "Ensino Fundamental 1 (1º ao 5º ano)",
+        "fundamental 2":    "Ensino Fundamental 2 (6º ao 9º ano)",
+        "fundamental2":     "Ensino Fundamental 2 (6º ao 9º ano)",
+        "fund 2":           "Ensino Fundamental 2 (6º ao 9º ano)",
+        "ensino médio":     "Ensino Médio (1ª, 2ª e 3ª série)",
+        "ensino medio":     "Ensino Médio (1ª, 2ª e 3ª série)",
+        "médio":            "Ensino Médio",
+        "medio":            "Ensino Médio",
+        "pré-enem":         "Pré-Enem (Eixo) — Terceirão e Cursinho",
+        "pre-enem":         "Pré-Enem (Eixo) — Terceirão e Cursinho",
+        "eixo":             "Pré-Enem (Eixo) — Terceirão e Cursinho",
+        "terceirão":        "Pré-Enem (Eixo)",
+        "terceirao":        "Pré-Enem (Eixo)",
+        "cursinho":         "Pré-Enem (Eixo)",
+      };
 
-        // Resolve nome → unit_id consultando school_units (se unit foi passado)
-        let resolvedUnitId: string | null = null;
-        let resolvedUnitName: string | null = null;
-        if (unit) {
-          const unitLower = unit.toLowerCase().trim();
-          const { data: units } = await supabase.from("school_units").select("id, name");
-          if (units && units.length > 0) {
-            const match = units.find((u: any) => {
-              const n = (u.name || "").toLowerCase();
-              const i = (u.id || "").toLowerCase();
-              return (
-                n.includes(unitLower) ||
-                i.includes(unitLower) ||
-                (unitLower.includes("batista") && (n.includes("sede") || n.includes("batista"))) ||
-                (unitLower.includes("sede") && (n.includes("sede") || n.includes("batista"))) ||
-                (unitLower.includes("augusto") && n.includes("augusto")) ||
-                (unitLower.includes("montenegro") && n.includes("montenegro")) ||
-                (unitLower.includes("cidade") && n.includes("cidade")) ||
-                (unitLower.includes("ananindeua") && n.includes("cidade"))
-              );
-            });
-            if (match) {
-              resolvedUnitId = (match as any).id;
-              resolvedUnitName = (match as any).name;
-            }
-          }
-        }
+      const nivelKey = (nivel || "").toLowerCase().trim();
+      const nivelLabel = niveis[nivelKey] || (nivel ? `nível "${nivel}"` : "todos os níveis");
 
-        // Map nivel param to school_products category names
-        const categoryMap: Record<string, string> = {
-          "educação infantil": "Educação Infantil",
-          "educacao infantil": "Educação Infantil",
-          "maternal": "Educação Infantil",
-          "jardim": "Educação Infantil",
-          "infantil": "Educação Infantil",
-          "fundamental 1": "Ensino Fundamental — Anos Iniciais",
-          "fundamental1": "Ensino Fundamental — Anos Iniciais",
-          "fund 1": "Ensino Fundamental — Anos Iniciais",
-          "anos iniciais": "Ensino Fundamental — Anos Iniciais",
-          "fundamental 2": "Ensino Fundamental — Anos Finais",
-          "fundamental2": "Ensino Fundamental — Anos Finais",
-          "fund 2": "Ensino Fundamental — Anos Finais",
-          "anos finais": "Ensino Fundamental — Anos Finais",
-          "ensino médio": "Ensino Médio",
-          "ensino medio": "Ensino Médio",
-          "médio": "Ensino Médio",
-          "medio": "Ensino Médio",
-          "pré-enem": "Pré-Vestibular (Eixo)",
-          "pre-enem": "Pré-Vestibular (Eixo)",
-          "pré enem": "Pré-Vestibular (Eixo)",
-          "pre enem": "Pré-Vestibular (Eixo)",
-          "eixo": "Pré-Vestibular (Eixo)",
-          "terceirão": "Pré-Vestibular (Eixo)",
-          "terceirao": "Pré-Vestibular (Eixo)",
-          "cursinho": "Pré-Vestibular (Eixo)",
-          "escolinhas": "Escolinhas de Esporte",
-          "esporte": "Escolinhas de Esporte",
-          "cursos": "Cursos Específicos",
-          "específicos": "Cursos Específicos",
-          "especificos": "Cursos Específicos",
-        };
+      const unidadeRef = unit
+        ? `da unidade ${unit}`
+        : "em todas as 3 unidades (Sede/Batista Campos, Augusto Montenegro e Cidade Nova)";
 
-        const nivelLower = (nivel || "").toLowerCase().trim();
-        const targetCategory = nivelLower ? categoryMap[nivelLower] : null;
+      return [
+        `✅ Sim, ${nivelLabel} está disponível ${unidadeRef}.`,
+        ``,
+        `📌 POLÍTICA OFICIAL DO COLÉGIO: valores de mensalidade, matrícula e material são informados APENAS na secretaria — nunca por este atendimento.`,
+        ``,
+        `👉 Próximo passo: oriente o cliente a entrar em contato com a secretaria (use get_enrollment_contact) ou agendar uma visita.`,
+      ].join("\n");
 
-        // Try school_products first (the main product catalog)
-        let query = supabase.from("school_products").select("*");
-        if (targetCategory) {
-          query = query.eq("category", targetCategory);
-        } else if (nivelLower && nivelLower !== "todos") {
-          // Fuzzy match: try to find category containing the nivel string
-          query = query.ilike("category", `%${nivelLower}%`);
-        }
-        // Filtro de unidade: o cliente perguntou sobre uma unidade específica.
-        // Se NÃO passou unidade, mostramos todas (mas com a unidade visível
-        // em cada linha pra deixar claro que valores podem variar).
-        if (resolvedUnitId) {
-          query = query.eq("unit_id", resolvedUnitId);
-        }
-
-        const { data: products, error: productError } = await query.order("category").order("name");
-
-        const unitSuffix = resolvedUnitName ? ` — ${resolvedUnitName}` : "";
-
-        if (!productError && products && products.length > 0) {
-          if (!nivelLower || nivelLower === "todos") {
-            // Group by category for summary
-            const byCategory = products.reduce((acc: Record<string, typeof products>, p) => {
-              if (!acc[p.category]) acc[p.category] = [];
-              acc[p.category].push(p);
-              return acc;
-            }, {});
-            const resumo = Object.entries(byCategory)
-              .map(([cat, items]) => {
-                const prices = items
-                  .filter((i) => i.monthly_fee)
-                  .map((i) => `  • ${i.name}: R$ ${Number(i.monthly_fee).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}/mês`)
-                  .join("\n");
-                return prices ? `📚 ${cat}:\n${prices}` : `📚 ${cat}: (consulte a secretaria para valores)`;
-              })
-              .join("\n\n");
-            return `📋 CURSOS E MENSALIDADES DO COLÉGIO IDEAL${unitSuffix}:\n\n${resumo}`;
-          }
-
-          // Specific category result
-          const lines = products.map((p) => {
-            let line = `• ${p.name}`;
-            if (p.monthly_fee) line += ` — R$ ${Number(p.monthly_fee).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}/mês`;
-            if (p.material_fee) line += ` | Material: R$ ${Number(p.material_fee).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`;
-            if (p.schedule) line += ` | Horário: ${p.schedule}`;
-            if (p.description && !p.monthly_fee) line += ` — ${p.description}`;
-            return line;
-          });
-          const categoryName = products[0].category;
-          // Se nenhuma unidade foi especificada, anota a unidade em cada linha
-          // pra deixar claro pro cliente que valores variam por unidade.
-          if (!resolvedUnitId) {
-            const unitNameById: Record<string, string> = {};
-            const { data: allUnits } = await supabase.from("school_units").select("id, name");
-            (allUnits || []).forEach((u: any) => { unitNameById[u.id] = u.name; });
-            const linesWithUnit = products.map((p: any) => {
-              const unitTag = p.unit_id ? ` [${unitNameById[p.unit_id] || p.unit_id}]` : "";
-              let line = `• ${p.name}${unitTag}`;
-              if (p.monthly_fee) line += ` — R$ ${Number(p.monthly_fee).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}/mês`;
-              if (p.material_fee) line += ` | Material: R$ ${Number(p.material_fee).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`;
-              if (p.schedule) line += ` | Horário: ${p.schedule}`;
-              return line;
-            });
-            return `📚 ${categoryName} (valores por unidade):\n${linesWithUnit.join("\n")}`;
-          }
-          return `📚 ${categoryName}${unitSuffix}:\n${lines.join("\n")}`;
-        }
-
-        // Fallback to school_levels for backward compatibility
-        if (productError || !products || (products as unknown[]).length === 0) {
-          const { data: levels, error: levelsError } = await supabase.from("school_levels").select("*");
-          if (!levelsError && levels && levels.length > 0) {
-            if (!nivelLower || nivelLower === "todos") {
-              const resumo = levels.map((m) => `📚 ${m.nivel} (${m.descricao})\n   Mensalidade: R$ ${m.preco_mensal}/mês`).join("\n\n");
-              return `📋 CURSOS E MENSALIDADES DO COLÉGIO IDEAL:\n\n${resumo}`;
-            }
-            const match = levels.find((m) => m.nivel.toLowerCase().includes(nivelLower));
-            if (match) {
-              const incluso = (match.incluso as string).split(",").map((i: string) => `  • ${i.trim()}`).join("\n");
-              return `📚 ${match.nivel} (${match.descricao})\n💰 Mensalidade: R$ ${match.preco_mensal}/mês\n💰 Semestral: R$ ${match.preco_semestral} | Anual: R$ ${match.preco_anual}\n✅ Incluso:\n${incluso}`;
-            }
-          }
-        }
-
-        if (nivelLower) {
-          return `Nível "${nivel}" não encontrado na base de dados. Por favor, entre em contato com a secretaria para mais informações.`;
-        }
-      }
-
-      // Local JSON fallback
-      const kb = loadKnowledgeBase();
-      if (!nivel || nivel.toLowerCase() === "todos") {
-        const resumo = kb.mensalidades
-          .map((m) => `📚 ${m.nivel} (${m.descricao})\n   Mensalidade: R$ ${m.preco_mensal}/mês`)
-          .join("\n\n");
-        return `📋 CURSOS E MENSALIDADES DO COLÉGIO IDEAL:\n\n${resumo}`;
-      }
-      const mensalidade = kb.mensalidades.find((m) =>
-        m.nivel.toLowerCase().includes(nivel.toLowerCase())
-      );
-      if (!mensalidade) {
-        return `Nível "${nivel}" não encontrado. Temos: Fundamental 1, Fundamental 2, Médio e Pré-Enem.`;
-      }
-      return formatMensalidade(mensalidade);
     } catch (error) {
       logger.error({ error }, "Error fetching enrollment info");
       return "Desculpe, não consegui carregar as informações de matrícula. Por favor, entre em contato com nossa coordenação.";

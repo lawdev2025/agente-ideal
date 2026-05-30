@@ -1,5 +1,5 @@
 import { LLMProvider } from "../llm/provider";
-import { StateRepository } from "../state/repository";
+import { StateRepository, Contact } from "../state/repository";
 import { executeKBTool } from "../kb/tools";
 import { WhatsAppClient } from "../whatsapp/client";
 import { EscalationHandler } from "../handoff/telegram";
@@ -30,6 +30,24 @@ export class MessageOrchestrator {
         { conversationId, messageLength: userMessage.length },
         "Processing message"
       );
+
+      // Carrega o contato (o webhook já garantiu que ele existe). Usamos pra
+      // saber se já tem nome salvo antes de tentar capturar. Falha aqui não
+      // derruba a conversa — seguimos com um registro vazio.
+      let contact: Contact = {
+        wa_id: studentId,
+        name: null,
+        phone: null,
+        bot_paused: false,
+        paused_reason: null,
+        paused_at: null,
+        last_seen_at: null,
+      };
+      try {
+        contact = await this.stateRepository.getOrCreateContact(studentId);
+      } catch (err) {
+        logger.error({ err, studentId }, "getOrCreateContact falhou — seguindo sem registro");
+      }
 
       // Cliente digitou "reiniciar" (ou variações). Despausa o bot e responde
       // com saudação curta. Esse comando funciona MESMO se o bot estiver
@@ -80,6 +98,28 @@ export class MessageOrchestrator {
         content: msg.content,
       }));
 
+      // Captura do nome: se o contato ainda não tem nome salvo e o bot já pediu
+      // ("como posso te chamar?"), esta mensagem é a resposta com o nome.
+      // Salva no contato pra aparecer no painel. Best-effort — não atrapalha o
+      // fluxo se não der pra extrair um nome plausível.
+      if (!contact.name) {
+        const greetingAsked = history.some(
+          (m) => m.role === "assistant" && /como posso te chamar/i.test(m.content)
+        );
+        if (greetingAsked) {
+          const name = extractName(userMessage);
+          if (name) {
+            try {
+              await this.stateRepository.setName(studentId, name);
+              contact.name = name;
+              logger.info({ studentId, name }, "Nome do contato capturado e salvo");
+            } catch (err) {
+              logger.error({ err, studentId }, "Falha ao salvar nome do contato");
+            }
+          }
+        }
+      }
+
       // Have we escalated this conversation already? If so, skip escalation
       // routing — let the LLM just keep talking naturally.
       const alreadyEscalated = history.some(
@@ -93,6 +133,19 @@ export class MessageOrchestrator {
       // unless we already escalated in this conversation.
       if (intent.kind === "escalate" && !alreadyEscalated) {
         await this.escalateToSpecialist(conversationId, studentId, intent.reason);
+        return;
+      }
+
+      // Soft redirect: tema do colégio que o bot não tem na base (bolsa,
+      // desconto, documento, transporte, evento). Redireciona pra secretaria,
+      // avisa a equipe em silêncio e NÃO pausa o bot — o cliente segue
+      // conversando normalmente.
+      if (intent.kind === "soft_redirect") {
+        await this.softRedirectToSecretaria(
+          conversationId,
+          studentId,
+          intent.reason
+        );
         return;
       }
 
@@ -228,30 +281,33 @@ export class MessageOrchestrator {
 
     if (!reply) reply = toolResult;
 
-    // Rede de segurança: se o LLM ainda escapou e disse algo do tipo
-    // "vou pedir pra coordenação", REESCREVEMOS pela resposta presencial.
-    // O cliente NÃO ve a frase de deflexão — só a presencial.
+    // Rede de segurança: se o LLM escapou e deu uma resposta de deflexão,
+    // REESCREVEMOS. Mas o texto certo depende do TEMA: pergunta de valor vira
+    // a resposta presencial; qualquer outra dúvida vira o redirect pra
+    // secretaria (NUNCA mandamos resposta de preço pra pergunta que não é de
+    // preço). O cliente nunca vê a deflexão crua.
     const deflected = isDeflectionReply(reply);
     if (deflected) {
-      logger.warn({ original: reply }, "LLM produced deflection text — overriding with presential reply");
-      reply = PRESENTIAL_VALUES_REPLY;
+      reply = isPriceOrMaterialQuestion(userMessage)
+        ? PRESENTIAL_VALUES_REPLY
+        : SECRETARIA_REDIRECT_REPLY;
+      logger.warn({ tema: isPriceOrMaterialQuestion(userMessage) ? "preço" : "outro" }, "LLM produced deflection text — overriding");
     }
 
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
 
-    // After answering the primary question, fire the queued escalation for
-    // the off-scope part of a mixed-intent message (desconto, uniforme, etc.).
+    // After answering the primary question, SOFT-redirect the off-scope part
+    // of a mixed-intent message (desconto, transporte, etc.) — avisa a equipe
+    // em silêncio, sem pausar nem mandar handoff pro cliente.
     if (escalateAfter) {
-      await this.escalateToSpecialist(conversationId, studentId, escalateAfter);
+      await this.softNotifyTeam(conversationId, studentId, escalateAfter);
     } else if (deflected) {
-      // Notifica coordenação no Telegram (NÃO pausa o bot, NÃO manda handoff
-      // pro cliente). É só pra equipe ver no grupo que o bot tropeçou.
-      await this.escalateToSpecialist(
+      // Bot tropeçou e redirecionou pra secretaria: avisa a equipe em silêncio.
+      await this.softNotifyTeam(
         conversationId,
         studentId,
-        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
-        { skipHandoffMessage: true, skipPause: true }
+        `Bot redirecionou para secretaria. Pergunta original: "${userMessage}"`
       );
     }
 
@@ -304,27 +360,58 @@ export class MessageOrchestrator {
       return;
     }
 
-    // Rede de segurança: se o LLM produziu deflexão pra coordenação,
-    // sobrescreve com a resposta presencial fixa antes de enviar.
+    // Rede de segurança: se o LLM produziu deflexão, sobrescreve. Pergunta de
+    // valor → resposta presencial fixa; qualquer outra → redirect pra
+    // secretaria (nunca resposta de preço pra pergunta que não é de preço).
     const deflected = isDeflectionReply(reply);
     if (deflected) {
-      logger.warn({ original: reply }, "LLM produced deflection text — overriding with presential reply");
-      reply = PRESENTIAL_VALUES_REPLY;
+      reply = isPriceOrMaterialQuestion(userMessage)
+        ? PRESENTIAL_VALUES_REPLY
+        : SECRETARIA_REDIRECT_REPLY;
+      logger.warn({ tema: isPriceOrMaterialQuestion(userMessage) ? "preço" : "outro" }, "LLM produced deflection text — overriding");
     }
 
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
 
-    // Avisa coordenação no Telegram que o bot tropeçou (não pausa, não
-    // manda handoff pro cliente — só notifica a equipe).
+    // Avisa a equipe no Telegram em silêncio que o bot redirecionou pra
+    // secretaria (não pausa, não manda handoff pro cliente).
     if (deflected) {
-      await this.escalateToSpecialist(
+      await this.softNotifyTeam(
         conversationId,
         studentId,
-        `Bot deferiu para coordenação. Pergunta original: "${userMessage}"`,
-        { skipHandoffMessage: true, skipPause: true }
+        `Bot redirecionou para secretaria. Pergunta original: "${userMessage}"`
       );
     }
+  }
+
+  // Soft redirect: o cliente perguntou algo do colégio que o bot não tem na
+  // base (bolsa, desconto, documento, transporte, evento). Não é handoff: a
+  // gente aponta pra secretaria, mantém o bot ATIVO e só avisa a equipe em
+  // silêncio. O cliente segue podendo conversar.
+  private async softRedirectToSecretaria(
+    conversationId: string,
+    studentId: string,
+    reason: string
+  ): Promise<void> {
+    const reply = SECRETARIA_REDIRECT_REPLY;
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    await this.softNotifyTeam(conversationId, studentId, reason);
+  }
+
+  // Aviso silencioso pra equipe no Telegram: registra no histórico e notifica
+  // o grupo, MAS não pausa o bot nem manda "vou pedir pra coordenação" pro
+  // cliente. Usado quando o bot redireciona pra secretaria sem virar handoff.
+  private async softNotifyTeam(
+    conversationId: string,
+    studentId: string,
+    reason: string
+  ): Promise<void> {
+    await this.escalateToSpecialist(conversationId, studentId, reason, {
+      skipHandoffMessage: true,
+      skipPause: true,
+    });
   }
 
   private async escalateToSpecialist(
@@ -432,6 +519,53 @@ function isResumeCommand(text: string): boolean {
   );
 }
 
+// Extrai um nome plausível da resposta do cliente à pergunta "como posso te
+// chamar?". Aceita "João", "meu nome é João", "me chamo Maria Silva", "sou a
+// Ana", "pode me chamar de Zé". Devolve null pra saudações/perguntas/não-nomes
+// (ex: "oi", "bom dia", "quero saber o valor"). Exportada pra teste.
+export function extractName(raw: string): string | null {
+  if (!raw) return null;
+  let t = raw.trim();
+  // Remove saudação inicial ("oi,", "olá!", "opa") antes do nome.
+  t = t.replace(/^(ol[áa]|oi+|opa|e[ai]+|hey|salve)[\s,!.]+/i, "").trim();
+  // Remove prefixos comuns de apresentação.
+  t = t
+    .replace(
+      /^(meu\s+nome\s+(?:é|e|eh)\s+|me\s+chamo\s+|pode\s+me\s+chamar\s+de\s+|me\s+chama\s+de\s+|sou\s+(?:o|a)\s+|sou\s+|aqui\s+(?:é|e|eh)\s+(?:o\s+|a\s+)?|nome[:\s]+|é\s+(?:o\s+|a\s+)?|e\s+(?:o\s+|a\s+)?)/i,
+      ""
+    )
+    .trim();
+  // Pega de 1 a 3 palavras alfabéticas (acentos, hífen, apóstrofo).
+  const m = t.match(/^[\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){0,2}/u);
+  if (!m) return null;
+  let name = m[0].trim();
+  const firstWord = name
+    .split(/\s+/)[0]
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  // Palavras que NÃO são nome — se a fala começa com uma delas, não captura.
+  const STOP = new Set([
+    "sim", "nao", "ok", "obrigado", "obrigada", "valeu", "quero", "queria",
+    "preciso", "gostaria", "quanto", "qual", "quais", "tem", "voce", "voces",
+    "bom", "boa", "dia", "tarde", "noite", "tudo", "bem", "como", "onde",
+    "quando", "porque", "pode", "poderia", "info", "informacao", "informacoes",
+    "valor", "valores", "mensalidade", "matricula", "material", "ajuda",
+    "ajudar", "nada", "talvez", "ainda", "sei", "entao", "blz", "beleza",
+    "certo", "claro", "aham", "uniforme", "horario", "telefone", "numero",
+    "oi", "ola", "opa", "ei", "eai", "hey", "salve", "oie", "oii",
+  ]);
+  if (STOP.has(firstWord)) return null;
+  if (name.replace(/[^\p{L}]/gu, "").length < 2) return null;
+  if (name.length > 40) return null;
+  // Title-case leve (primeira letra de cada palavra).
+  name = name
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toLocaleUpperCase("pt-BR") + w.slice(1).toLocaleLowerCase("pt-BR"))
+    .join(" ");
+  return name;
+}
+
 // Resposta canônica para qualquer pergunta de valor. Centralizada aqui pra
 // nunca divergir entre paths (top-level, sanitizer, fallback).
 const PRESENTIAL_VALUES_REPLY =
@@ -439,6 +573,14 @@ const PRESENTIAL_VALUES_REPLY =
   "em qualquer uma das 3 unidades e para todos os segmentos. 🤝\n\n" +
   "Assim a equipe consegue te apresentar as melhores condições com calma. " +
   "Quer que eu te passe o telefone da unidade mais próxima pra você agendar uma visita?";
+
+// Resposta canônica para temas do colégio que o bot não tem na base (bolsa,
+// desconto, documento, transporte, evento) OU quando o LLM tropeçou numa
+// dúvida concreta que não é de preço. Aponta pra secretaria e mantém a
+// conversa viva — NUNCA é uma resposta de valor.
+const SECRETARIA_REDIRECT_REPLY =
+  "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\n" +
+  "Quer que eu te passe o telefone pra você falar direto com a equipe?";
 
 // Detecta se a mensagem é sobre valor (mensalidade/matrícula/material). Quando
 // é, devolvemos a resposta fixa "valores só presencialmente" e nunca chamamos
@@ -476,7 +618,7 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
   if (escalateAfter) {
     lines.push(
       "",
-      `IMPORTANTE: além de responder a pergunta principal, AVISE em UMA frase curta no final que essa parte específica (${escalateAfter.split(".")[0]}) será respondida pela coordenação em instantes. Não dê detalhes sobre o tema escalado, só avise.`
+      `IMPORTANTE: além de responder a pergunta principal, AVISE em UMA frase curta no final que essa parte específica (${escalateAfter.split(".")[0]}) quem confirma certinho é a secretaria, e ofereça passar o telefone. NÃO diga que a coordenação vai responder nem que alguém vai entrar em contato — o bot continua no atendimento. Não dê detalhes sobre o tema.`
     );
   }
   return lines.join("\n");

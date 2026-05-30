@@ -1,81 +1,45 @@
 import { describe, it, expect } from "vitest";
-import {
-  getKBTools,
-  getToolDefinitions,
-  executeKBTool,
-} from "../src/kb/tools";
+import { getKBTools, getToolDefinitions, executeKBTool } from "../src/kb/tools";
 
 describe("KB Tools", () => {
-  it("should return all available tools", () => {
+  it("expõe as 4 ferramentas atuais, com escalate por último", () => {
     const tools = getKBTools();
-    expect(tools).toHaveLength(5);
-    expect(tools.map((t) => t.name)).toContain("get_tuition_info");
-    expect(tools.map((t) => t.name)).toContain("get_schedule");
-    expect(tools.map((t) => t.name)).toContain("get_study_materials");
-    expect(tools.map((t) => t.name)).toContain("get_contact_info");
-    expect(tools.map((t) => t.name)).toContain("escalate_to_specialist");
+    expect(tools).toHaveLength(4);
+    const names = tools.map((t) => t.name);
+    expect(names).toEqual([
+      "get_enrollment_info",
+      "get_unit_info",
+      "get_enrollment_contact",
+      "escalate_to_specialist",
+    ]);
   });
 
-  it("should return valid tool definitions", () => {
-    const definitions = getToolDefinitions();
-    expect(definitions).toHaveLength(5);
-
-    const tuitionTool = definitions.find((t) => t.name === "get_tuition_info");
-    expect(tuitionTool?.description).toBeDefined();
-    expect(tuitionTool?.inputSchema).toBeDefined();
+  it("definições têm name/description/inputSchema", () => {
+    const defs = getToolDefinitions();
+    expect(defs).toHaveLength(4);
+    for (const def of defs) {
+      expect(def).toHaveProperty("name");
+      expect(def).toHaveProperty("description");
+      expect(def).toHaveProperty("inputSchema");
+    }
   });
 
-  it("should execute get_tuition_info tool", async () => {
-    const result = await executeKBTool("get_tuition_info", {
-      student_id: "STU001",
-    });
-    expect(result).toContain("STU001");
-    expect(result).toContain("Mensalidade");
+  it("get_enrollment_info confirma o nível e NUNCA expõe valor em R$", async () => {
+    const result = await executeKBTool("get_enrollment_info", { nivel: "Fundamental 1" });
+    expect(result).toMatch(/Fundamental/i);
+    expect(result).toMatch(/secretaria/i);
+    expect(result).not.toMatch(/R\$/);
   });
 
-  it("should execute get_schedule tool", async () => {
-    const result = await executeKBTool("get_schedule", {
-      student_id: "STU001",
-    });
-    expect(result).toContain("STU001");
-    expect(result).toContain("Cronograma");
-  });
-
-  it("should execute get_study_materials tool", async () => {
-    const result = await executeKBTool("get_study_materials", {
-      student_id: "STU001",
-    });
-    expect(result).toContain("STU001");
-    expect(result).toContain("Materiais");
-  });
-
-  it("should execute get_study_materials with subject filter", async () => {
-    const result = await executeKBTool("get_study_materials", {
-      student_id: "STU001",
-      subject: "Matemática",
-    });
-    expect(result).toContain("Matemática");
-  });
-
-  it("should execute get_contact_info tool", async () => {
-    const result = await executeKBTool("get_contact_info", {
-      type: "support",
-    });
-    expect(result).toContain("suporte");
-  });
-
-  it("should execute escalate_to_specialist tool", async () => {
+  it("escalate_to_specialist devolve confirmação de encaminhamento", async () => {
     const result = await executeKBTool("escalate_to_specialist", {
-      reason: "billing",
-      student_id: "STU001",
-      message: "Dúvida sobre pagamento",
+      reason: "other",
+      student_id: "u1",
     });
-    expect(result).toContain("especialista");
+    expect(result).toMatch(/escalad|especialista|contato/i);
   });
 
-  it("should throw error for unknown tool", async () => {
-    await expect(
-      executeKBTool("unknown_tool", { param: "value" })
-    ).rejects.toThrow("not found");
+  it("ferramenta inexistente lança erro", async () => {
+    await expect(executeKBTool("get_tuition_info", {})).rejects.toThrow(/not found/i);
   });
 });

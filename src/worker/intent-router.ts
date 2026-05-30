@@ -17,13 +17,25 @@ export type RoutedIntent =
       /**
        * Secondary off-scope reason present in the same message (e.g. user
        * asked for "valor do Médio E desconto pra irmão"). We answer the
-       * primary intent and queue this for a follow-up escalation.
+       * primary intent and then SOFT-redirect the extra topic to the
+       * secretaria (no handoff, no pause).
        */
       escalateAfter?: string;
     }
   | { kind: "enrollment_contact"; unit?: string }
   | { kind: "unit_info"; unit?: string }
+  /**
+   * HARD handoff: pause the bot and bring a human in. Reserved for the two
+   * cases that truly need a person — the client explicitly asked for a human,
+   * or the topic is entirely outside the school's scope.
+   */
   | { kind: "escalate"; reason: string }
+  /**
+   * SOFT redirect: a school-related topic the bot has no data for (bolsa,
+   * desconto, documento, transporte, evento). We DON'T hand off or pause —
+   * we point the client to the secretaria and notify the team quietly.
+   */
+  | { kind: "soft_redirect"; reason: string }
   | { kind: "ask_llm" };
 
 const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
@@ -59,10 +71,30 @@ const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
   },
 ];
 
-const OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
+// HARD off-scope → handoff humano de verdade (pausa o bot). Apenas dois casos
+// merecem isso: o cliente pediu um humano em palavras claras, ou o assunto não
+// tem NADA a ver com o colégio.
+const HARD_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
+  {
+    regex:
+      /\b(falar\s+com\s+(?:um\s+)?humano|atendente\s+humano|pessoa\s+de\s+verdade|fala\s+s[ée]rio|quero\s+(?:um\s+)?humano|me\s+transfere|chama\s+(?:um\s+)?humano)\b/i,
+    reason: "Cliente pediu humano explicitamente",
+  },
+  {
+    regex:
+      /\b(flamengo|corinthians|palmeiras|fluminense|s[ãa]o\s+paulo|jogo|futebol|pol[íi]tica|eleic[ãa]o|piada)\b/i,
+    reason: "Pergunta fora do escopo do colégio",
+  },
+];
+
+// SOFT off-scope → temas DO colégio que o bot não tem na base. NÃO faz handoff
+// nem pausa: redireciona pra secretaria e avisa a equipe em silêncio.
+// (Uniforme saiu daqui de propósito — o roteiro já sabe: "malharia das
+// unidades" — então cai no chat livre e é respondido direto.)
+const SOFT_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
   {
     regex: /\b(bolsa|bolsista|filantropi|isen[çc][ãa]o|gratuidade|financiament)/i,
-    reason: "Pergunta sobre bolsa/desconto/financiamento",
+    reason: "Pergunta sobre bolsa/financiamento",
   },
   {
     regex: /\b(desconto|descontos|abatiment|negocia[çc][ãa]o)\b/i,
@@ -70,8 +102,8 @@ const OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
   },
   {
     regex:
-      /\b(uniforme|merenda|alimenta[çc][ãa]o|transporte\s+escolar|[ôo]nibus|van\b)/i,
-    reason: "Pergunta sobre uniforme/alimentação/transporte",
+      /\b(merenda|alimenta[çc][ãa]o|transporte\s+escolar|[ôo]nibus|van\b)/i,
+    reason: "Pergunta sobre alimentação/transporte",
   },
   {
     regex:
@@ -82,16 +114,6 @@ const OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
     regex:
       /\b(transfer[êe]ncia|hist[óo]rico\s+escolar|declara[çc][ãa]o|atestado)\b/i,
     reason: "Pergunta sobre documento/transferência",
-  },
-  {
-    regex:
-      /\b(falar\s+com\s+(?:um\s+)?humano|atendente\s+humano|pessoa\s+de\s+verdade|fala\s+s[ée]rio)\b/i,
-    reason: "Cliente pediu humano explicitamente",
-  },
-  {
-    regex:
-      /\b(flamengo|corinthians|palmeiras|fluminense|s[ãa]o\s+paulo|jogo|futebol|pol[íi]tica|eleic[ãa]o|piada)\b/i,
-    reason: "Pergunta fora do escopo do colégio",
   },
 ];
 
@@ -113,25 +135,25 @@ const UNIT_NAME_PATTERNS: Array<{ regex: RegExp; unit: string }> = [
 const GREETING_ONLY =
   /^(oi|ol[áa]|opa|hey|e[ai]+|bom\s+dia|boa\s+tarde|boa\s+noite|tudo\s+bem|td\s+bom|salve)[\s!.,?]*$/i;
 
-// Off-scope patterns that should HARD-OVERRIDE any enrollment intent.
-// "Maternal" and "futebol" are absolute escalations — even if "valor" appears
-// in the same sentence, we never answer with a level price.
-const HARD_OFF_SCOPE_KEYS = new Set([
-  "Pergunta fora do escopo do colégio",
-  "Cliente pediu humano explicitamente",
-]);
-
 export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   const text = message.trim();
 
   if (GREETING_ONLY.test(text)) return { kind: "ask_llm" };
 
-  // Find any off-scope match first so we know whether to hard-override or
-  // attach it as a secondary escalation.
-  let offScope: { reason: string; hard: boolean } | null = null;
-  for (const { regex, reason } of OFF_SCOPE_PATTERNS) {
+  // HARD off-scope (humano explícito, assunto totalmente fora do colégio)
+  // vence qualquer outro sinal — vai direto pro handoff humano.
+  for (const { regex, reason } of HARD_OFF_SCOPE_PATTERNS) {
     if (regex.test(text)) {
-      offScope = { reason, hard: HARD_OFF_SCOPE_KEYS.has(reason) };
+      return { kind: "escalate", reason: `${reason}. Mensagem: "${text}"` };
+    }
+  }
+
+  // Find any SOFT off-scope match (bolsa, desconto, documento, transporte,
+  // evento) so we know whether to soft-redirect or attach it as a secondary.
+  let softReason: string | null = null;
+  for (const { regex, reason } of SOFT_OFF_SCOPE_PATTERNS) {
+    if (regex.test(text)) {
+      softReason = reason;
       break;
     }
   }
@@ -155,26 +177,21 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   const hasEnrollmentSignal =
     matchedNivel !== undefined || ENROLLMENT_KEYWORDS.test(text);
 
-  // Hard off-scope wins regardless of mixed intent.
-  if (offScope?.hard) {
-    return { kind: "escalate", reason: `${offScope.reason}. Mensagem: "${text}"` };
-  }
-
   // Mixed intent: clear enrollment question PLUS a soft off-scope topic
-  // (desconto, uniforme, transporte, etc.) — answer the enrollment part and
-  // queue the off-scope for a follow-up escalation.
-  if (hasEnrollmentSignal && offScope) {
+  // (desconto, transporte, etc.) — answer the enrollment part and SOFT-redirect
+  // the extra topic to the secretaria afterward (no handoff, no pause).
+  if (hasEnrollmentSignal && softReason) {
     return {
       kind: "enrollment_info",
       nivel: matchedNivel,
       unit: matchedUnit,
-      escalateAfter: `${offScope.reason}. Mensagem: "${text}"`,
+      escalateAfter: `${softReason}. Mensagem: "${text}"`,
     };
   }
 
-  // Pure off-scope (no enrollment signal in the same message).
-  if (offScope) {
-    return { kind: "escalate", reason: `${offScope.reason}. Mensagem: "${text}"` };
+  // Pure soft off-scope (no enrollment signal) — redirect to secretaria.
+  if (softReason) {
+    return { kind: "soft_redirect", reason: `${softReason}. Mensagem: "${text}"` };
   }
 
   // Mixed: pergunta sobre VALOR/PRODUTO em uma unidade específica

@@ -121,6 +121,23 @@ export class StateRepository {
     return this.normalize(inserted);
   }
 
+  /**
+   * Salva (ou atualiza) o nome do contato — aparece no painel (coluna `name`).
+   * Assume que a linha já existe (getOrCreateContact roda antes no webhook).
+   * No-op silencioso se a coluna não existir no schema legado.
+   */
+  async setName(waId: string, name: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ name })
+      .eq("wa_id", waId);
+    if (error && error.code !== "PGRST204") {
+      logger.error({ error, waId }, "Erro ao salvar nome do contato");
+      throw error;
+    }
+  }
+
   async pauseBot(waId: string, reason: string): Promise<void> {
     const supabase = getSupabase();
     await this.getOrCreateContact(waId);

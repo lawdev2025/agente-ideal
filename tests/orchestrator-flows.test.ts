@@ -260,7 +260,6 @@ describe("Orchestrator: soft redirect (bolsa/desconto/documento) → secretaria,
   const softMsgs = [
     "vocês oferecem bolsa de estudo?",
     "tem desconto pra dois irmãos?",
-    "como peço a transferência do histórico escolar?",
   ];
   for (const msg of softMsgs) {
     it(`'${msg}' → redirect secretaria + Telegram silencioso, sem pausa e sem handoff`, async () => {
@@ -320,6 +319,52 @@ describe("Orchestrator: uniforme não escala mais (roteiro já sabe)", () => {
   });
 });
 
+describe("Orchestrator: necessidade documental → secretaria da unidade (com telefone)", () => {
+  it("'preciso do boletim' (sem unidade) pergunta qual unidade, sem LLM, sem pausar", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "preciso do boletim do meu filho", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/secretaria/i);
+    expect(sent).toMatch(/qual unidade/i);
+    expect(sent).toMatch(/Batista Campos/);
+    expect(sent).not.toMatch(/presencialmente/i);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+    // Avisa a equipe em silêncio
+    expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+  });
+
+  it("'histórico escolar na Cidade Nova' passa o telefone da Cidade Nova", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "como tiro o histórico escolar na Cidade Nova?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/secretaria/i);
+    expect(sent).toMatch(/3273-0222/); // telefone da Cidade Nova
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+  });
+});
+
+describe("Intent router: necessidade documental → document_request", () => {
+  it("boletim → document_request", () => {
+    expect(routeIntent("preciso do boletim do meu filho", false).kind).toBe("document_request");
+  });
+  it("histórico escolar com unidade → document_request + unit", () => {
+    const r = routeIntent("quero o histórico escolar da Cidade Nova", false);
+    expect(r.kind).toBe("document_request");
+    if (r.kind === "document_request") expect(r.unit).toBe("Cidade Nova");
+  });
+  it("segunda via de declaração → document_request", () => {
+    expect(routeIntent("preciso da segunda via da declaração", false).kind).toBe("document_request");
+  });
+});
+
 describe("Intent router: detecta unit em pergunta de contato", () => {
   it("'numero da secretaria da Cidade Nova' → enrollment_contact com unit", () => {
     const r = routeIntent("numero da secretaria da Cidade Nova", false);
@@ -345,8 +390,8 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
   it("desconto → soft_redirect", () => {
     expect(routeIntent("tem desconto pra irmãos?", false).kind).toBe("soft_redirect");
   });
-  it("transferência/histórico → soft_redirect", () => {
-    expect(routeIntent("como faço a transferência do histórico?", false).kind).toBe("soft_redirect");
+  it("transferência/histórico → document_request (secretaria, não soft genérico)", () => {
+    expect(routeIntent("como faço a transferência do histórico?", false).kind).toBe("document_request");
   });
   it("transporte escolar → soft_redirect", () => {
     expect(routeIntent("tem transporte escolar?", false).kind).toBe("soft_redirect");

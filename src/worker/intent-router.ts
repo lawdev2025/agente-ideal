@@ -25,6 +25,13 @@ export type RoutedIntent =
   | { kind: "enrollment_contact"; unit?: string }
   | { kind: "unit_info"; unit?: string }
   /**
+   * Necessidade documental (boletim, histórico escolar, declaração, atestado,
+   * 2ª via, transferência). Tudo isso é feito na SECRETARIA da unidade — a
+   * gente responde com o telefone da unidade pedida (ou pergunta qual unidade)
+   * e avisa a equipe em silêncio. NÃO pausa o bot.
+   */
+  | { kind: "document_request"; unit?: string }
+  /**
    * HARD handoff: pause the bot and bring a human in. Reserved for the two
    * cases that truly need a person — the client explicitly asked for a human,
    * or the topic is entirely outside the school's scope.
@@ -110,12 +117,13 @@ const SOFT_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
       /\b(reuni[ãa]o\s+de\s+pais|calend[áa]rio|formatura|festa\s+junina|excurs[ãa]o)\b/i,
     reason: "Pergunta sobre evento/calendário escolar",
   },
-  {
-    regex:
-      /\b(transfer[êe]ncia|hist[óo]rico\s+escolar|declara[çc][ãa]o|atestado)\b/i,
-    reason: "Pergunta sobre documento/transferência",
-  },
 ];
+
+// Necessidade documental → secretaria da unidade (com telefone). Tratado à
+// parte (document_request), não como soft_redirect genérico, porque o cliente
+// precisa do NÚMERO da unidade certa pra resolver boletim/histórico/etc.
+const DOCUMENT_KEYWORDS =
+  /\b(boletim|hist[óo]rico\s+escolar|hist[óo]rico|declara[çc][ãa]o|atestado|segunda\s+via|2[ªa]\s+via|documenta[çc][ãa]o|documento|documentos|transfer[êe]ncia)\b/i;
 
 const ENROLLMENT_KEYWORDS =
   /\b(mensalidade|valor|valores|pre[çc]o|custo|anuidade|semestral|matr[íi]cula|matricular|matriculando|s[ée]rie|turma|curso|aula|hor[áa]rio|turno|matutino|vespertino|integral|fundamental|m[ée]dio|enem|cursinho|terceir[ãa]o|pr[ée][-\s]?enem|incluso|material|simulado|colegial|anos?\s+iniciais|anos?\s+finais|[1-9][ºo°]\s*ano|[1-3][ªa]\s*s[ée]rie)\b/i;
@@ -124,7 +132,7 @@ const CONTACT_KEYWORDS =
   /\b(contato|telefone|fone|email|e-mail|whatsapp\s+oficial|site|secretaria|coordena[çc][ãa]o\s+contato)\b/i;
 
 const UNIT_KEYWORDS =
-  /\b(unidade|unidades|sede|campus|campi|endere[çc]o|onde\s+fica|como\s+chegar|hor[áa]rio\s+de\s+funcionamento|hor[áa]rio\s+da\s+escola|hor[áa]rio\s+de\s+atendimento|infraestrutura|atividades|extracurricular|capacidade|quantos\s+alunos|quantidade\s+de\s+alunos|n[úu]mero\s+de\s+alunos|estrutura|laborat[óo]rio|quadra|gin[áa]sio|parquinho|brinquedoteca|batista|montenegro|cidade\s+nova|ananindeua)\b/i;
+  /\b(unidade|unidades|sede|campus|campi|endere[çc]o|rua|logradouro|onde\s+fica|como\s+chegar|hor[áa]rio\s+de\s+funcionamento|hor[áa]rio\s+da\s+escola|hor[áa]rio\s+de\s+atendimento|infraestrutura|atividades|extracurricular|capacidade|quantos\s+alunos|quantidade\s+de\s+alunos|n[úu]mero\s+de\s+alunos|estrutura|laborat[óo]rio|quadra|gin[áa]sio|parquinho|brinquedoteca|batista|montenegro|cidade\s+nova|ananindeua)\b/i;
 
 const UNIT_NAME_PATTERNS: Array<{ regex: RegExp; unit: string }> = [
   { regex: /\b(batista\s+campos?|sede)\b/i, unit: "Batista Campos" },
@@ -176,6 +184,13 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   }
   const hasEnrollmentSignal =
     matchedNivel !== undefined || ENROLLMENT_KEYWORDS.test(text);
+
+  // Necessidade documental (boletim/histórico/declaração/2ª via/transferência)
+  // SEM ser pergunta de matrícula → secretaria da unidade. Vem antes de
+  // contato/unit_info pra "histórico da Batista Campos" não virar endereço.
+  if (DOCUMENT_KEYWORDS.test(text) && !hasEnrollmentSignal) {
+    return { kind: "document_request", unit: matchedUnit };
+  }
 
   // Mixed intent: clear enrollment question PLUS a soft off-scope topic
   // (desconto, transporte, etc.) — answer the enrollment part and SOFT-redirect

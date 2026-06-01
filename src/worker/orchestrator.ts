@@ -149,6 +149,20 @@ export class MessageOrchestrator {
         return;
       }
 
+      // Necessidade documental (boletim, histórico escolar, declaração,
+      // atestado, 2ª via, transferência): tudo na SECRETARIA da unidade.
+      // Responde com o telefone da unidade pedida (ou pergunta qual unidade)
+      // e avisa a equipe em silêncio — sem pausar o bot.
+      if (intent.kind === "document_request") {
+        await this.handleDocumentRequest(
+          conversationId,
+          studentId,
+          userMessage,
+          intent.unit
+        );
+        return;
+      }
+
       // Deterministic path: clear matrícula/contact/unit questions go straight
       // to the right tool — we don't trust the LLM to route correctly.
       if (
@@ -400,6 +414,28 @@ export class MessageOrchestrator {
     await this.softNotifyTeam(conversationId, studentId, reason);
   }
 
+  // Necessidade documental (boletim, histórico, declaração, atestado, 2ª via,
+  // transferência): feito na SECRETARIA da unidade. Se o cliente já disse a
+  // unidade, mandamos o telefone dela direto; senão perguntamos qual unidade
+  // pra passar o número certo. Sempre avisa a equipe em silêncio, sem pausar.
+  private async handleDocumentRequest(
+    conversationId: string,
+    studentId: string,
+    userMessage: string,
+    unit?: string
+  ): Promise<void> {
+    const reply = unit
+      ? buildDocumentReplyWithUnit(unit)
+      : DOCUMENT_ASK_UNIT_REPLY;
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    await this.softNotifyTeam(
+      conversationId,
+      studentId,
+      `Necessidade documental (secretaria). Mensagem: "${userMessage}"`
+    );
+  }
+
   // Aviso silencioso pra equipe no Telegram: registra no histórico e notifica
   // o grupo, MAS não pausa o bot nem manda "vou pedir pra coordenação" pro
   // cliente. Usado quando o bot redireciona pra secretaria sem virar handoff.
@@ -588,6 +624,35 @@ const SECRETARIA_REDIRECT_REPLY =
   "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\n" +
   "Quer que eu te passe o telefone pra você falar direto com a equipe?";
 
+// Telefone da secretaria de cada unidade. As chaves casam EXATAMENTE com os
+// rótulos que o intent-router devolve em `unit` (UNIT_NAME_PATTERNS).
+const UNIT_SECRETARIA_PHONE: Record<string, string> = {
+  "Batista Campos": "(91) 3323-5000",
+  "Augusto Montenegro": "(91) 3273-0667",
+  "Cidade Nova": "(91) 3273-0222",
+};
+
+// Resposta documental quando a unidade já é conhecida: aponta a secretaria e
+// passa o telefone DAQUELA unidade.
+function buildDocumentReplyWithUnit(unit: string): string {
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 99389-8000";
+  return (
+    "Boletim, histórico escolar, declarações e qualquer outro documento são " +
+    "emitidos direto na *secretaria* da unidade. 📄\n\n" +
+    `Na *${unit}* é só falar com a secretaria pelo *${phone}* que a equipe te orienta certinho. 😊`
+  );
+}
+
+// Resposta documental sem unidade definida: explica a regra e pergunta de qual
+// unidade o cliente precisa pra passar o número certo.
+const DOCUMENT_ASK_UNIT_REPLY =
+  "Boletim, histórico escolar, declarações e qualquer outro documento são " +
+  "emitidos direto na *secretaria* da unidade. 📄\n\n" +
+  "De qual unidade você precisa? Aí te passo o telefone certinho:\n" +
+  "🏫 *Sede (Batista Campos)*\n" +
+  "🏫 *Augusto Montenegro*\n" +
+  "🏫 *Cidade Nova (Ananindeua)*";
+
 // Detecta se a mensagem é sobre o VALOR de mensalidade/matrícula/material.
 // Quando é, devolvemos a resposta fixa "valores só presencialmente" e nunca
 // chamamos LLM nem escalamos — ordem do colégio.
@@ -614,7 +679,7 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
     "",
     "DADOS OFICIAIS DO COLÉGIO (use estes valores VERBATIM — NUNCA invente outros):",
     "• Telefones reais: Sede (Batista Campos) (91) 3323-5000 · WhatsApp central (91) 99389-8000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
-    "• Endereços: Sede em Batista Campos, Belém · Augusto Montenegro nº 130, Parque Verde, Belém · Cidade Nova II, Av. SN-3 esq. WE-21, 3277, Ananindeua.",
+    "• Endereços (informe SEMPRE a rua completa quando perguntarem endereço/rua): Sede/Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21), Coqueiro, Ananindeua-PA.",
     "• 3 unidades no total. Todas oferecem do Maternal ao Pré-Enem (Eixo). Sistema Poliedro.",
     "• Aulas começam 07:30 com 30 min de tolerância, igual nas 3 unidades.",
     "",
@@ -648,7 +713,7 @@ function buildChatSystemPrompt(): string {
     "",
     "DADOS REAIS DO COLÉGIO (use APENAS estes — nada fora daqui existe):",
     "• Telefones: Sede (Batista Campos) (91) 3323-5000 · WhatsApp central (91) 99389-8000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
-    "• Endereços: Sede em Batista Campos, Belém · Augusto Montenegro nº 130, Parque Verde, Belém · Cidade Nova II, Av. SN-3 esq. WE-21, 3277, Ananindeua.",
+    "• Endereços (informe SEMPRE a rua completa quando perguntarem endereço/rua): Sede/Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21), Coqueiro, Ananindeua-PA.",
     "• Níveis: Maternal, Jardim I/II, Fundamental 1 (1º-5º), Fundamental 2 (6º-9º), Ensino Médio, Pré-Enem (Eixo). Todos disponíveis nas 3 unidades.",
     "• Início das aulas: 07:30 com 30 min de tolerância. Iguais nas 3 unidades.",
     "• Sistema: Poliedro. Material comprado direto na escola. Uniforme na malharia das unidades.",

@@ -106,7 +106,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
   (
     'sede',
     'Sede (Batista Campos)',
-    'Bairro de Batista Campos, Belém — PA',
+    'Rua dos Mundurucus, 1412 — Batista Campos, Belém — PA',
     '(91) 3323-5000',
     '(91) 99389-8000',
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
@@ -119,7 +119,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
   (
     'augusto-montenegro',
     'Augusto Montenegro',
-    'Rod. Augusto Montenegro, nº 130 — Parque Verde, Belém — PA',
+    'Rodovia Augusto Montenegro, 130 — Parque Verde, Belém — PA',
     '(91) 3273-0667',
     '(91) 99389-8000',
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
@@ -132,7 +132,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
   (
     'cidade-nova',
     'Cidade Nova (Ananindeua)',
-    'Conj. Cidade Nova II, Av. SN-3 esq. WE-21, nº 3277 — Ananindeua — PA',
+    'Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21) — Coqueiro, Ananindeua — PA',
     '(91) 3273-0222',
     '(91) 99389-8000',
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',

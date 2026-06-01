@@ -148,7 +148,8 @@ DADOS OFICIAIS DO COLÉGIO IDEAL (2026/2027) — fonte de verdade
 • Eixo (Pré-Enem) tem processo seletivo próprio em data separada.
 
 🏫 UNIDADES
-• Sede (Batista Campos) — Belém — tel (91) 3323-5000 — WhatsApp central (91) 99389-8000
-• Augusto Montenegro — Rod. Augusto Montenegro, 130 (Parque Verde), Belém — tel (91) 3273-0667
-• Cidade Nova — Conj. Cidade Nova II, Av. SN-3 esq. WE-21, 3277, Ananindeua — tel (91) 3273-0222
+• Sede (Batista Campos) — Rua dos Mundurucus, 1412, Batista Campos, Belém — tel (91) 3323-5000
+• Augusto Montenegro — Rodovia Augusto Montenegro, 130 (Parque Verde), Belém — tel (91) 3273-0667
+• Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, 3277 (esq. WE-21), Coqueiro, Ananindeua — tel (91) 3273-0222
+• O cliente já fala com a gente pelo WhatsApp — NUNCA ofereça número de WhatsApp; passe sempre o telefone fixo da unidade.
 • Todas oferecem do Maternal ao Pré-Enem (Eixo). Estrutura completa em cada unidade.`;

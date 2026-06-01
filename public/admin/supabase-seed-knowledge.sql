@@ -90,9 +90,11 @@ END $$;
 -- Limpa entradas antigas (fakes legados) e insere os 4 reais.
 DELETE FROM school_contacts;
 
+-- WhatsApp central removido de propósito: o cliente JÁ fala com o bot pelo
+-- WhatsApp, então não faz sentido o bot devolver um número de WhatsApp. Só os
+-- telefones fixos das unidades/secretaria.
 INSERT INTO school_contacts (name, role_title, phone_number) VALUES
   ('Atendimento Sede',                'Telefone fixo Sede (Batista Campos)',           '559133235000'),
-  ('Atendimento WhatsApp',            'WhatsApp central (atende as 3 unidades)',       '5591993898000'),
   ('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559132730667'),
   ('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222');
 
@@ -108,7 +110,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'Sede (Batista Campos)',
     'Rua dos Mundurucus, 1412 — Batista Campos, Belém — PA',
     '(91) 3323-5000',
-    '(91) 99389-8000',
+    NULL,
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
     'Poliedro',
@@ -121,7 +123,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'Augusto Montenegro',
     'Rodovia Augusto Montenegro, 130 — Parque Verde, Belém — PA',
     '(91) 3273-0667',
-    '(91) 99389-8000',
+    NULL,
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
     'Poliedro',
@@ -134,7 +136,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'Cidade Nova (Ananindeua)',
     'Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21) — Coqueiro, Ananindeua — PA',
     '(91) 3273-0222',
-    '(91) 99389-8000',
+    NULL,
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
     'Poliedro',

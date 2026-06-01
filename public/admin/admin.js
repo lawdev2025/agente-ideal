@@ -55,7 +55,7 @@ const TABLE_SCHEMAS = {
         { name: 'id', label: 'ID (Auto)', type: 'text', readonly: true, hiddenOnAdd: true },
         { name: 'name', label: 'Nome do Setor/Pessoa', type: 'text', required: true },
         { name: 'role_title', label: 'Descrição de Suporte', type: 'text', required: true },
-        { name: 'phone_number', label: 'Telefone (formato internacional, ex: 5591993898000)', type: 'text', required: true }
+        { name: 'phone_number', label: 'Telefone (formato internacional, ex: 5591933235000)', type: 'text', required: true }
     ],
     school_materials: [
         { name: 'id', label: 'ID (Auto)', type: 'text', readonly: true, hiddenOnAdd: true },
@@ -1171,7 +1171,6 @@ const CSV_EXAMPLES = {
     school_contacts: [
         ['name', 'role_title', 'phone_number'],
         ['Atendimento Sede', 'Telefone fixo Sede (Batista Campos)', '559133235000'],
-        ['Atendimento WhatsApp', 'WhatsApp central (atende as 3 unidades)', '5591993898000'],
         ['Atendimento Augusto Montenegro', 'Telefone fixo unidade Augusto Montenegro', '559132730667'],
         ['Atendimento Cidade Nova', 'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222']
     ],
@@ -1184,9 +1183,9 @@ const CSV_EXAMPLES = {
     ],
     school_units: [
         ['id', 'name', 'address', 'phone', 'whatsapp', 'hours', 'levels', 'infrastructure', 'activities', 'capacity'],
-        ['sede', 'Sede (Batista Campos)', 'Batista Campos, Belém — PA', '(91) 3323-5000', '(91) 99389-8000', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE (Núcleo de Artes e Empreendedorismo) a partir de 2027"', 'A confirmar'],
-        ['augusto-montenegro', 'Augusto Montenegro', 'Rod. Augusto Montenegro, 130 — Parque Verde, Belém', '(91) 3273-0667', '(91) 99389-8000', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE a partir de 2027"', 'A confirmar'],
-        ['cidade-nova', 'Cidade Nova (Ananindeua)', 'Conj. Cidade Nova II, Av. SN-3 esq. WE-21, 3277 — Ananindeua', '(91) 3273-0222', '(91) 99389-8000', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE a partir de 2027"', 'A confirmar']
+        ['sede', 'Sede (Batista Campos)', 'Batista Campos, Belém — PA', '(91) 3323-5000', '', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE (Núcleo de Artes e Empreendedorismo) a partir de 2027"', 'A confirmar'],
+        ['augusto-montenegro', 'Augusto Montenegro', 'Rod. Augusto Montenegro, 130 — Parque Verde, Belém', '(91) 3273-0667', '', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE a partir de 2027"', 'A confirmar'],
+        ['cidade-nova', 'Cidade Nova (Ananindeua)', 'Conj. Cidade Nova II, Av. SN-3 esq. WE-21, 3277 — Ananindeua', '(91) 3273-0222', '', 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', '"Quadra coberta,ginásio,campo,piscina,laboratórios,biblioteca,auditório,refeitório,parquinho,brinquedoteca,sala de robótica/maker,sala de música/artes"', '"Cursos específicos,Escolinhas de esporte,NAE a partir de 2027"', 'A confirmar']
     ]
 };
 

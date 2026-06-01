@@ -105,7 +105,6 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO school_contacts (name, role_title, phone_number) VALUES
 ('Atendimento Sede',                'Telefone fixo Sede (Batista Campos)',           '559133235000'),
-('Atendimento WhatsApp',            'WhatsApp central (atende as 3 unidades)',       '5591993898000'),
 ('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559132730667'),
 ('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222')
 ON CONFLICT DO NOTHING;

@@ -181,8 +181,7 @@ export class MessageOrchestrator {
             "Claro! Temos 3 unidades — me diz qual você prefere que eu te passe o número:\n\n" +
             "🏫 *Sede (Batista Campos)*\n" +
             "🏫 *Augusto Montenegro*\n" +
-            "🏫 *Cidade Nova (Ananindeua)*\n\n" +
-            "Ou, se preferir o WhatsApp central que atende as 3, é só dizer *WhatsApp*. 😊";
+            "🏫 *Cidade Nova (Ananindeua)*";
           await this.stateRepository.appendMessage(conversationId, "assistant", ask);
           await this.whatsappClient.sendMessage(studentId, ask);
           return;
@@ -635,7 +634,7 @@ const UNIT_SECRETARIA_PHONE: Record<string, string> = {
 // Resposta documental quando a unidade já é conhecida: aponta a secretaria e
 // passa o telefone DAQUELA unidade.
 function buildDocumentReplyWithUnit(unit: string): string {
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 99389-8000";
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
   return (
     "Boletim, histórico escolar, declarações e qualquer outro documento são " +
     "emitidos direto na *secretaria* da unidade. 📄\n\n" +
@@ -678,7 +677,7 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
     "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'). Sua única tarefa é responder ao cliente em UMA mensagem natural de WhatsApp, usando EXCLUSIVAMENTE o que está no resultado da ferramenta no histórico (role=tool) E nos DADOS OFICIAIS abaixo.",
     "",
     "DADOS OFICIAIS DO COLÉGIO (use estes valores VERBATIM — NUNCA invente outros):",
-    "• Telefones reais: Sede (Batista Campos) (91) 3323-5000 · WhatsApp central (91) 99389-8000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
+    "• Telefones reais (fixos das unidades — o cliente JÁ está no WhatsApp, então NUNCA ofereça número de WhatsApp): Sede (Batista Campos) (91) 3323-5000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
     "• Endereços (informe SEMPRE a rua completa quando perguntarem endereço/rua): Sede/Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21), Coqueiro, Ananindeua-PA.",
     "• 3 unidades no total. Todas oferecem do Maternal ao Pré-Enem (Eixo). Sistema Poliedro.",
     "• Aulas começam 07:30 com 30 min de tolerância, igual nas 3 unidades.",
@@ -689,10 +688,10 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
     "- NÃO escreva 'aguarde', 'um momento', 'vou verificar'.",
     "- NUNCA escreva texto que pareça uma chamada de função (ex: 'escalate_to_specialist(...)'). Você só escreve português natural.",
     "- NÃO repita o resumo bruto da ferramenta — extraia o ponto que o cliente perguntou.",
-    "- ❗ Se o cliente perguntou TELEFONE / NÚMERO / SECRETARIA / WHATSAPP, devolva os números acima literalmente (priorize Sede e WhatsApp central). NUNCA diga 'não tenho essa informação' — você tem essa informação aí em cima.",
+    "- ❗ Se o cliente perguntou TELEFONE / NÚMERO / SECRETARIA, devolva o telefone fixo da unidade pedida (priorize a Sede se ele não disse qual). NUNCA ofereça número de WhatsApp — o cliente já está falando com a gente pelo WhatsApp. NUNCA diga 'não tenho essa informação' — você tem os números aí em cima.",
     "- ❗ Se o cliente perguntar valor/mensalidade/preço/taxa, responda EXATAMENTE: 'Os valores são informados somente na secretaria pra te dar a melhor condição. Posso te passar o telefone pra você falar direto com a equipe?' — NUNCA cite R$. NÃO use 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
     "- ❗ Se o cliente perguntou DUAS coisas (ex: valor + número da secretaria), RESPONDA AS DUAS na mesma mensagem usando os dados acima.",
-    "- PROIBIDO inventar taxa de matrícula, datas de vencimento, políticas de desconto, regras de pagamento, datas de início das aulas, lista de documentos, link de cadastro, prazo de resposta. Pra esses, diga: 'Pra essa informação específica, o melhor é falar direto com a secretaria pelo (91) 99389-8000.'",
+    "- PROIBIDO inventar taxa de matrícula, datas de vencimento, políticas de desconto, regras de pagamento, datas de início das aulas, lista de documentos, link de cadastro, prazo de resposta. Pra esses, diga: 'Pra essa informação específica, o melhor é falar direto com a secretaria da unidade (ex.: Sede (91) 3323-5000).'",
     "- Termine com no MÁXIMO uma pergunta curta de avanço (ou nenhuma pergunta).",
   ];
   if (escalateAfter) {
@@ -712,7 +711,7 @@ function buildChatSystemPrompt(): string {
     "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'), conversando por WhatsApp. Nesta mensagem você está apenas conversando — outras decisões já foram tratadas pelo sistema.",
     "",
     "DADOS REAIS DO COLÉGIO (use APENAS estes — nada fora daqui existe):",
-    "• Telefones: Sede (Batista Campos) (91) 3323-5000 · WhatsApp central (91) 99389-8000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
+    "• Telefones (fixos das unidades — NUNCA ofereça WhatsApp, o cliente já está no WhatsApp): Sede (Batista Campos) (91) 3323-5000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
     "• Endereços (informe SEMPRE a rua completa quando perguntarem endereço/rua): Sede/Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21), Coqueiro, Ananindeua-PA.",
     "• Níveis: Maternal, Jardim I/II, Fundamental 1 (1º-5º), Fundamental 2 (6º-9º), Ensino Médio, Pré-Enem (Eixo). Todos disponíveis nas 3 unidades.",
     "• Início das aulas: 07:30 com 30 min de tolerância. Iguais nas 3 unidades.",
@@ -723,7 +722,7 @@ function buildChatSystemPrompt(): string {
     "- Se o cliente já disse o nome (em mensagens anteriores), USE o nome.",
     "- Se o cliente está confirmando algo ou agradecendo, responda curto e simpático.",
     "- ❗ Se o cliente perguntar VALOR / MENSALIDADE / TAXA / PREÇO / QUANTO CUSTA, responda SEMPRE: 'Os valores são informados somente na secretaria pra te dar a melhor condição. Posso te passar o telefone pra você falar direto com a equipe?' — NUNCA cite R$. NÃO use as frases 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
-    "- ❗ Se o cliente perguntar TELEFONE / NÚMERO / SECRETARIA / WHATSAPP, devolva UM dos números acima — escolha a Sede por padrão a menos que o cliente especifique outra unidade. NUNCA invente número.",
+    "- ❗ Se o cliente perguntar TELEFONE / NÚMERO / SECRETARIA, devolva UM dos números fixos acima — escolha a Sede por padrão a menos que o cliente especifique outra unidade. NUNCA ofereça número de WhatsApp (o cliente já está no WhatsApp) nem invente número.",
     "- Se o cliente está perguntando algo CONCRETO que não está acima (taxa, prazo, documento específico), diga: 'Essa parte quem te confirma é a secretaria — quer o telefone?'",
     "- PROIBIDO inventar QUALQUER número de telefone com DDD diferente de 91. (11), (21), (31)... TODOS proibidos. Se você escreveu (11)... você quebrou a regra.",
     "- PROIBIDO inventar valores em R$. NUNCA escreva 'R$' na resposta.",

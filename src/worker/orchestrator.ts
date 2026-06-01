@@ -466,15 +466,21 @@ export class MessageOrchestrator {
 // Detects when the assistant's reply is a "deflection" to human staff — i.e.
 // it didn't actually answer and is punting to coordenação/secretaria. When
 // this happens we still want a real escalation to fire (Telegram + counter).
-function isDeflectionReply(text: string): boolean {
+//
+// RAIZ DE BUG (não reintroduzir): só pegamos o LLM FINGINDO um handoff humano
+// ("vou pedir pra coordenação", "quem te confirma é a secretaria"). NÃO pegamos
+// "não tenho essa informação" genérico — isso às vezes é a resposta CORRETA
+// (ex: "qual meu nome?" → "não tenho acesso ao seu nome, como te chamo?"). Quando
+// pegávamos isso, o bot reescrevia uma fala boa num "fale com a secretaria"
+// sem sentido — a resposta estranha do print. O prompt já manda o LLM oferecer
+// a secretaria pra dúvidas concretas; essas frases caem nos padrões de punt abaixo.
+export function isDeflectionReply(text: string): boolean {
   const t = (text || "").toLowerCase();
   const patterns = [
     /coordena[çc][ãa]o\s+(te|vai|j[áa])/,
     /quem\s+te\s+(confirma|passa|responde)/,
     /vou\s+(pedir|chamar|avisar)\s+(pra|para|a|o)/,
     /j[áa]\s+vou\s+(pedir|chamar|avisar)/,
-    /n[ãa]o\s+tenho\s+(essa|essas|esse|esses|a)\s+informa[çc]/,
-    /n[ãa]o\s+(tenho|possuo|sei)\s+(essa|esse|essas|esses|o|a)\s+(dado|detalhe|valor|informa)/,
     /entre\s+em\s+contato\s+com\s+(a|o)\s+(coordena|secretaria|secret)/,
     /pe[çc]o\s+(que|para)\s+(a|o)\s+(coordena|secretaria)/,
     /vou\s+(direcionar|encaminhar|repassar)/,
@@ -582,12 +588,21 @@ const SECRETARIA_REDIRECT_REPLY =
   "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\n" +
   "Quer que eu te passe o telefone pra você falar direto com a equipe?";
 
-// Detecta se a mensagem é sobre valor (mensalidade/matrícula/material). Quando
-// é, devolvemos a resposta fixa "valores só presencialmente" e nunca chamamos
-// LLM nem escalamos — ordem do colégio.
-function isPriceOrMaterialQuestion(text: string): boolean {
+// Detecta se a mensagem é sobre o VALOR de mensalidade/matrícula/material.
+// Quando é, devolvemos a resposta fixa "valores só presencialmente" e nunca
+// chamamos LLM nem escalamos — ordem do colégio.
+//
+// RAIZ DE BUG (não reintroduzir): a palavra "matrícula" SOZINHA NÃO entra aqui.
+// "matrícula" tanto é a TAXA (preço) quanto o ATO de se matricular ("como faço
+// a matrícula?", "quais documentos pra matrícula?"). Casá-la crua fazia toda
+// pergunta de PROCESSO cair no boilerplate de valores — a resposta estranha do
+// cliente. Só conta como preço quando há um sinal de custo explícito (valor,
+// taxa, preço, quanto custa/é, etc.), que já cobre "valor/taxa da matrícula".
+export function isPriceOrMaterialQuestion(text: string): boolean {
   const t = (text || "").toLowerCase();
-  return /\b(valor|valores|mensalidade|mensalidades|pre[çc]o|pre[çc]os|custo|custa|quanto\s+(custa|fica|sai|paga)|anuidade|semestralidade|matr[íi]cula|taxa\s+de\s+matr[íi]cula|material\s+did[áa]tico|material\s+escolar|kit\s+escolar)\b/.test(t);
+  // Lookarounds com \p{L} (em vez de \b) porque \b não fecha depois de vogal
+  // acentuada — "quanto é" quebraria com \b. As bordas garantem palavra inteira.
+  return /(?<!\p{L})(valor|valores|mensalidade|mensalidades|pre[çc]o|pre[çc]os|custo|custa|custam|quanto\s+(custa|fica|sai|paga|[ée]|s[ãa]o)|anuidade|semestralidade|taxa|material\s+did[áa]tico|material\s+escolar|kit\s+escolar)(?!\p{L})/u.test(t);
 }
 
 // Focused phrasing prompt — used when we've already chosen the tool and just

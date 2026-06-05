@@ -152,4 +152,10 @@ DADOS OFICIAIS DO COLÉGIO IDEAL (2026/2027) — fonte de verdade
 • Augusto Montenegro — Rodovia Augusto Montenegro, 130 (Parque Verde), Belém — tel (91) 3273-0667
 • Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, 3277 (esq. WE-21), Coqueiro, Ananindeua — tel (91) 3273-0222
 • O cliente já fala com a gente pelo WhatsApp — NUNCA ofereça número de WhatsApp; passe sempre o telefone fixo da unidade.
-• Todas oferecem do Maternal ao Pré-Enem (Eixo). Estrutura completa em cada unidade.`;
+• Todas oferecem do Maternal ao Pré-Enem (Eixo). Estrutura completa em cada unidade.
+
+🔗 LINKS DE AGENDAMENTO DE VISITA (use estes quando o cliente perguntar sobre valores ou quiser conhecer a escola)
+• Sede (Batista Campos): https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-batista-campos&event=visita-ideal-batista-campos
+• Augusto Montenegro: https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-augusto-montenegro&event=visita-ideal-augusto-montenegro
+• Cidade Nova: https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-cidade-nova&event=visita-ideal-cidade-nova
+• Sempre que informar que os valores são presenciais, convide o cliente a agendar uma visita pelo link da unidade de interesse. Se ele não mencionou a unidade, liste os 3 links.`;

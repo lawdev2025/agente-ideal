@@ -244,3 +244,13 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   void hasName;
   return { kind: "ask_llm" };
 }
+
+// Detecta a unidade pelo texto da mensagem — reutilizado pelo orchestrator para
+// associar o link de visita correto sem duplicar a lógica de UNIT_NAME_PATTERNS.
+export function detectUnit(text: string): string | undefined {
+  const t = (text || "").trim();
+  for (const { regex, unit } of UNIT_NAME_PATTERNS) {
+    if (regex.test(t)) return unit;
+  }
+  return undefined;
+}

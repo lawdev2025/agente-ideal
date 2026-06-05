@@ -31,8 +31,12 @@ CREATE TABLE IF NOT EXISTS school_units (
   material_annual  NUMERIC(10,2),
   infrastructure   TEXT,
   activities       TEXT,
-  capacity         TEXT
+  capacity         TEXT,
+  visit_link       TEXT
 );
+
+-- Garante coluna visit_link em instâncias que já existiam antes desta versão
+ALTER TABLE school_units ADD COLUMN IF NOT EXISTS visit_link TEXT;
 
 CREATE TABLE IF NOT EXISTS school_levels (
   id               TEXT PRIMARY KEY,
@@ -104,7 +108,7 @@ INSERT INTO school_contacts (name, role_title, phone_number) VALUES
 -- níveis, sistema, infraestrutura e atividades.
 DELETE FROM school_units;
 
-INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, system, infrastructure, activities, capacity) VALUES
+INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, system, infrastructure, activities, capacity, visit_link) VALUES
   (
     'sede',
     'Sede (Batista Campos)',
@@ -116,7 +120,8 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'Poliedro',
     'Quadra coberta, ginásio, campo, piscina, laboratórios de ciências e informática, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes',
     'Cursos específicos, Escolinhas de Esporte e NAE (Núcleo de Artes e Empreendedorismo) a partir de 2027 — turno vespertino',
-    'A confirmar'
+    'A confirmar',
+    'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-batista-campos&event=visita-ideal-batista-campos'
   ),
   (
     'augusto-montenegro',
@@ -129,7 +134,8 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'Poliedro',
     'Quadra coberta, ginásio, campo, piscina, laboratórios de ciências e informática, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes',
     'Cursos específicos, Escolinhas de Esporte e NAE (Núcleo de Artes e Empreendedorismo) a partir de 2027 — turno vespertino',
-    'A confirmar'
+    'A confirmar',
+    'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-augusto-montenegro&event=visita-ideal-augusto-montenegro'
   ),
   (
     'cidade-nova',
@@ -142,7 +148,8 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'Poliedro',
     'Quadra coberta, ginásio, campo, piscina, laboratórios de ciências e informática, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes',
     'Cursos específicos, Escolinhas de Esporte e NAE (Núcleo de Artes e Empreendedorismo) a partir de 2027 — turno vespertino',
-    'A confirmar'
+    'A confirmar',
+    'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-cidade-nova&event=visita-ideal-cidade-nova'
   );
 
 

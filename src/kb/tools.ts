@@ -204,7 +204,7 @@ const consultarContatoMatriculaTool: KBTool = {
 const consultarUnidadesTool: KBTool = {
   name: "get_unit_info",
   description:
-    "Obtém informações sobre as unidades/campi do Colégio Ideal: endereço, telefone, WhatsApp, horário de funcionamento, níveis oferecidos, infraestrutura, atividades extracurriculares e capacidade (número de alunos). Use sempre que o cliente perguntar sobre unidade, sede, campus, endereço, onde fica, horário de funcionamento da escola, quantos alunos, capacidade, infraestrutura, atividades. Aceita o argumento opcional 'unit' com nome da unidade (Sede/Batista Campos, Augusto Montenegro, Cidade Nova). Se não especificar, retorna resumo de todas.",
+    "Obtém informações sobre as unidades/campi do Colégio Ideal: endereço, telefone fixo, horário de funcionamento, níveis oferecidos, infraestrutura, atividades extracurriculares, capacidade e link de agendamento de visita. Use sempre que o cliente perguntar sobre unidade, sede, campus, endereço, onde fica, horário de funcionamento da escola, quantos alunos, capacidade, infraestrutura, atividades ou quiser agendar uma visita. Aceita o argumento opcional 'unit' com nome da unidade (Sede/Batista Campos, Augusto Montenegro, Cidade Nova). Se não especificar, retorna resumo de todas.",
   inputSchema: {
     type: "object",
     properties: {
@@ -232,12 +232,13 @@ const consultarUnidadesTool: KBTool = {
         const lines: string[] = [`🏫 ${u.name}`];
         if (u.address) lines.push(`📍 Endereço: ${u.address}`);
         if (u.phone) lines.push(`📞 Telefone: ${u.phone}`);
-        if (u.whatsapp) lines.push(`💬 WhatsApp: ${u.whatsapp}`);
+        // whatsapp omitido intencionalmente: o cliente já está no WhatsApp
         if (u.hours) lines.push(`🕐 Horário: ${u.hours}`);
         if (u.levels) lines.push(`🎓 Níveis: ${u.levels}`);
         if (u.infrastructure) lines.push(`🏗️ Infraestrutura: ${u.infrastructure}`);
         if (u.activities) lines.push(`⚽ Atividades: ${u.activities}`);
         if (u.capacity) lines.push(`👥 Capacidade: ${u.capacity}`);
+        if (u.visit_link) lines.push(`🗓️ Agendar visita: ${u.visit_link}`);
         return lines.join("\n");
       };
 

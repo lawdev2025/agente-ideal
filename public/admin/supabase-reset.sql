@@ -63,8 +63,11 @@ CREATE TABLE IF NOT EXISTS school_units (
   material_annual  NUMERIC(10,2),
   infrastructure   TEXT,
   activities       TEXT,
-  capacity         TEXT
+  capacity         TEXT,
+  visit_link       TEXT
 );
+
+ALTER TABLE school_units ADD COLUMN IF NOT EXISTS visit_link TEXT;
 
 -- ── Tabelas do bot (WhatsApp) ────────────────────────────────
 
@@ -119,10 +122,10 @@ INSERT INTO school_levels (id, nivel, descricao, preco_mensal, preco_semestral, 
 ON CONFLICT (id) DO NOTHING;
 
 -- Unidades (restauradas)
-INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, system, infrastructure, activities, capacity) VALUES
-  ('sede',              'Sede (Batista Campos)',     'Batista Campos, Belém — PA',                                     '(91) 3323-5000', NULL, 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', 'Poliedro', 'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes', 'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027', 'A confirmar'),
-  ('augusto-montenegro','Augusto Montenegro',        'Rod. Augusto Montenegro, 130 — Parque Verde, Belém',             '(91) 3273-0667', NULL, 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', 'Poliedro', 'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes', 'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027', 'A confirmar'),
-  ('cidade-nova',       'Cidade Nova (Ananindeua)',  'Conj. Cidade Nova II, Av. SN-3 esq. WE-21, 3277 — Ananindeua',   '(91) 3273-0222', NULL, 'Seg-Sex: entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', 'Poliedro', 'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes', 'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027', 'A confirmar')
+INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, system, infrastructure, activities, capacity, visit_link) VALUES
+  ('sede',              'Sede (Batista Campos)',    'Rua dos Mundurucus, 1412 — Batista Campos, Belém — PA',                                              '(91) 3323-5000', NULL, 'Segunda a sexta, entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', 'Poliedro', 'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes', 'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027', 'A confirmar', 'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-batista-campos&event=visita-ideal-batista-campos'),
+  ('augusto-montenegro','Augusto Montenegro',       'Rodovia Augusto Montenegro, 130 — Parque Verde, Belém — PA',                                         '(91) 3273-0667', NULL, 'Segunda a sexta, entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', 'Poliedro', 'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes', 'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027', 'A confirmar', 'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-augusto-montenegro&event=visita-ideal-augusto-montenegro'),
+  ('cidade-nova',       'Cidade Nova (Ananindeua)', 'Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21) — Coqueiro, Ananindeua — PA',       '(91) 3273-0222', NULL, 'Segunda a sexta, entrada 07:30 com 30 min de tolerância', 'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)', 'Poliedro', 'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes', 'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027', 'A confirmar', 'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-cidade-nova&event=visita-ideal-cidade-nova')
 ON CONFLICT (id) DO NOTHING;
 
 -- Produtos e turmas (26 itens — preencha mensalidade/material/horário pelo painel)

@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS school_units (
   name             TEXT NOT NULL,              -- nome exibido da unidade
   address          TEXT NOT NULL,              -- endereço completo
   phone            TEXT,                       -- telefone fixo
-  whatsapp         TEXT,                       -- número WhatsApp
+  whatsapp         TEXT,                       -- número WhatsApp (manter NULL)
   hours            TEXT,                       -- horário de funcionamento
   levels           TEXT,                       -- níveis de ensino oferecidos
   system           TEXT,                       -- sistema de ensino (ex: Poliedro)
@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS school_units (
   material_annual  NUMERIC(10,2),              -- material didático anual
   infrastructure   TEXT,                       -- infraestrutura disponível
   activities       TEXT,                       -- atividades extracurriculares
-  capacity         TEXT                        -- capacidade estimada
+  capacity         TEXT,                       -- capacidade estimada
+  visit_link       TEXT                        -- link de agendamento de visita presencial
 );
 
 -- ---------------------------------------------------------------
@@ -147,49 +148,52 @@ INSERT INTO school_products (category, name, description, monthly_fee, material_
   ('Cursos Específicos', 'Educação Financeira', 'Curso prático de finanças pessoais e empreendedorismo para jovens do EM e EF final.', NULL, NULL, NULL, NULL)
 ;
 
-INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, system, enrollment_fee, monthly_fee, material_annual, infrastructure, activities, capacity)
+INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, system, enrollment_fee, monthly_fee, material_annual, infrastructure, activities, capacity, visit_link)
 VALUES
   (
     'sede',
     'Sede (Batista Campos)',
-    'Batista Campos, Belém — PA',
+    'Rua dos Mundurucus, 1412 — Batista Campos, Belém — PA',
     '(91) 3323-5000',
     NULL,
-    'Seg-Sex: entrada 07:30 com 30 min de tolerância',
+    'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
     'Poliedro',
     NULL, NULL, NULL,
     'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes',
     'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027',
-    'A confirmar'
+    'A confirmar',
+    'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-batista-campos&event=visita-ideal-batista-campos'
   ),
   (
     'augusto-montenegro',
     'Augusto Montenegro',
-    'Rod. Augusto Montenegro, 130 — Parque Verde, Belém',
+    'Rodovia Augusto Montenegro, 130 — Parque Verde, Belém — PA',
     '(91) 3273-0667',
     NULL,
-    'Seg-Sex: entrada 07:30 com 30 min de tolerância',
+    'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
     'Poliedro',
     NULL, NULL, NULL,
     'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes',
     'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027',
-    'A confirmar'
+    'A confirmar',
+    'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-augusto-montenegro&event=visita-ideal-augusto-montenegro'
   ),
   (
     'cidade-nova',
     'Cidade Nova (Ananindeua)',
-    'Conj. Cidade Nova II, Av. SN-3 esq. WE-21, 3277 — Ananindeua',
+    'Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21) — Coqueiro, Ananindeua — PA',
     '(91) 3273-0222',
     NULL,
-    'Seg-Sex: entrada 07:30 com 30 min de tolerância',
+    'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
     'Poliedro',
     NULL, NULL, NULL,
     'Quadra coberta, ginásio, campo, piscina, laboratórios, biblioteca, auditório, refeitório, parquinho, brinquedoteca, sala de robótica/maker, sala de música/artes',
     'Cursos específicos, Escolinhas de Esporte, NAE a partir de 2027',
-    'A confirmar'
+    'A confirmar',
+    'https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-cidade-nova&event=visita-ideal-cidade-nova'
   )
 ON CONFLICT (id) DO NOTHING;
 

@@ -70,12 +70,22 @@ const TABLE_SCHEMAS = {
         { name: 'name',           label: 'Nome da Unidade',              type: 'text',     required: true },
         { name: 'address',        label: 'Endereço',                     type: 'text',     required: true },
         { name: 'phone',          label: 'Telefone',                     type: 'text',     required: false },
-        { name: 'whatsapp',       label: 'WhatsApp',                     type: 'text',     required: false },
+        { name: 'whatsapp',       label: 'WhatsApp (deixe vazio)',       type: 'text',     required: false },
         { name: 'hours',          label: 'Horário de Funcionamento',     type: 'text',     required: false },
         { name: 'levels',         label: 'Níveis de Ensino Oferecidos',  type: 'text',     required: false },
         { name: 'infrastructure', label: 'Infraestrutura',               type: 'textarea', required: false },
         { name: 'activities',     label: 'Atividades Extracurriculares', type: 'text',     required: false },
-        { name: 'capacity',       label: 'Capacidade Estimada',          type: 'text',     required: false }
+        { name: 'capacity',       label: 'Capacidade Estimada',          type: 'text',     required: false },
+        { name: 'visit_link',     label: 'Link de Agendamento de Visita', type: 'text',    required: false },
+        { name: 'extra_info',     label: 'Observações (o bot usa como contexto)', type: 'textarea', required: false }
+    ],
+    school_faq: [
+        { name: 'id',         label: 'ID (Auto)',  type: 'text',     readonly: true, hiddenOnAdd: true },
+        { name: 'gatilhos',   label: 'Gatilhos (palavras/frases separadas por vírgula)', type: 'textarea', required: true },
+        { name: 'resposta',   label: 'Resposta EXATA que o bot envia',                   type: 'textarea', required: true },
+        { name: 'unit_id',    label: 'Unidade (opcional)',  type: 'select', required: false, dynamicOptions: 'school_units' },
+        { name: 'ativo',      label: 'Ativo',       type: 'select', required: true, options: ['true', 'false'] },
+        { name: 'prioridade', label: 'Prioridade (maior vence em empate)', type: 'number', required: false }
     ]
 };
 
@@ -967,7 +977,7 @@ async function loadDatabaseTable() {
                 let val = row[col.name];
                 if (val === null || val === undefined) val = '<span class="null-val">-</span>';
                 else if (col.name === 'unit_id') val = unitNameById[val] || `<code>${val}</code>`;
-                else if (col.type === 'number') val = `R$ ${parseFloat(val).toFixed(2)}`;
+                else if (col.type === 'number') val = /fee|preco|valor|annual/i.test(col.name) ? `R$ ${parseFloat(val).toFixed(2)}` : String(val);
                 else if (col.name === 'image_url' && val && val.startsWith('http')) val = `<a href="${val}" target="_blank" class="db-img-preview-link"><i class="fa-solid fa-image"></i> Ver Foto</a>`;
                 else if (typeof val === 'string' && val.length > 60) val = val.substring(0, 60) + '...';
                 html += `<td>${val}</td>`;

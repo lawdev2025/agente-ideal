@@ -35,8 +35,22 @@ CREATE TABLE IF NOT EXISTS school_units (
   visit_link       TEXT
 );
 
--- Garante coluna visit_link em instâncias que já existiam antes desta versão
+-- Garante colunas novas em instâncias que já existiam antes desta versão
 ALTER TABLE school_units ADD COLUMN IF NOT EXISTS visit_link TEXT;
+-- extra_info: observações livres da unidade que o bot injeta no contexto do LLM
+ALTER TABLE school_units ADD COLUMN IF NOT EXISTS extra_info TEXT;
+
+-- RESPOSTAS DIRETAS: o dono cadastra gatilho + resposta exata pelo painel e o
+-- bot responde VERBATIM, sem LLM. É como adicionar info nova sem precisar de
+-- código. gatilhos = palavras/frases separadas por vírgula.
+CREATE TABLE IF NOT EXISTS school_faq (
+  id          BIGSERIAL PRIMARY KEY,
+  gatilhos    TEXT    NOT NULL,
+  resposta    TEXT    NOT NULL,
+  unit_id     TEXT,
+  ativo       BOOLEAN NOT NULL DEFAULT TRUE,
+  prioridade  INTEGER NOT NULL DEFAULT 0
+);
 
 CREATE TABLE IF NOT EXISTS school_levels (
   id               TEXT PRIMARY KEY,
@@ -80,6 +94,7 @@ ALTER TABLE school_units     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_levels    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_products  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE school_faq       ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_contacts')  THEN CREATE POLICY "allow_all_school_contacts"  ON school_contacts  FOR ALL USING (true) WITH CHECK (true); END IF;
@@ -87,6 +102,7 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_levels')    THEN CREATE POLICY "allow_all_school_levels"    ON school_levels    FOR ALL USING (true) WITH CHECK (true); END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_products')  THEN CREATE POLICY "allow_all_school_products"  ON school_products  FOR ALL USING (true) WITH CHECK (true); END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_materials') THEN CREATE POLICY "allow_all_school_materials" ON school_materials FOR ALL USING (true) WITH CHECK (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'allow_all_school_faq')       THEN CREATE POLICY "allow_all_school_faq"       ON school_faq       FOR ALL USING (true) WITH CHECK (true); END IF;
 END $$;
 
 
@@ -218,7 +234,25 @@ BEGIN
 END $$;
 
 
--- ── 5. VERIFICAÇÃO ────────────────────────────────────────────
+-- ── 5. RESPOSTAS DIRETAS (exemplos reais) ─────────────────────
+-- Recria os exemplos de fábrica. NÃO apaga linhas que o dono criou pelo painel
+-- (só remove as que têm prioridade negativa = marcadas como "exemplo seed").
+DELETE FROM school_faq WHERE prioridade = -1;
+
+INSERT INTO school_faq (gatilhos, resposta, unit_id, ativo, prioridade) VALUES
+  (
+    'uniforme, farda, malharia, fardamento',
+    'O uniforme é obrigatório e você compra direto na *malharia* da unidade. 👕 Qualquer dúvida sobre tamanhos e peças, a secretaria te orienta!',
+    NULL, TRUE, -1
+  ),
+  (
+    'material didatico, material escolar, livros, livro, apostila, apostilas',
+    'O material didático é do sistema *Poliedro* e comprado direto na escola — à vista, parcelado ou no Pix. 📚 Os valores a equipe te passa presencialmente na secretaria.',
+    NULL, TRUE, -1
+  );
+
+
+-- ── 6. VERIFICAÇÃO ────────────────────────────────────────────
 SELECT 'school_contacts'  AS tabela, COUNT(*) AS linhas FROM school_contacts
 UNION ALL
 SELECT 'school_units',               COUNT(*)            FROM school_units
@@ -228,4 +262,6 @@ UNION ALL
 SELECT 'school_products',            COUNT(*)            FROM school_products
 UNION ALL
 SELECT 'school_materials',           COUNT(*)            FROM school_materials
+UNION ALL
+SELECT 'school_faq',                 COUNT(*)            FROM school_faq
 ORDER BY tabela;

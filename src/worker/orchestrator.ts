@@ -6,6 +6,7 @@ import { EscalationHandler } from "../handoff/telegram";
 import { logger } from "../logger";
 import { config } from "../config";
 import { routeIntent, RoutedIntent, detectUnit } from "./intent-router";
+import { matchDirectResponse } from "../kb/direct-responses";
 
 export interface ConversationMessage {
   role: string;
@@ -118,6 +119,20 @@ export class MessageOrchestrator {
             }
           }
         }
+      }
+
+      // RESPOSTAS DIRETAS (school_faq): info que o dono cadastrou no painel com
+      // gatilho + resposta exata. Se a mensagem bate num gatilho, devolvemos a
+      // resposta VERBATIM — sem LLM, que não pode omitir nem negar. Avaliado
+      // antes do roteamento pra qualquer assunto novo funcionar sem código.
+      // Fica depois do guard de preço (linha ~75) e do pause: a política de
+      // valores e o handoff humano continuam tendo prioridade.
+      const direct = await matchDirectResponse(userMessage);
+      if (direct) {
+        logger.info({ studentId }, "Direct response (school_faq) matched — sending verbatim");
+        await this.stateRepository.appendMessage(conversationId, "assistant", direct);
+        await this.whatsappClient.sendMessage(studentId, direct);
+        return;
       }
 
       // Have we escalated this conversation already? If so, skip escalation

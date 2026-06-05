@@ -239,6 +239,9 @@ const consultarUnidadesTool: KBTool = {
         if (u.activities) lines.push(`⚽ Atividades: ${u.activities}`);
         if (u.capacity) lines.push(`👥 Capacidade: ${u.capacity}`);
         if (u.visit_link) lines.push(`🗓️ Agendar visita: ${u.visit_link}`);
+        // Observações livres cadastradas no painel (campo extra_info): info
+        // extra da unidade que o dono quer que o bot use.
+        if (u.extra_info) lines.push(`ℹ️ Observações: ${u.extra_info}`);
         return lines.join("\n");
       };
 

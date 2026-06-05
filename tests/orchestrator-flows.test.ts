@@ -365,6 +365,60 @@ describe("Intent router: necessidade documental → document_request", () => {
   });
 });
 
+describe("Intent router: pedido de visita / link → visit_request", () => {
+  it("'Quero fazer uma visita a unidade' → visit_request (não unit_info)", () => {
+    expect(routeIntent("Quero fazer uma visita a unidade", true).kind).toBe("visit_request");
+  });
+  it("'quero visitar a Cidade Nova' → visit_request + unit", () => {
+    const r = routeIntent("quero visitar a Cidade Nova", true);
+    expect(r.kind).toBe("visit_request");
+    if (r.kind === "visit_request") expect(r.unit).toBe("Cidade Nova");
+  });
+  it("'Tem link?' → visit_request (o único link é o de visita)", () => {
+    expect(routeIntent("Tem link?", true).kind).toBe("visit_request");
+  });
+  it("'me manda o link de agendamento' → visit_request", () => {
+    expect(routeIntent("me manda o link de agendamento", true).kind).toBe("visit_request");
+  });
+  it("'quero conhecer a escola' → visit_request", () => {
+    expect(routeIntent("quero conhecer a escola", true).kind).toBe("visit_request");
+  });
+});
+
+describe("Orchestrator: pedido de visita → link determinístico (reproduz o print)", () => {
+  it("'Quero fazer uma visita a unidade' (sem unidade) → lista os 3 links, sem LLM", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "João" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Quero fazer uma visita a unidade", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/quillbooking_calendar=agendamento-ideal-batista-campos/);
+    expect(sent).toMatch(/quillbooking_calendar=agendamento-ideal-cidade-nova/);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+  });
+
+  it("'Cidade nova' e depois 'Tem link?' → manda SÓ o link da Cidade Nova, sem negar", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Oi" },
+        { role: "user", content: "João" },
+        { role: "user", content: "Quero fazer uma visita a unidade" },
+        { role: "assistant", content: "Temos 3 unidades, qual você prefere?" },
+        { role: "user", content: "Cidade nova" },
+        { role: "assistant", content: "Perfeito!" },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Tem link?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/quillbooking_calendar=agendamento-ideal-cidade-nova/);
+    expect(sent).not.toMatch(/não tem link|nao tem link/i);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe("Intent router: detecta unit em pergunta de contato", () => {
   it("'numero da secretaria da Cidade Nova' → enrollment_contact com unit", () => {
     const r = routeIntent("numero da secretaria da Cidade Nova", false);

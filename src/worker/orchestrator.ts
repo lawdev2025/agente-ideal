@@ -163,6 +163,20 @@ export class MessageOrchestrator {
         return;
       }
 
+      // Pedido de visita / link de agendamento: resposta DETERMINÍSTICA com o
+      // link da unidade (sem LLM — o LLM já negou ter link mesmo com o link no
+      // prompt). Se a unidade não veio na mensagem, tenta achar no histórico
+      // recente (ex.: cliente disse "Cidade Nova" e depois "tem link?").
+      if (intent.kind === "visit_request") {
+        await this.handleVisitRequest(
+          conversationId,
+          studentId,
+          intent.unit,
+          conversationHistory
+        );
+        return;
+      }
+
       // Deterministic path: clear matrícula/contact/unit questions go straight
       // to the right tool — we don't trust the LLM to route correctly.
       if (
@@ -435,6 +449,40 @@ export class MessageOrchestrator {
     );
   }
 
+  // Pedido de visita / link de agendamento: resposta DETERMINÍSTICA com o link
+  // da unidade. Se a unidade não veio na mensagem atual, procura no histórico
+  // recente (cliente disse "Cidade Nova" e na mensagem seguinte só "tem link?").
+  // Sem LLM e sem pausar o bot — visita é lead quente, então avisa a equipe.
+  private async handleVisitRequest(
+    conversationId: string,
+    studentId: string,
+    unit: string | undefined,
+    conversationHistory: ConversationMessage[]
+  ): Promise<void> {
+    const resolvedUnit = unit ?? this.findRecentUnit(conversationHistory);
+    const reply = resolvedUnit
+      ? buildVisitReplyWithUnit(resolvedUnit)
+      : VISIT_ASK_UNIT_REPLY;
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    await this.softNotifyTeam(
+      conversationId,
+      studentId,
+      `Cliente quer agendar VISITA${resolvedUnit ? ` (${resolvedUnit})` : ""}.`
+    );
+  }
+
+  // Varre o histórico do mais recente pro mais antigo e devolve a primeira
+  // unidade citada — usado pra resolver "tem link?" depois que o cliente já
+  // disse de qual unidade estava falando.
+  private findRecentUnit(history: ConversationMessage[]): string | undefined {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const u = detectUnit(history[i]?.content ?? "");
+      if (u) return u;
+    }
+    return undefined;
+  }
+
   // Aviso silencioso pra equipe no Telegram: registra no histórico e notifica
   // o grupo, MAS não pausa o bot nem manda "vou pedir pra coordenação" pro
   // cliente. Usado quando o bot redireciona pra secretaria sem virar handoff.
@@ -617,6 +665,26 @@ const VISIT_LINKS: Record<string, string> = {
   "Cidade Nova":
     "https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-cidade-nova&event=visita-ideal-cidade-nova",
 };
+
+// Resposta determinística de visita quando a unidade é conhecida: manda o link
+// direto. Sem LLM — garante que o link SEMPRE aparece.
+function buildVisitReplyWithUnit(unit: string): string {
+  const link = VISIT_LINKS[unit] ?? VISIT_LINKS["Batista Campos"];
+  return (
+    `Que ótimo que você quer conhecer a gente! 🎉\n\n` +
+    `Pra agendar sua visita à unidade *${unit}*, é só clicar no link e escolher o melhor horário:\n` +
+    `👉 ${link}\n\n` +
+    `Qualquer dúvida, é só chamar aqui! 😊`
+  );
+}
+
+// Resposta de visita sem unidade definida: lista os 3 links pra escolher.
+const VISIT_ASK_UNIT_REPLY =
+  "Que ótimo que você quer conhecer a gente! 🎉\n\n" +
+  "Temos 3 unidades — é só clicar no link da que você prefere pra agendar a visita:\n" +
+  `🏫 *Sede (Batista Campos)*: ${VISIT_LINKS["Batista Campos"]}\n` +
+  `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
+  `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}`;
 
 // Resposta canônica para qualquer pergunta de valor. Centralizada aqui pra
 // nunca divergir entre paths (top-level, sanitizer, fallback).

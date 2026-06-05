@@ -32,6 +32,13 @@ export type RoutedIntent =
    */
   | { kind: "document_request"; unit?: string }
   /**
+   * Pedido de visita / agendamento. O cliente quer conhecer a escola ou pediu
+   * o link de agendamento. Respondido de forma DETERMINÍSTICA com o link de
+   * visita da unidade (ou os 3 links se não disse qual) — sem LLM, porque o
+   * LLM já negou ter link mesmo com o link no prompt. NÃO pausa o bot.
+   */
+  | { kind: "visit_request"; unit?: string }
+  /**
    * HARD handoff: pause the bot and bring a human in. Reserved for the two
    * cases that truly need a person — the client explicitly asked for a human,
    * or the topic is entirely outside the school's scope.
@@ -125,6 +132,13 @@ const SOFT_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
 const DOCUMENT_KEYWORDS =
   /\b(boletim|hist[óo]rico\s+escolar|hist[óo]rico|declara[çc][ãa]o|atestado|segunda\s+via|2[ªa]\s+via|documenta[çc][ãa]o|documento|documentos|transfer[êe]ncia)\b/i;
 
+// Pedido de visita / agendamento. "visita", "visitar" e "conhecer a escola" são
+// inequívocos. "link" sozinho também entra: o ÚNICO link que a gente passa é o
+// de agendamento de visita, então "tem link?" sempre se refere a isso. Cobre o
+// caso real em que o cliente diz "Quero fazer uma visita" e depois "Tem link?".
+const VISIT_KEYWORDS =
+  /\b(visita|visitar|visitas|agendar\s+(uma\s+)?visita|agendamento\s+de\s+visita|conhecer\s+(a\s+|o\s+)?(escola|unidade|col[ée]gio|estrutura)|tem\s+link|manda[r]?\s+o\s+link|link\s+de\s+agendamento|link\s+da\s+visita|\blink\b)/i;
+
 const ENROLLMENT_KEYWORDS =
   /\b(mensalidade|valor|valores|pre[çc]o|custo|anuidade|semestral|matr[íi]cula|matricular|matriculando|s[ée]rie|turma|curso|aula|hor[áa]rio|turno|matutino|vespertino|integral|fundamental|m[ée]dio|enem|cursinho|terceir[ãa]o|pr[ée][-\s]?enem|incluso|material|simulado|colegial|anos?\s+iniciais|anos?\s+finais|[1-9][ºo°]\s*ano|[1-3][ªa]\s*s[ée]rie)\b/i;
 
@@ -190,6 +204,14 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   // contato/unit_info pra "histórico da Batista Campos" não virar endereço.
   if (DOCUMENT_KEYWORDS.test(text) && !hasEnrollmentSignal) {
     return { kind: "document_request", unit: matchedUnit };
+  }
+
+  // Pedido de visita / link de agendamento → resposta determinística com o link.
+  // Vem ANTES de unit_info e enrollment: "quero fazer uma visita à unidade" tem
+  // a palavra "unidade" (cairia em unit_info) e o cliente pode citar um nível
+  // ("visita pra ver o médio"), mas a intenção principal é agendar a visita.
+  if (VISIT_KEYWORDS.test(text)) {
+    return { kind: "visit_request", unit: matchedUnit };
   }
 
   // Mixed intent: clear enrollment question PLUS a soft off-scope topic

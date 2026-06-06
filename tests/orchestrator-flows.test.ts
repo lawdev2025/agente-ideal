@@ -204,6 +204,74 @@ describe("Orchestrator: valor/mensalidade/matrícula/material → resposta fixa 
   }
 });
 
+describe("Orchestrator: enrollment_info determinístico (sem LLM) quando há nível", () => {
+  it("nível + unidade → entrega completa (link + telefone), sem LLM", async () => {
+    const m = buildMocks({
+      displayName: "João",
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "João" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "tem ensino médio na cidade nova?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/João/); // nome interpolado
+    expect(sent).toMatch(/presencialmente/i);
+    expect(sent).toMatch(/quillbooking_calendar=agendamento-ideal-cidade-nova/); // link da unidade
+    expect(sent).toMatch(/3273-0222/); // telefone da Cidade Nova
+    expect(sent).not.toMatch(/R\$/);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.escalation.escalateToGroup).not.toHaveBeenCalled();
+  });
+
+  it("nível sem unidade → pergunta qual unidade, sem LLM", async () => {
+    const m = buildMocks({
+      displayName: "Maria",
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Maria" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero matricular meu filho no 5º ano", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/qual/i);
+    expect(sent).toMatch(/Batista Campos/);
+    expect(sent).toMatch(/Augusto Montenegro/);
+    expect(sent).toMatch(/Cidade Nova/);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("horário do médio → responde 07:30 fixo, sem LLM", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "qual o horário do ensino médio?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/07:30/);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("mixed: 'tem médio e desconto pra irmão?' → responde matrícula + aponta secretaria, avisa equipe, sem LLM", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "tem ensino médio e desconto pra irmão?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/secretaria/i);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    // tema off-scope avisado em silêncio, sem pausar
+    expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+  });
+
+  it("enrollment VAGO sem nível (curso genérico) → mantém LLM (válvula de segurança)", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "queria informações sobre os cursos", "u1");
+    expect(m.llm.generateMessage).toHaveBeenCalled();
+  });
+});
+
 describe("Orchestrator: deflexão LLM em pergunta NÃO-preço → secretaria (nunca preço)", () => {
   it("LLM defere uma dúvida concreta → redirect secretaria + Telegram silencioso, sem preço", async () => {
     const m = buildMocks({

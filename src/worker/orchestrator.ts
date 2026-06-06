@@ -215,6 +215,22 @@ export class MessageOrchestrator {
           await this.whatsappClient.sendMessage(studentId, ask);
           return;
         }
+        // enrollment_info COM nível concreto (médio, fundamental, etc.) →
+        // resposta determinística por template, SEM chamar o Haiku. A tool já
+        // retorna texto fixo (política presencial), então frasear com LLM era
+        // desperdício. Sinal vago (sem nível, ex.: "aula de natação") cai no
+        // fluxo LLM abaixo — que serve de válvula pra palavra-chave disparada
+        // por engano (a LLM percebe que não existe e redireciona).
+        if (intent.kind === "enrollment_info" && intent.nivel) {
+          await this.handleEnrollmentInfo(
+            conversationId,
+            studentId,
+            userMessage,
+            intent,
+            contact.name
+          );
+          return;
+        }
         await this.runDeterministicToolFlow(
           conversationId,
           studentId,
@@ -315,6 +331,7 @@ export class MessageOrchestrator {
     try {
       const r = await this.llmProvider.generateMessage(userMessage, updatedConv, [], {
         systemPromptOverride: phrasingPrompt,
+        flow: escalateAfter ? "phrasing+escalateAfter" : "phrasing",
       });
       reply = sanitizeReply(r.message?.trim() ?? "");
     } catch (e) {
@@ -356,6 +373,31 @@ export class MessageOrchestrator {
     void conversationHistory;
   }
 
+  // Resposta determinística de matrícula (enrollment_info com nível concreto):
+  // monta o texto por template e envia, SEM tool e SEM LLM. Se a mensagem trazia
+  // um tema off-scope junto (escalateAfter), avisa a equipe em silêncio depois —
+  // mesmo comportamento do fluxo antigo, só que sem o custo do fraseamento.
+  private async handleEnrollmentInfo(
+    conversationId: string,
+    studentId: string,
+    userMessage: string,
+    intent: Extract<RoutedIntent, { kind: "enrollment_info" }>,
+    name: string | null
+  ): Promise<void> {
+    const reply = buildEnrollmentReply({
+      nivel: intent.nivel,
+      unit: intent.unit,
+      name,
+      asksSchedule: SCHEDULE_KEYWORDS.test(userMessage),
+      escalateAfter: intent.escalateAfter,
+    });
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    if (intent.escalateAfter) {
+      await this.softNotifyTeam(conversationId, studentId, intent.escalateAfter);
+    }
+  }
+
   // Pure-chat path for ambiguous messages (greetings, name capture, small
   // talk between tool-driven turns). We deliberately pass NO tools — the
   // intent router is responsible for every tool-triggering case, so anything
@@ -387,7 +429,7 @@ export class MessageOrchestrator {
       userMessage,
       conversationHistory,
       [],
-      { systemPromptOverride: chatPrompt }
+      { systemPromptOverride: chatPrompt, flow: "chat" }
     );
 
     let reply = sanitizeReply(response.message?.trim() ?? "");
@@ -727,6 +769,62 @@ function buildPresentialValuesReply(unit?: string): string {
   );
 }
 
+// Sinais de pergunta sobre HORÁRIO/turno dentro de uma intenção de matrícula.
+// O horário é igual nas 3 unidades, então respondemos direto (sem pedir unidade).
+const SCHEDULE_KEYWORDS = /\b(hor[áa]rio|turno|matutino|vespertino|integral)\b/i;
+
+// Resposta DETERMINÍSTICA para enrollment_info quando já temos um nível concreto
+// (médio, fundamental, etc.). Substitui a chamada de fraseamento ao Haiku: a tool
+// get_enrollment_info já devolve texto fixo (política presencial), então frasear
+// com LLM era token gasto à toa. Interpola o nome do cliente quando disponível.
+// NÃO é usada para sinais vagos ("aula", "curso" sem série) — esses seguem no
+// fluxo LLM, que serve de válvula pra palavras-chave que disparam por engano.
+function buildEnrollmentReply(opts: {
+  nivel?: string;
+  unit?: string;
+  name?: string | null;
+  asksSchedule: boolean;
+  escalateAfter?: string;
+}): string {
+  const { nivel, unit, name, asksSchedule, escalateAfter } = opts;
+  const hi = name ? `Oi ${name}! ` : "";
+  const nivelTxt = nivel ? ` no *${nivel}*` : "";
+
+  let reply: string;
+
+  if (asksSchedule) {
+    // Horário/turno é igual nas 3 unidades — resposta direta, sem pedir unidade.
+    reply =
+      `${hi}As aulas começam às *07:30*, com 30 minutos de tolerância — ` +
+      `igual nas 3 unidades. 😊\nQuer agendar uma visita pra conhecer a estrutura?`;
+  } else if (unit) {
+    // Temos a unidade → entrega completa: política presencial + link + telefone.
+    reply =
+      `${hi}Que bom seu interesse${nivelTxt} na unidade *${unit}*! 🎓\n` +
+      `Os valores de mensalidade, matrícula e material são informados ` +
+      `*presencialmente* — assim a equipe te apresenta as melhores condições. 🤝\n\n` +
+      `👉 Agende uma visita: ${VISIT_LINKS[unit] ?? VISIT_LINKS["Batista Campos"]}\n` +
+      `📞 Ou fale com a secretaria: *${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}*`;
+  } else {
+    // Sem unidade → pergunta qual (o cliente escolhe pra receber link + telefone).
+    reply =
+      `${hi}Que bom seu interesse${nivelTxt}! 🎓 Temos 3 unidades — me diz qual ` +
+      `fica melhor pra você que eu já te passo a visita e o contato certinho:\n` +
+      `🏫 *Sede (Batista Campos)*\n🏫 *Augusto Montenegro*\n🏫 *Cidade Nova (Ananindeua)*`;
+  }
+
+  if (escalateAfter) {
+    // Intenção mista (ex.: "tem médio E desconto pra irmão?"): respondemos a
+    // matrícula acima e apontamos o tema extra pra secretaria, sem handoff.
+    const tema = escalateAfter.replace(/^Pergunta sobre\s*/i, "").split(".")[0].trim();
+    reply +=
+      `\n\nSobre ${tema}, quem confirma certinho é a *secretaria* — ` +
+      `quer que eu te passe o telefone? 😊`;
+  }
+
+  return reply;
+}
+
 // Resposta canônica para temas do colégio que o bot não tem na base (bolsa,
 // desconto, documento, transporte, evento) OU quando o LLM tropeçou numa
 // dúvida concreta que não é de preço. Aponta pra secretaria e mantém a
@@ -781,31 +879,44 @@ export function isPriceOrMaterialQuestion(text: string): boolean {
   return /(?<!\p{L})(valor|valores|mensalidade|mensalidades|pre[çc]o|pre[çc]os|custo|custa|custam|quanto\s+(custa|fica|sai|paga|[ée]|s[ãa]o)|anuidade|semestralidade|taxa|material\s+did[áa]tico|material\s+escolar|kit\s+escolar)(?!\p{L})/u.test(t);
 }
 
+// Identidade e dados oficiais compactos, compartilhados pelos prompts de frase
+// e chat. Antes esses blocos eram repetidos (palavreado diferente) nos dois
+// fluxos — o conteúdo ia inteiro em CADA chamada LLM. Centralizar aqui (e
+// reusar VISIT_LINKS / UNIT_SECRETARIA_PHONE, já definidos acima) corta tokens
+// por chamada e impede que telefones/links/endereços divirjam entre fluxos.
+const IDENTIDADE_ATENDIMENTO =
+  "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal').";
+
+const DADOS_COLEGIO = [
+  "DADOS OFICIAIS (use VERBATIM — nunca invente outros):",
+  `• Telefones fixos (NUNCA ofereça WhatsApp — o cliente já está no WhatsApp): Sede/Batista Campos ${UNIT_SECRETARIA_PHONE["Batista Campos"]} · Augusto Montenegro ${UNIT_SECRETARIA_PHONE["Augusto Montenegro"]} · Cidade Nova/Ananindeua ${UNIT_SECRETARIA_PHONE["Cidade Nova"]}.`,
+  "• Endereços (dê a rua completa quando perguntarem): Sede — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esq. WE-21), Coqueiro, Ananindeua-PA.",
+  `• Links de visita: Sede → ${VISIT_LINKS["Batista Campos"]} · Augusto Montenegro → ${VISIT_LINKS["Augusto Montenegro"]} · Cidade Nova → ${VISIT_LINKS["Cidade Nova"]}.`,
+  "• 3 unidades, todas do Maternal ao Pré-Enem: Maternal, Jardim, Fund 1 (1º-5º), Fund 2 (6º-9º), Médio, Pré-Enem (Eixo). Sistema Poliedro. Material/uniforme comprados na escola/malharia. Aulas 07:30 (30 min de tolerância), iguais nas 3 unidades.",
+].join("\n");
+
+// Regras duras compartilhadas (telefone, valor, anti-alucinação). Antes estavam
+// duplicadas e divergiam levemente entre os dois prompts; unificadas aqui. Cada
+// regra dos prompts antigos está preservada — só sem repetição.
+const REGRAS_COMUNS = [
+  "REGRAS:",
+  "- Tom WhatsApp, frases curtas. Use o nome do cliente se ele já apareceu na conversa.",
+  "- Telefone/número/secretaria → dê o telefone fixo da unidade pedida (Sede por padrão se não disser qual). Nunca ofereça WhatsApp, nunca diga 'não tenho essa informação' (os números estão acima).",
+  "- Valor/mensalidade/preço/taxa → diga que os valores são informados presencialmente e convide para agendar visita pelo link da unidade (ou liste os 3 se não souber qual). Nunca cite R$. Não use 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
+  "- Dado concreto fora dos dados acima (taxa de matrícula, vencimento, desconto, pagamento, início das aulas, documentos, link de cadastro, prazo): NÃO invente — diga que a secretaria confirma certinho e ofereça o telefone (ex.: Sede (91) 3323-5000).",
+  "- Nunca invente telefone com DDD diferente de 91. Nunca escreva texto que pareça chamada de função (ex.: get_enrollment_info(...)). Nunca diga 'aguarde' / 'um momento' / 'vou verificar'.",
+].join("\n");
+
 // Focused phrasing prompt — used when we've already chosen the tool and just
 // need natural text. By stripping the production system prompt (which mentions
 // tool names) we avoid Gemini hallucinating function-call syntax in its reply.
 function buildPhrasingSystemPrompt(escalateAfter?: string): string {
   const lines = [
-    "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'). Sua única tarefa é responder ao cliente em UMA mensagem natural de WhatsApp, usando EXCLUSIVAMENTE o que está no resultado da ferramenta no histórico (role=tool) E nos DADOS OFICIAIS abaixo.",
+    `${IDENTIDADE_ATENDIMENTO} Sua tarefa: responder ao cliente em UMA mensagem natural de WhatsApp (1-3 frases curtas), usando EXCLUSIVAMENTE o resultado da ferramenta no histórico (role=tool) e os dados oficiais abaixo. Não repita o resumo bruto da ferramenta — extraia só o ponto que o cliente perguntou. Se ele perguntou duas coisas (ex.: valor + telefone), responda as duas. Termine com no máximo uma pergunta curta de avanço.`,
     "",
-    "DADOS OFICIAIS DO COLÉGIO (use estes valores VERBATIM — NUNCA invente outros):",
-    "• Telefones reais (fixos das unidades — o cliente JÁ está no WhatsApp, então NUNCA ofereça número de WhatsApp): Sede (Batista Campos) (91) 3323-5000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
-    "• Endereços (informe SEMPRE a rua completa quando perguntarem endereço/rua): Sede/Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21), Coqueiro, Ananindeua-PA.",
-    "• Links de agendamento de visita: Sede/Batista Campos → https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-batista-campos&event=visita-ideal-batista-campos · Augusto Montenegro → https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-augusto-montenegro&event=visita-ideal-augusto-montenegro · Cidade Nova → https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-cidade-nova&event=visita-ideal-cidade-nova.",
-    "• 3 unidades no total. Todas oferecem do Maternal ao Pré-Enem (Eixo). Sistema Poliedro.",
-    "• Aulas começam 07:30 com 30 min de tolerância, igual nas 3 unidades.",
+    DADOS_COLEGIO,
     "",
-    "REGRAS DURAS:",
-    "- Responda em 1-3 frases curtas, tom WhatsApp informal.",
-    "- Use o nome do cliente se ele já apareceu na conversa.",
-    "- NÃO escreva 'aguarde', 'um momento', 'vou verificar'.",
-    "- NUNCA escreva texto que pareça uma chamada de função (ex: 'escalate_to_specialist(...)'). Você só escreve português natural.",
-    "- NÃO repita o resumo bruto da ferramenta — extraia o ponto que o cliente perguntou.",
-    "- ❗ Se o cliente perguntou TELEFONE / NÚMERO / SECRETARIA, devolva o telefone fixo da unidade pedida (priorize a Sede se ele não disse qual). NUNCA ofereça número de WhatsApp — o cliente já está falando com a gente pelo WhatsApp. NUNCA diga 'não tenho essa informação' — você tem os números aí em cima.",
-    "- ❗ Se o cliente perguntar valor/mensalidade/preço/taxa, explique que os valores são informados presencialmente e convide para agendar uma visita pelo link da unidade mencionada (ou liste os 3 links se não souber a unidade). NUNCA cite R$. NÃO use 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
-    "- ❗ Se o cliente perguntou DUAS coisas (ex: valor + número da secretaria), RESPONDA AS DUAS na mesma mensagem usando os dados acima.",
-    "- PROIBIDO inventar taxa de matrícula, datas de vencimento, políticas de desconto, regras de pagamento, datas de início das aulas, lista de documentos, link de cadastro, prazo de resposta. Pra esses, diga: 'Pra essa informação específica, o melhor é falar direto com a secretaria da unidade (ex.: Sede (91) 3323-5000).'",
-    "- Termine com no MÁXIMO uma pergunta curta de avanço (ou nenhuma pergunta).",
+    REGRAS_COMUNS,
   ];
   if (escalateAfter) {
     lines.push(
@@ -821,29 +932,11 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
 // keeping the conversation moving without inventing data.
 function buildChatSystemPrompt(): string {
   return [
-    "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal'), conversando por WhatsApp. Nesta mensagem você está apenas conversando — outras decisões já foram tratadas pelo sistema.",
+    `${IDENTIDADE_ATENDIMENTO} Nesta mensagem você está apenas conversando por WhatsApp — outras decisões já foram tratadas pelo sistema. Responda natural, 1-2 frases curtas. Se o cliente está confirmando algo ou agradecendo, responda curto e simpático. Não copie markdown bruto de resultado de ferramenta — reformule em português corrido.`,
     "",
-    "DADOS REAIS DO COLÉGIO (use APENAS estes — nada fora daqui existe):",
-    "• Telefones (fixos das unidades — NUNCA ofereça WhatsApp, o cliente já está no WhatsApp): Sede (Batista Campos) (91) 3323-5000 · Augusto Montenegro (91) 3273-0667 · Cidade Nova (Ananindeua) (91) 3273-0222.",
-    "• Endereços (informe SEMPRE a rua completa quando perguntarem endereço/rua): Sede/Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21), Coqueiro, Ananindeua-PA.",
-    "• Links de agendamento de visita: Sede/Batista Campos → https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-batista-campos&event=visita-ideal-batista-campos · Augusto Montenegro → https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-augusto-montenegro&event=visita-ideal-augusto-montenegro · Cidade Nova → https://grupoideal.com.br?quillbooking_calendar=agendamento-ideal-cidade-nova&event=visita-ideal-cidade-nova.",
-    "• Níveis: Maternal, Jardim I/II, Fundamental 1 (1º-5º), Fundamental 2 (6º-9º), Ensino Médio, Pré-Enem (Eixo). Todos disponíveis nas 3 unidades.",
-    "• Início das aulas: 07:30 com 30 min de tolerância. Iguais nas 3 unidades.",
-    "• Sistema: Poliedro. Material comprado direto na escola. Uniforme na malharia das unidades.",
+    DADOS_COLEGIO,
     "",
-    "REGRAS:",
-    "- Tom WhatsApp natural, 1-2 frases curtas.",
-    "- Se o cliente já disse o nome (em mensagens anteriores), USE o nome.",
-    "- Se o cliente está confirmando algo ou agradecendo, responda curto e simpático.",
-    "- ❗ Se o cliente perguntar VALOR / MENSALIDADE / TAXA / PREÇO / QUANTO CUSTA, explique que os valores são informados presencialmente e convide para agendar uma visita pelo link da unidade mencionada (ou liste os 3 links se não souber a unidade). NUNCA cite R$. NÃO use as frases 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
-    "- ❗ Se o cliente perguntar TELEFONE / NÚMERO / SECRETARIA, devolva UM dos números fixos acima — escolha a Sede por padrão a menos que o cliente especifique outra unidade. NUNCA ofereça número de WhatsApp (o cliente já está no WhatsApp) nem invente número.",
-    "- Se o cliente está perguntando algo CONCRETO que não está acima (taxa, prazo, documento específico), diga: 'Essa parte quem te confirma é a secretaria — quer o telefone?'",
-    "- PROIBIDO inventar QUALQUER número de telefone com DDD diferente de 91. (11), (21), (31)... TODOS proibidos. Se você escreveu (11)... você quebrou a regra.",
-    "- PROIBIDO inventar valores em R$. NUNCA escreva 'R$' na resposta.",
-    "- PROIBIDO inventar datas, taxas, políticas, ou qualquer dado fora da lista acima.",
-    "- PROIBIDO escrever texto que pareça chamada de função (escalate_to_specialist(...), get_enrollment_info(...), etc).",
-    "- PROIBIDO copiar markdown bruto de resultado de ferramenta. Sempre reformule em português corrido.",
-    "- PROIBIDO dizer 'aguarde', 'um momento', 'vou verificar'.",
+    REGRAS_COMUNS,
   ].join("\n");
 }
 

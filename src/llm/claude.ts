@@ -6,12 +6,22 @@ import { logger } from "../logger";
 /**
  * Anthropic Claude provider.
  *
- * Prompt caching is enabled on the system prompt — Anthropic charges 90% less
- * for cache reads (US$ 0.10/MTok vs US$ 1.00/MTok), which more than offsets
- * the 25% write premium for any conversation longer than ~2 turns. With the
- * SYSTEM_PROMPT around 500 tokens and most production traffic hitting it
- * repeatedly within the 5-minute cache TTL, this typically cuts input cost
- * by 60-80% in practice.
+ * Prompt caching is MARKED on the system prompt (cache_control below), but be
+ * aware of the model-specific minimum cacheable prefix: Haiku 4.5 only caches
+ * prefixes >= 4096 tokens. Below that the cache_control marker is a silent
+ * no-op — cache_creation_input_tokens comes back 0 and you pay full price.
+ *
+ * Today the production system prompts are all under 4096 tokens:
+ *   - buildPhrasingSystemPrompt ~1.0k tokens  → NOT cached on Haiku
+ *   - buildChatSystemPrompt     ~0.9k tokens  → NOT cached on Haiku
+ *   - SYSTEM_PROMPT (full)      ~3.8k tokens  → NOT cached on Haiku (just under)
+ *
+ * So on the default model (Haiku 4.5) caching currently saves nothing. The
+ * marker still helps on larger models (Sonnet/Opus cache from 1024-2048 tokens)
+ * and is harmless on Haiku. To make caching pay off on Haiku, the cached prefix
+ * must cross 4096 tokens (e.g. consolidate the prompts) — measure
+ * cache_read_input_tokens in the logs before assuming any savings.
+ * Cache reads cost ~0.1x base input; writes cost 1.25x (5-min TTL).
  */
 export class ClaudeProvider implements LLMProvider {
   private client: Anthropic;
@@ -135,10 +145,18 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
       logger.info(
         {
           model: this.model,
+          flow: options?.flow ?? "default",
+          systemChars: systemText.length,
           toolCalls: toolCalls.length,
           messageLength: text.length,
           inputTokens: response.usage.input_tokens,
-          cachedTokens: response.usage.cache_read_input_tokens ?? 0,
+          // cacheCreation > 0: prefixo foi escrito no cache (pagou ~1.25x).
+          // cacheRead > 0: prefixo veio do cache (pagou ~0.1x).
+          // Ambos 0 com cache_control setado = prefixo abaixo do mínimo do
+          // modelo (4096 tokens no Haiku) — caching é no-op, vide comentário
+          // no topo desta classe.
+          cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
+          cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
           outputTokens: response.usage.output_tokens,
         },
         "Claude response generated"

@@ -31,7 +31,7 @@
     "axios": "^1.16.1",
     "dotenv": "^16.0.0",
     "pino": "^9.0.0",
-    "undici": "^6.0.0",
+    "undici": "^6.26.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
@@ -39,6 +39,15 @@
     "@vercel/node": "^5.8.4",
     "tsx": "^4.22.3",
     "typescript": "^5.9.3",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.8"
+  },
+  "overrides": {
+    "path-to-regexp": "6.3.0",
+    "smol-toml": ">=1.6.1",
+    "ajv": ">=8.17.1",
+    "minimatch": ">=10.2.3",
+    "@vercel/node": {
+      "undici": "6.26.0"
+    }
   }
 }

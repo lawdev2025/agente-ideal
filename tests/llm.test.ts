@@ -1,24 +1,30 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GeminiProvider } from "../src/llm/gemini";
 
-// Mock the Google Generative AI
-vi.mock("@google/generative-ai", () => ({
-  GoogleGenerativeAI: vi.fn(() => ({
-    getGenerativeModel: vi.fn(() => ({
-      startChat: vi.fn(() => ({
-        sendMessage: vi.fn(async () => ({
-          response: {
-            text: () => "This is a test response",
-            functionCalls: () => null,
-          },
+// Mock compativel com vitest v4 - usa 'function' para poder ser usado como construtor com 'new'
+vi.mock("@google/generative-ai", () => {
+  function GoogleGenerativeAI() {
+    return {
+      getGenerativeModel: vi.fn(() => ({
+        startChat: vi.fn(() => ({
+          sendMessage: vi.fn(async () => ({
+            response: {
+              text: () => "This is a test response",
+              functionCalls: () => null,
+            },
+          })),
         })),
       })),
-    })),
-  })),
-  SchemaType: {
-    OBJECT: "OBJECT",
-  },
-}));
+    };
+  }
+
+  return {
+    GoogleGenerativeAI,
+    SchemaType: {
+      OBJECT: "OBJECT",
+    },
+  };
+});
 
 describe("LLM Provider", () => {
   let provider: GeminiProvider;

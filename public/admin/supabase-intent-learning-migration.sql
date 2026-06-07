@@ -29,6 +29,25 @@ CREATE TABLE IF NOT EXISTS intent_learning (
 
 CREATE INDEX IF NOT EXISTS idx_intent_learning_status ON intent_learning(status);
 
+-- SEGURANÇA: Row Level Security (mesmo padrão das outras tabelas do projeto).
+-- O bot usa a anon key, então habilitamos RLS e criamos uma policy permissiva
+-- allow_all — isto silencia o aviso do Supabase e mantém a convenção. (Nota:
+-- como a policy libera anon, ela não restringe de fato quem tem a chave pública;
+-- restrição real exigiria migrar o backend pra service_role key.) O bloco DO
+-- abaixo é idempotente: pode rodar de novo sem erro de policy duplicada.
+ALTER TABLE intent_learning ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'intent_learning' AND policyname = 'allow_all_intent_learning'
+  )
+  THEN CREATE POLICY "allow_all_intent_learning" ON intent_learning
+    FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
 -- Conferir:
 -- SELECT canonical_key, intent_kind, status, regex_hits, positive_outcomes,
 --        negative_outcomes, cache_hits

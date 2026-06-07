@@ -3,6 +3,7 @@ import { applyCors } from "../_lib/cors";
 import { checkAdminAuth } from "../_lib/auth";
 import { getSupabase } from "../../src/db/supabase-client";
 import { logger } from "../../src/logger";
+import { LearningRepository } from "../../src/learning/repository";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
@@ -37,6 +38,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ]);
 
     const inactiveContacts = (totalContacts ?? 0) - (activeContacts ?? 0);
+
+    // Métricas do cache aprendido de intenções. Best-effort: se a tabela ainda
+    // não existe (migração não rodada), zera tudo em vez de quebrar o dashboard.
+    let learning = {
+      activeIntents: 0,
+      candidateIntents: 0,
+      totalCacheHits: 0,
+      learnedThisWeek: 0,
+    };
+    try {
+      learning = await new LearningRepository().metrics();
+    } catch (err) {
+      logger.warn({ err }, "Métricas de aprendizado indisponíveis (migração pendente?)");
+    }
 
     // Últimos 7 dias: contagem de USUÁRIOS ÚNICOS por dia (não de mensagens).
     // Cada dia conta cada wa_id no máximo uma vez, mesmo que ele mande 50 msgs.
@@ -97,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       days,
       msgCounts,
       subjects,
+      learning,
     });
   } catch (error) {
     logger.error({ error }, "Erro em GET /api/admin/stats");

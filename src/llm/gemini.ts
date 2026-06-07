@@ -129,10 +129,18 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
         }));
       }
 
+      // Telemetria de tokens: o SDK do Gemini expõe usageMetadata na resposta.
+      // Gemini não tem prompt caching aqui (systemInstruction reenviada todo
+      // turno), então não há contador de cache — só o total de prompt tokens.
+      const usage = (contentResponse as any)?.usageMetadata;
       logger.info(
         {
+          flow: options?.flow ?? "default",
+          systemChars: (options?.systemPromptOverride ?? SYSTEM_PROMPT).length,
           toolCalls: toolCalls?.length || 0,
           messageLength: text.length,
+          promptTokens: usage?.promptTokenCount ?? null,
+          outputTokens: usage?.candidatesTokenCount ?? null,
         },
         "Gemini response generated"
       );

@@ -110,6 +110,20 @@ CREATE TABLE IF NOT EXISTS intent_learning (
 
 CREATE INDEX IF NOT EXISTS idx_intent_learning_status ON intent_learning(status);
 
+-- RLS no mesmo padrão das demais tabelas (o bot usa anon key → policy allow_all).
+ALTER TABLE intent_learning ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'intent_learning' AND policyname = 'allow_all_intent_learning'
+  )
+  THEN CREATE POLICY "allow_all_intent_learning" ON intent_learning
+    FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
 -- Inserir alguns dados padrão de exemplo para o Colégio Ideal
 INSERT INTO school_levels (id, nivel, descricao, preco_mensal, preco_semestral, preco_anual, incluso) VALUES
 ('ef1', 'Ensino Fundamental 1', '1º ao 5º ano', 1200.00, 7200.00, 14400.00, ARRAY['Material didático atualizado', 'Acompanhamento pedagógico individualizado', 'Simulados periódicos', 'Aulas em turno matutino ou vespertino']),

@@ -87,6 +87,29 @@ CREATE TABLE IF NOT EXISTS school_materials (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 9. Cache aprendido de intenções (intent_learning)
+-- Mapeamentos frase→intenção que o bot aprende sozinho. O roteador determinístico
+-- (regex) cria entradas 'candidate' quando roteia com confiança; desfechos
+-- positivos as promovem a 'active'. Mensagens ambíguas (ask_llm) consultam só as
+-- 'active' antes de gastar uma chamada de LLM. Ver
+-- docs/superpowers/specs/2026-06-06-intent-learning-design.md.
+CREATE TABLE IF NOT EXISTS intent_learning (
+  id BIGSERIAL PRIMARY KEY,
+  canonical_key TEXT NOT NULL UNIQUE,
+  tokens TEXT[] NOT NULL,
+  intent_kind TEXT NOT NULL,
+  sample_message TEXT,
+  regex_hits INTEGER NOT NULL DEFAULT 0,
+  positive_outcomes INTEGER NOT NULL DEFAULT 0,
+  negative_outcomes INTEGER NOT NULL DEFAULT 0,
+  cache_hits INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'candidate',
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_intent_learning_status ON intent_learning(status);
+
 -- Inserir alguns dados padrão de exemplo para o Colégio Ideal
 INSERT INTO school_levels (id, nivel, descricao, preco_mensal, preco_semestral, preco_anual, incluso) VALUES
 ('ef1', 'Ensino Fundamental 1', '1º ao 5º ano', 1200.00, 7200.00, 14400.00, ARRAY['Material didático atualizado', 'Acompanhamento pedagógico individualizado', 'Simulados periódicos', 'Aulas em turno matutino ou vespertino']),

@@ -298,6 +298,18 @@ async function loadDashboardStats() {
                     trendEl.className = 'trend positive';
                     trendEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Sem escalações';
                 }
+                // Cache aprendido de intenções (best-effort: campos podem faltar
+                // se a migração ainda não rodou — aí fica tudo em 0).
+                const learning = s.learning || {};
+                const learnActiveEl = document.getElementById('stat-learning-active');
+                if (learnActiveEl) learnActiveEl.textContent = learning.activeIntents ?? 0;
+                const learnTrendEl = document.getElementById('stat-learning-trend');
+                if (learnTrendEl) {
+                    const cacheHits = learning.totalCacheHits ?? 0;
+                    const candidates = learning.candidateIntents ?? 0;
+                    learnTrendEl.innerHTML = `<i class="fa-solid fa-brain"></i> ${cacheHits} acertos · ${candidates} candidatas`;
+                }
+
                 renderCharts(s.msgCounts || [0,0,0,0,0,0,0], s.subjects || {}, s.days || []);
                 return;
             }

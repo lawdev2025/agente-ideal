@@ -5,12 +5,41 @@ import { WhatsAppClient } from "../whatsapp/client";
 import { EscalationHandler } from "../handoff/telegram";
 import { logger } from "../logger";
 import { config } from "../config";
-import { routeIntent, RoutedIntent, detectUnit } from "./intent-router";
+import { routeIntent, RoutedIntent, detectUnit, detectNivel } from "./intent-router";
 import { matchDirectResponse } from "../kb/direct-responses";
+import { LearningRepository } from "../learning/repository";
+import type { CacheableIntentKind } from "../learning/normalize";
 
 export interface ConversationMessage {
   role: string;
   content: string;
+}
+
+// Os 5 intents determinísticos que o cache aprendido pode reproduzir. Espelha
+// CacheableIntentKind em src/learning/normalize.ts. escalate/soft_redirect/
+// ask_llm ficam de fora (sensíveis demais ou ambíguos por natureza).
+type CacheableIntent = Extract<
+  RoutedIntent,
+  {
+    kind:
+      | "enrollment_info"
+      | "enrollment_contact"
+      | "unit_info"
+      | "document_request"
+      | "visit_request";
+  }
+>;
+
+const CACHEABLE_INTENT_KINDS: ReadonlySet<string> = new Set([
+  "enrollment_info",
+  "enrollment_contact",
+  "unit_info",
+  "document_request",
+  "visit_request",
+]);
+
+function isCacheableIntent(kind: string): boolean {
+  return CACHEABLE_INTENT_KINDS.has(kind);
 }
 
 export class MessageOrchestrator {
@@ -18,7 +47,10 @@ export class MessageOrchestrator {
     private llmProvider: LLMProvider,
     private stateRepository: StateRepository,
     private whatsappClient: WhatsAppClient,
-    private escalationHandler: EscalationHandler
+    private escalationHandler: EscalationHandler,
+    // Opcional: quando ausente (ex.: testes), o aprendizado é simplesmente
+    // ignorado e o bot se comporta exatamente como antes.
+    private learning?: LearningRepository
   ) {}
 
   async processMessage(
@@ -164,81 +196,54 @@ export class MessageOrchestrator {
         return;
       }
 
-      // Necessidade documental (boletim, histórico escolar, declaração,
-      // atestado, 2ª via, transferência): tudo na SECRETARIA da unidade.
-      // Responde com o telefone da unidade pedida (ou pergunta qual unidade)
-      // e avisa a equipe em silêncio — sem pausar o bot.
-      if (intent.kind === "document_request") {
-        await this.handleDocumentRequest(
+      // Intents determinísticos cacheáveis (documento, visita, matrícula,
+      // contato, unidade): roteados pelo regex com confiança. APRENDEMOS esse
+      // mapeamento (frase→intent vira candidata no cache) e despachamos pelo
+      // caminho determinístico compartilhado. NÃO confiamos no LLM pra rotear.
+      if (isCacheableIntent(intent.kind)) {
+        await this.learnFromRegex(userMessage, intent.kind as CacheableIntentKind);
+        await this.dispatchCacheableIntent(
+          intent as CacheableIntent,
           conversationId,
           studentId,
           userMessage,
-          intent.unit
-        );
-        return;
-      }
-
-      // Pedido de visita / link de agendamento: resposta DETERMINÍSTICA com o
-      // link da unidade (sem LLM — o LLM já negou ter link mesmo com o link no
-      // prompt). Se a unidade não veio na mensagem, tenta achar no histórico
-      // recente (ex.: cliente disse "Cidade Nova" e depois "tem link?").
-      if (intent.kind === "visit_request") {
-        await this.handleVisitRequest(
-          conversationId,
-          studentId,
-          intent.unit,
+          contact,
           conversationHistory
         );
         return;
       }
 
-      // Deterministic path: clear matrícula/contact/unit questions go straight
-      // to the right tool — we don't trust the LLM to route correctly.
-      if (
-        intent.kind === "enrollment_info" ||
-        intent.kind === "enrollment_contact" ||
-        intent.kind === "unit_info"
-      ) {
-        // Pergunta de valor (mensalidade, matrícula, material): resposta FIXA
-        // por ordem do colégio — valores APENAS presencialmente, para todas as
-        // unidades e segmentos. Sem LLM, sem escalação. Vale para qualquer
-        // intent que tenha sinal de preço/material na mensagem original.
-        // Pedido de telefone/secretaria sem unidade: responde determinístico
-        // perguntando qual unidade — não dispara LLM, não dispara escalação.
-        if (intent.kind === "enrollment_contact" && !intent.unit) {
-          const ask =
-            "Claro! Temos 3 unidades — me diz qual você prefere que eu te passe o número:\n\n" +
-            "🏫 *Sede (Batista Campos)*\n" +
-            "🏫 *Augusto Montenegro*\n" +
-            "🏫 *Cidade Nova (Ananindeua)*";
-          await this.stateRepository.appendMessage(conversationId, "assistant", ask);
-          await this.whatsappClient.sendMessage(studentId, ask);
-          return;
+      // Caso ambíguo (ask_llm). ANTES de gastar uma chamada de LLM, consultamos
+      // o cache aprendido: se uma frase parecida já foi roteada com confiança e
+      // promovida a 'active', reaproveitamos aquele intent determinístico. Só
+      // entra fora da primeira interação (a saudação oficial tem prioridade) e
+      // quando o aprendizado está disponível. Best-effort — qualquer erro cai no
+      // fluxo de LLM normal.
+      const isFirstInteraction = !conversationHistory.some(
+        (m) => m.role === "assistant"
+      );
+      if (!isFirstInteraction && this.learning) {
+        let cachedKind: CacheableIntentKind | null = null;
+        try {
+          cachedKind = await this.learning.lookup(userMessage);
+        } catch (err) {
+          logger.warn({ err }, "learning.lookup falhou — seguindo pro LLM");
         }
-        // enrollment_info COM nível concreto (médio, fundamental, etc.) →
-        // resposta determinística por template, SEM chamar o Haiku. A tool já
-        // retorna texto fixo (política presencial), então frasear com LLM era
-        // desperdício. Sinal vago (sem nível, ex.: "aula de natação") cai no
-        // fluxo LLM abaixo — que serve de válvula pra palavra-chave disparada
-        // por engano (a LLM percebe que não existe e redireciona).
-        if (intent.kind === "enrollment_info" && intent.nivel) {
-          await this.handleEnrollmentInfo(
+        if (cachedKind) {
+          logger.info(
+            { intent: cachedKind, via: "learning-cache" },
+            "Cache aprendido respondeu (LLM evitado)"
+          );
+          await this.dispatchCacheableIntent(
+            this.buildIntentFromCache(cachedKind, userMessage),
             conversationId,
             studentId,
             userMessage,
-            intent,
-            contact.name
+            contact,
+            conversationHistory
           );
           return;
         }
-        await this.runDeterministicToolFlow(
-          conversationId,
-          studentId,
-          userMessage,
-          intent,
-          conversationHistory
-        );
-        return;
       }
 
       // Ambiguous case — let the LLM handle it (greetings, name capture,
@@ -260,6 +265,107 @@ export class MessageOrchestrator {
         `Error processing message: ${error instanceof Error ? error.message : String(error)}`,
         { skipPause: true }
       );
+    }
+  }
+
+  // Despacha os 5 intents determinísticos cacheáveis pelos handlers existentes.
+  // Compartilhado entre o caminho do regex (rota confiante) e o do cache
+  // aprendido (rota reconstruída a partir de uma frase parecida). O
+  // comportamento é IDÊNTICO ao bloco inline anterior — só foi extraído pra não
+  // duplicar a lógica nos dois pontos de entrada.
+  private async dispatchCacheableIntent(
+    intent: CacheableIntent,
+    conversationId: string,
+    studentId: string,
+    userMessage: string,
+    contact: Contact,
+    conversationHistory: ConversationMessage[]
+  ): Promise<void> {
+    if (intent.kind === "document_request") {
+      await this.handleDocumentRequest(conversationId, studentId, userMessage, intent.unit);
+      await this.recordTurnOutcome(userMessage, true);
+      return;
+    }
+
+    if (intent.kind === "visit_request") {
+      await this.handleVisitRequest(conversationId, studentId, intent.unit, conversationHistory);
+      await this.recordTurnOutcome(userMessage, true);
+      return;
+    }
+
+    // Pedido de telefone/secretaria sem unidade: pergunta determinística qual
+    // unidade — não dispara LLM nem escalação.
+    if (intent.kind === "enrollment_contact" && !intent.unit) {
+      const ask =
+        "Claro! Temos 3 unidades — me diz qual você prefere que eu te passe o número:\n\n" +
+        "🏫 *Sede (Batista Campos)*\n" +
+        "🏫 *Augusto Montenegro*\n" +
+        "🏫 *Cidade Nova (Ananindeua)*";
+      await this.stateRepository.appendMessage(conversationId, "assistant", ask);
+      await this.whatsappClient.sendMessage(studentId, ask);
+      await this.recordTurnOutcome(userMessage, true);
+      return;
+    }
+
+    // enrollment_info COM nível concreto → resposta determinística por template,
+    // sem chamar o LLM (a tool já devolve texto fixo). Sinal vago segue no fluxo
+    // de tool (runDeterministicToolFlow), que é a válvula pra palavra-chave que
+    // disparou por engano.
+    if (intent.kind === "enrollment_info" && intent.nivel) {
+      await this.handleEnrollmentInfo(conversationId, studentId, userMessage, intent, contact.name);
+      await this.recordTurnOutcome(userMessage, true);
+      return;
+    }
+
+    await this.runDeterministicToolFlow(
+      conversationId,
+      studentId,
+      userMessage,
+      intent,
+      conversationHistory
+    );
+  }
+
+  // Registra que o regex roteou (com confiança) essa frase pra um intent
+  // cacheável → cria/atualiza a entrada como candidata. Best-effort: nunca
+  // derruba o atendimento.
+  private async learnFromRegex(message: string, kind: CacheableIntentKind): Promise<void> {
+    if (!this.learning) return;
+    try {
+      await this.learning.recordObservation(message, kind);
+    } catch (err) {
+      logger.warn({ err }, "learning.recordObservation falhou (ignorado)");
+    }
+  }
+
+  // Registra o desfecho do turno (positivo = sem deflexão/escalação). Promove
+  // candidata→ativa quando os limiares batem; negativo rebaixa ativa. No-op se
+  // o aprendizado não estiver disponível ou a frase nunca tiver sido observada.
+  private async recordTurnOutcome(message: string, positive: boolean): Promise<void> {
+    if (!this.learning) return;
+    try {
+      await this.learning.recordOutcome(message, positive);
+    } catch (err) {
+      logger.warn({ err }, "learning.recordOutcome falhou (ignorado)");
+    }
+  }
+
+  // Reconstrói um RoutedIntent a partir de um acerto do cache: o cache guarda só
+  // o TIPO de intent, então re-derivamos nível/unidade da própria mensagem com
+  // os mesmos detectores do roteador.
+  private buildIntentFromCache(kind: CacheableIntentKind, message: string): CacheableIntent {
+    const unit = detectUnit(message);
+    switch (kind) {
+      case "enrollment_info":
+        return { kind, nivel: detectNivel(message), unit };
+      case "enrollment_contact":
+        return { kind, unit };
+      case "unit_info":
+        return { kind, unit };
+      case "document_request":
+        return { kind, unit };
+      case "visit_request":
+        return { kind, unit };
     }
   }
 
@@ -369,6 +475,11 @@ export class MessageOrchestrator {
         `Bot redirecionou para secretaria. Pergunta original: "${userMessage}"`
       );
     }
+
+    // Desfecho pro aprendizado: deflexão = negativo (rebaixa/não promove),
+    // resposta limpa = positivo. É o sinal que decide se uma frase candidata
+    // vira mapeamento ativo do cache.
+    await this.recordTurnOutcome(userMessage, !deflected);
 
     void conversationHistory;
   }

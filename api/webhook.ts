@@ -9,6 +9,7 @@ import { GeminiProvider } from "../src/llm/gemini";
 import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
 import { MessageOrchestrator } from "../src/worker/orchestrator";
+import { LearningRepository } from "../src/learning/repository";
 
 // Vercel exige `export const config` no top-level pra disable bodyParser
 // (precisamos do raw body pra validar a assinatura HMAC do webhook Meta).
@@ -34,11 +35,13 @@ const escalationHandler = new EscalationHandler(
   appConfig.telegram.botToken,
   appConfig.telegram.chatId
 );
+const learningRepo = new LearningRepository();
 const orchestrator = new MessageOrchestrator(
   llmProvider,
   stateRepo,
   whatsappClient,
-  escalationHandler
+  escalationHandler,
+  learningRepo
 );
 
 async function readRawBody(req: VercelRequest): Promise<string> {

@@ -276,3 +276,14 @@ export function detectUnit(text: string): string | undefined {
   }
   return undefined;
 }
+
+// Detecta o nível escolar pelo texto — espelha detectUnit. Usado pelo caminho do
+// cache aprendido pra reconstruir um enrollment_info com o nível certo a partir
+// só da mensagem (o cache guarda o tipo de intent, não o nível).
+export function detectNivel(text: string): string | undefined {
+  const t = (text || "").trim();
+  for (const { regex, nivel } of NIVEL_PATTERNS) {
+    if (regex.test(t)) return nivel;
+  }
+  return undefined;
+}

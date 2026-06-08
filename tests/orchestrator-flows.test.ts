@@ -419,6 +419,93 @@ describe("Orchestrator: necessidade documental → secretaria da unidade (com te
   });
 });
 
+describe("Orchestrator: pagamento de taxas / segunda chamada → secretaria da unidade", () => {
+  it("'como faço o pagamento?' (sem unidade) pergunta qual unidade, sem LLM, sem pausar", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "como faço o pagamento?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/secretaria/i);
+    expect(sent).toMatch(/qual unidade/i);
+    expect(sent).toMatch(/segunda chamada/i);
+    expect(sent).not.toMatch(/presencialmente/i);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+  });
+
+  it("'pagamento na Cidade Nova' passa o telefone da Cidade Nova", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "como pago a mensalidade na Cidade Nova?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/3273-0222/); // telefone da Cidade Nova
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+  });
+
+  it("'prova de segunda chamada' cai no fluxo de secretaria (não no de preço)", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quando é a prova de segunda chamada?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/secretaria/i);
+    expect(sent).not.toMatch(/presencialmente/i);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("Orchestrator: limite de 7 respostas do bot → atendimento humano", () => {
+  // 7 mensagens do bot na sessão (saudação + 6) → a próxima vira handoff.
+  const sevenBotMsgs = [
+    { role: "assistant", content: "Olá! Aqui é o atendimento oficial do Grupo Ideal 🎓" },
+    { role: "user", content: "oi" },
+    { role: "assistant", content: "resposta 2" },
+    { role: "user", content: "x" },
+    { role: "assistant", content: "resposta 3" },
+    { role: "assistant", content: "resposta 4" },
+    { role: "assistant", content: "resposta 5" },
+    { role: "assistant", content: "resposta 6" },
+    { role: "assistant", content: "resposta 7" },
+  ];
+
+  it("ao bater 7 respostas, passa pra humano (pausa + Telegram), sem LLM", async () => {
+    const m = buildMocks({ history: sevenBotMsgs });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "ainda tenho outra dúvida", "u1");
+    expect(m.stateRepo.pauseBot).toHaveBeenCalled();
+    expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("com 6 respostas ainda NÃO passa pra humano", async () => {
+    const m = buildMocks({ history: sevenBotMsgs.slice(0, -1) }); // tira a 7ª
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "oi de novo", "u1");
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+    expect(m.escalation.escalateToGroup).not.toHaveBeenCalled();
+  });
+
+  it("'reiniciar' zera o limite: ack de retomada vira novo marco de contagem", async () => {
+    const afterReiniciar = [
+      ...sevenBotMsgs,
+      { role: "user", content: "reiniciar" },
+      { role: "assistant", content: "Pronto! Voltamos ao atendimento automático do Grupo Ideal 🤖" },
+    ];
+    const m = buildMocks({ history: afterReiniciar });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero saber do ensino médio", "u1");
+    // Sessão recomeçou → NÃO faz handoff por limite.
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+    expect(m.escalation.escalateToGroup).not.toHaveBeenCalled();
+  });
+});
+
 describe("Intent router: necessidade documental → document_request", () => {
   it("boletim → document_request", () => {
     expect(routeIntent("preciso do boletim do meu filho", false).kind).toBe("document_request");

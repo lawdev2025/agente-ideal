@@ -100,11 +100,57 @@ export class MessageOrchestrator {
         return;
       }
 
+      // Histórico carregado uma vez e reusado no fluxo todo (limite, captura de
+      // nome, roteamento).
+      const history = await this.stateRepository.getHistory(conversationId);
+      const conversationHistory: ConversationMessage[] = history.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      // LIMITE DE RESPOSTAS DO BOT: o bot envia no máximo MAX_BOT_RESPONSES
+      // mensagens por sessão (contém o custo de token do Claude). Ao bater o
+      // limite, passa pra ATENDIMENTO HUMANO (pausa o bot + avisa no Telegram) e
+      // a partir daí fica em silêncio. "reiniciar" recomeça a sessão (o ack de
+      // retomada vira o novo marco de contagem). Avaliado ANTES de tudo (menos
+      // reiniciar) pra que ATÉ resposta fixa (preço, FAQ, visita) conte no limite.
+      const botMsgsThisSession = countSessionBotMessages(history);
+      if (botMsgsThisSession >= MAX_BOT_RESPONSES) {
+        if (await this.stateRepository.isBotPaused(studentId)) {
+          // Handoff do limite já aconteceu → mantém silêncio (humano no controle).
+          logger.info({ studentId }, "Pós-limite, já em handoff humano — silêncio");
+          return;
+        }
+        logger.info(
+          { studentId, count: botMsgsThisSession },
+          "Limite de respostas do bot atingido — passando para atendimento humano"
+        );
+        await this.escalateToSpecialist(
+          conversationId,
+          studentId,
+          `Limite de ${MAX_BOT_RESPONSES} respostas do bot atingido — passando para atendimento humano`
+        );
+        return;
+      }
+
+      // Dúvida de PAGAMENTO de taxas/mensalidade ou prova de SEGUNDA CHAMADA:
+      // resolvido na *secretaria* da unidade (com o telefone dela). Avaliado
+      // ANTES do guard de preço porque "pagamento de taxa" contém "taxa" e
+      // cairia no fluxo de valores — mas aqui a intenção é PROCESSO (como/onde
+      // pagar, 2ª chamada), não o valor em si.
+      if (isPaymentOrSegundaChamadaQuestion(userMessage)) {
+        await this.handlePaymentRequest(
+          conversationId,
+          studentId,
+          userMessage,
+          detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory)
+        );
+        return;
+      }
+
       // ORDEM DO COLÉGIO (regra dura): pergunta sobre valor/mensalidade/
       // matrícula/material → SEMPRE resposta presencial fixa. Sem LLM, sem
-      // escalação, sem intermediário "coordenação te chama". Avaliado ANTES
-      // do isBotPaused, ANTES do roteamento, ANTES de qualquer LLM — não há
-      // caminho que escape isso.
+      // escalação, sem intermediário "coordenação te chama".
       if (isPriceOrMaterialQuestion(userMessage)) {
         logger.info({ studentId }, "Price/material question — sending presential reply");
         const reply = buildPresentialValuesReply(detectUnit(userMessage));
@@ -124,12 +170,6 @@ export class MessageOrchestrator {
         );
         return;
       }
-
-      const history = await this.stateRepository.getHistory(conversationId);
-      const conversationHistory: ConversationMessage[] = history.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }));
 
       // Captura do nome: se o contato ainda não tem nome salvo e o bot já pediu
       // ("como posso te chamar?"), esta mensagem é a resposta com o nome.
@@ -617,6 +657,27 @@ export class MessageOrchestrator {
     );
   }
 
+  // Pagamento de taxas/mensalidade ou prova de SEGUNDA CHAMADA: resolvido na
+  // secretaria da unidade. Se o cliente já disse a unidade, manda o telefone
+  // dela direto; senão pergunta qual. Avisa a equipe em silêncio, sem pausar.
+  private async handlePaymentRequest(
+    conversationId: string,
+    studentId: string,
+    userMessage: string,
+    unit?: string
+  ): Promise<void> {
+    const reply = unit
+      ? buildPaymentReplyWithUnit(unit)
+      : PAYMENT_ASK_UNIT_REPLY;
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    await this.softNotifyTeam(
+      conversationId,
+      studentId,
+      `Dúvida de pagamento / 2ª chamada (secretaria). Mensagem: "${userMessage}"`
+    );
+  }
+
   // Pedido de visita / link de agendamento: resposta DETERMINÍSTICA com o link
   // da unidade. Se a unidade não veio na mensagem atual, procura no histórico
   // recente (cliente disse "Cidade Nova" e na mensagem seguinte só "tem link?").
@@ -968,6 +1029,59 @@ function buildDocumentReplyWithUnit(unit: string): string {
 const DOCUMENT_ASK_UNIT_REPLY =
   "Boletim, histórico escolar, declarações e qualquer outro documento são " +
   "emitidos direto na *secretaria* da unidade. 📄\n\n" +
+  "De qual unidade você precisa? Aí te passo o telefone certinho:\n" +
+  "🏫 *Sede (Batista Campos)*\n" +
+  "🏫 *Augusto Montenegro*\n" +
+  "🏫 *Cidade Nova (Ananindeua)*";
+
+// Máximo de mensagens que o bot envia por sessão antes de passar pra atendimento
+// humano. Contém o custo de token do Claude — ordem do colégio.
+const MAX_BOT_RESPONSES = 7;
+
+// Conta quantas mensagens o bot já enviou NA SESSÃO ATUAL. A sessão recomeça na
+// saudação oficial ("...atendimento oficial...") ou no ack de "reiniciar"
+// ("...atendimento automático..."), então "reiniciar" zera o limite naturalmente.
+function countSessionBotMessages(
+  history: Array<{ role: string; content: string }>
+): number {
+  let start = 0;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.role === "assistant" && /atendimento\s+(oficial|autom[áa]tico)/i.test(m.content)) {
+      start = i;
+      break;
+    }
+  }
+  let count = 0;
+  for (let i = start; i < history.length; i++) {
+    if (history[i].role === "assistant") count++;
+  }
+  return count;
+}
+
+// Detecta dúvida de PAGAMENTO (taxa/mensalidade/boleto) ou de prova de SEGUNDA
+// CHAMADA — tudo resolvido na secretaria da unidade. Diferente de
+// isPriceOrMaterialQuestion (que é sobre o VALOR): aqui é o PROCESSO de pagar.
+// Avaliado ANTES do guard de preço porque "pagamento de taxa" contém "taxa".
+export function isPaymentOrSegundaChamadaQuestion(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  return /(?<!\p{L})(pagamento|pagamentos|boleto|boletos|fatura|faturas|vencimento|venceu|atrasad[ao]|inadimpl|segunda\s+chamada|2[ªa]\s*chamada|forma\s+de\s+pagamento|como\s+(eu\s+)?pago|onde\s+(eu\s+)?pago|como\s+(eu\s+)?fa[çc]o\s+(o\s+)?pagamento)(?!\p{L})/u.test(t);
+}
+
+// Resposta de pagamento/2ª chamada com a unidade conhecida → telefone dela.
+function buildPaymentReplyWithUnit(unit: string): string {
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  return (
+    "Pagamento de taxas, mensalidade e prova de *segunda chamada* é resolvido " +
+    "direto na *secretaria* da unidade. 💳\n\n" +
+    `Na *${unit}*, é só falar com a secretaria pelo *${phone}* que a equipe te orienta certinho. 😊`
+  );
+}
+
+// Resposta de pagamento/2ª chamada sem unidade → pergunta qual.
+const PAYMENT_ASK_UNIT_REPLY =
+  "Pagamento de taxas, mensalidade e prova de *segunda chamada* é resolvido " +
+  "direto na *secretaria* da unidade. 💳\n\n" +
   "De qual unidade você precisa? Aí te passo o telefone certinho:\n" +
   "🏫 *Sede (Batista Campos)*\n" +
   "🏫 *Augusto Montenegro*\n" +

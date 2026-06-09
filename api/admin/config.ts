@@ -26,6 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET || "",
         WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN || "",
         ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
+        VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || "",
         INSTITUTION_NAME: process.env.INSTITUTION_NAME || "",
         PERSONA_NAME: process.env.PERSONA_NAME || "",
         ENROLLMENT_PERIOD_END: process.env.ENROLLMENT_PERIOD_END || "",

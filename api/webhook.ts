@@ -10,6 +10,7 @@ import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
 import { MessageOrchestrator } from "../src/worker/orchestrator";
 import { LearningRepository } from "../src/learning/repository";
+import { sendPushToAll } from "../src/push/web-push";
 
 // Vercel exige `export const config` no top-level pra disable bodyParser
 // (precisamos do raw body pra validar a assinatura HMAC do webhook Meta).
@@ -50,6 +51,24 @@ async function readRawBody(req: VercelRequest): Promise<string> {
     chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+// CRM IDEAL: depois de processar a mensagem, se o bot acabou ficando PAUSADO
+// (handoff humano ou contato ja em atendimento manual), avisa o celular do
+// atendente via Web Push. Bot ativo respondendo sozinho nao gera push. Nunca
+// lanca — push e best-effort e nao pode derrubar o webhook.
+async function notifyHumanIfManual(senderId: string, text: string): Promise<void> {
+  try {
+    if (!(await stateRepo.isBotPaused(senderId))) return;
+    await sendPushToAll({
+      title: "Atendimento manual — cliente aguardando",
+      body: text.length > 120 ? text.slice(0, 117) + "..." : text,
+      wa_id: senderId,
+      tag: `crm-ideal-${senderId}`,
+    });
+  } catch (pushErr) {
+    logger.warn({ pushErr, senderId }, "Falha ao enviar push (ignorado)");
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -122,6 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               await stateRepo.updateLastSeen(senderId);
               await stateRepo.appendMessage(senderId, "user", text);
               await orchestrator.processMessage(senderId, text, senderId);
+              await notifyHumanIfManual(senderId, text);
             } catch (procErr) {
               logger.error(
                 { error: procErr, messageId },
@@ -152,6 +172,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             await stateRepo.updateLastSeen(senderId);
             await stateRepo.appendMessage(senderId, "user", text);
             await orchestrator.processMessage(senderId, text, senderId);
+            await notifyHumanIfManual(senderId, text);
           } catch (procErr) {
             logger.error(
               { error: procErr, messageId },

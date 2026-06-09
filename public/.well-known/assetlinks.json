@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.colegioideal.crm",
+      "sha256_cert_fingerprints": [
+        "3A:65:C9:5A:CA:E5:76:D6:39:74:09:94:13:31:10:16:67:71:59:F8:47:82:56:70:05:03:93:B7:85:0C:4C:55"
+      ]
+    }
+  }
+]

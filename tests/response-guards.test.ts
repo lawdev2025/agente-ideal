@@ -2,7 +2,24 @@ import { describe, it, expect } from "vitest";
 import {
   isPriceOrMaterialQuestion,
   isDeflectionReply,
+  sanitizeReply,
 } from "../src/worker/orchestrator";
+
+// Política do colégio: a palavra "equipe" nunca pode chegar ao cliente — o
+// sanitizeReply troca por "time" preservando a capitalização, blindando até o
+// que o LLM improvisar.
+describe("sanitizeReply: 'equipe' nunca vai pro cliente (vira 'time')", () => {
+  it("troca preservando capitalização e não deixa nenhum 'equipe'", () => {
+    const out = sanitizeReply("Nossa equipe te ajuda! A Equipe está pronta.");
+    expect(out).not.toMatch(/equipe/i);
+    expect(out).toContain("time");
+    expect(out).toContain("Time");
+  });
+
+  it("não mexe em palavras que apenas contêm a sequência (ex: 'equiparar')", () => {
+    expect(sanitizeReply("vamos equiparar os valores")).toContain("equiparar");
+  });
+});
 
 // Raiz do problema "pergunto X e ele responde sobre valores": casamento de
 // palavra-chave cego ao contexto. Estes testes fixam a fronteira entre

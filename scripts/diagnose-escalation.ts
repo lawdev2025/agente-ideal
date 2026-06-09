@@ -118,7 +118,7 @@ interface Scenario {
   /**
    * Comportamento esperado:
    *  - "answer" → responde, sem Telegram, sem pausa.
-   *  - "soft"   → redireciona pra secretaria, avisa equipe em SILÊNCIO
+   *  - "soft"   → redireciona pra secretaria, avisa o time em SILÊNCIO
    *               (Telegram sim, pausa NÃO, sem "vou pedir pra coordenação").
    *  - "hard"   → handoff humano: pausa + "vou pedir pra coordenação" + Telegram.
    */

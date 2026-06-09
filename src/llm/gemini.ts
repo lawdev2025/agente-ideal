@@ -62,7 +62,7 @@ As nossas aulas ocorrem de segunda a sexta-feira nos seguintes horários:
 
 O calendário letivo e de provas está disponível no portal do aluno. Gostaria de tirar mais alguma dúvida?`;
       } else if (lower.includes("suporte") || lower.includes("atendente") || lower.includes("humano") || lower.includes("falar com alguém")) {
-        replyMessage = `Entendido! Estou acionando a nossa equipe de suporte humana neste momento. Um especialista entrará em contato com você diretamente pelo WhatsApp! (Simulação de escalação para suporte via Telegram ativada com sucesso).`;
+        replyMessage = `Entendido! Estou acionando o nosso time de suporte humano neste momento. Um especialista entrará em contato com você diretamente pelo WhatsApp! (Simulação de escalação para suporte via Telegram ativada com sucesso).`;
       }
 
       // Adiciona um pequeno delay de 600ms para simular a latência natural de uma chamada de IA

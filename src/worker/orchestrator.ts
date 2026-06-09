@@ -193,6 +193,28 @@ export class MessageOrchestrator {
         }
       }
 
+      // FOLLOW-UP DETERMINÍSTICO DE UNIDADE: o bot acabou de perguntar "de qual
+      // unidade?" pra passar um telefone (documento, pagamento ou secretaria) e
+      // o cliente respondeu com o nome da unidade. Resolvemos aqui, SEM LLM —
+      // senão "Cidade Nova" sozinho cai em ask_llm e o modelo improvisa (era o
+      // bug de listar todos os telefones). Fica depois do pause: convo pausada
+      // segue em silêncio.
+      const pendingAsk = detectPendingUnitAsk(conversationHistory);
+      const followUpUnit = pendingAsk ? detectUnit(userMessage) : undefined;
+      if (pendingAsk && followUpUnit) {
+        const reply =
+          pendingAsk === "document"
+            ? buildDocumentReplyWithUnit(followUpUnit)
+            : pendingAsk === "payment"
+              ? buildPaymentReplyWithUnit(followUpUnit)
+              : buildSecretariaRedirectReply(followUpUnit);
+        logger.info({ studentId, pendingAsk, unit: followUpUnit }, "Follow-up de unidade resolvido deterministicamente");
+        await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+        await this.whatsappClient.sendMessage(studentId, reply);
+        await this.recordTurnOutcome(userMessage, true);
+        return;
+      }
+
       // RESPOSTAS DIRETAS (school_faq): info que o dono cadastrou no painel com
       // gatilho + resposta exata. Se a mensagem bate num gatilho, devolvemos a
       // resposta VERBATIM — sem LLM, que não pode omitir nem negar. Avaliado
@@ -225,13 +247,14 @@ export class MessageOrchestrator {
 
       // Soft redirect: tema do colégio que o bot não tem na base (bolsa,
       // desconto, documento, transporte, evento). Redireciona pra secretaria,
-      // avisa a equipe em silêncio e NÃO pausa o bot — o cliente segue
+      // avisa o time em silêncio e NÃO pausa o bot — o cliente segue
       // conversando normalmente.
       if (intent.kind === "soft_redirect") {
         await this.softRedirectToSecretaria(
           conversationId,
           studentId,
-          intent.reason
+          intent.reason,
+          detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory)
         );
         return;
       }
@@ -495,7 +518,7 @@ export class MessageOrchestrator {
     if (deflected) {
       reply = isPriceOrMaterialQuestion(userMessage)
         ? buildPresentialValuesReply(detectUnit(userMessage))
-        : SECRETARIA_REDIRECT_REPLY;
+        : buildSecretariaRedirectReply(detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory));
       logger.warn({ tema: isPriceOrMaterialQuestion(userMessage) ? "preço" : "outro" }, "LLM produced deflection text — overriding");
     }
 
@@ -503,12 +526,12 @@ export class MessageOrchestrator {
     await this.whatsappClient.sendMessage(studentId, reply);
 
     // After answering the primary question, SOFT-redirect the off-scope part
-    // of a mixed-intent message (desconto, transporte, etc.) — avisa a equipe
+    // of a mixed-intent message (desconto, transporte, etc.) — avisa o time
     // em silêncio, sem pausar nem mandar handoff pro cliente.
     if (escalateAfter) {
       await this.softNotifyTeam(conversationId, studentId, escalateAfter);
     } else if (deflected) {
-      // Bot tropeçou e redirecionou pra secretaria: avisa a equipe em silêncio.
+      // Bot tropeçou e redirecionou pra secretaria: avisa o time em silêncio.
       await this.softNotifyTeam(
         conversationId,
         studentId,
@@ -526,7 +549,7 @@ export class MessageOrchestrator {
 
   // Resposta determinística de matrícula (enrollment_info com nível concreto):
   // monta o texto por template e envia, SEM tool e SEM LLM. Se a mensagem trazia
-  // um tema off-scope junto (escalateAfter), avisa a equipe em silêncio depois —
+  // um tema off-scope junto (escalateAfter), avisa o time em silêncio depois —
   // mesmo comportamento do fluxo antigo, só que sem o custo do fraseamento.
   private async handleEnrollmentInfo(
     conversationId: string,
@@ -602,14 +625,14 @@ export class MessageOrchestrator {
     if (deflected) {
       reply = isPriceOrMaterialQuestion(userMessage)
         ? buildPresentialValuesReply(detectUnit(userMessage))
-        : SECRETARIA_REDIRECT_REPLY;
+        : buildSecretariaRedirectReply(detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory));
       logger.warn({ tema: isPriceOrMaterialQuestion(userMessage) ? "preço" : "outro" }, "LLM produced deflection text — overriding");
     }
 
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
 
-    // Avisa a equipe no Telegram em silêncio que o bot redirecionou pra
+    // Avisa o time no Telegram em silêncio que o bot redirecionou pra
     // secretaria (não pausa, não manda handoff pro cliente).
     if (deflected) {
       await this.softNotifyTeam(
@@ -622,14 +645,15 @@ export class MessageOrchestrator {
 
   // Soft redirect: o cliente perguntou algo do colégio que o bot não tem na
   // base (bolsa, desconto, documento, transporte, evento). Não é handoff: a
-  // gente aponta pra secretaria, mantém o bot ATIVO e só avisa a equipe em
+  // gente aponta pra secretaria, mantém o bot ATIVO e só avisa o time em
   // silêncio. O cliente segue podendo conversar.
   private async softRedirectToSecretaria(
     conversationId: string,
     studentId: string,
-    reason: string
+    reason: string,
+    unit?: string
   ): Promise<void> {
-    const reply = SECRETARIA_REDIRECT_REPLY;
+    const reply = buildSecretariaRedirectReply(unit);
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);
     await this.softNotifyTeam(conversationId, studentId, reason);
@@ -638,7 +662,7 @@ export class MessageOrchestrator {
   // Necessidade documental (boletim, histórico, declaração, atestado, 2ª via,
   // transferência): feito na SECRETARIA da unidade. Se o cliente já disse a
   // unidade, mandamos o telefone dela direto; senão perguntamos qual unidade
-  // pra passar o número certo. Sempre avisa a equipe em silêncio, sem pausar.
+  // pra passar o número certo. Sempre avisa o time em silêncio, sem pausar.
   private async handleDocumentRequest(
     conversationId: string,
     studentId: string,
@@ -659,7 +683,7 @@ export class MessageOrchestrator {
 
   // Pagamento de taxas/mensalidade ou prova de SEGUNDA CHAMADA: resolvido na
   // secretaria da unidade. Se o cliente já disse a unidade, manda o telefone
-  // dela direto; senão pergunta qual. Avisa a equipe em silêncio, sem pausar.
+  // dela direto; senão pergunta qual. Avisa o time em silêncio, sem pausar.
   private async handlePaymentRequest(
     conversationId: string,
     studentId: string,
@@ -681,7 +705,7 @@ export class MessageOrchestrator {
   // Pedido de visita / link de agendamento: resposta DETERMINÍSTICA com o link
   // da unidade. Se a unidade não veio na mensagem atual, procura no histórico
   // recente (cliente disse "Cidade Nova" e na mensagem seguinte só "tem link?").
-  // Sem LLM e sem pausar o bot — visita é lead quente, então avisa a equipe.
+  // Sem LLM e sem pausar o bot — visita é lead quente, então avisa o time.
   private async handleVisitRequest(
     conversationId: string,
     studentId: string,
@@ -712,7 +736,7 @@ export class MessageOrchestrator {
     return undefined;
   }
 
-  // Aviso silencioso pra equipe no Telegram: registra no histórico e notifica
+  // Aviso silencioso pro time no Telegram: registra no histórico e notifica
   // o grupo, MAS não pausa o bot nem manda "vou pedir pra coordenação" pro
   // cliente. Usado quando o bot redireciona pra secretaria sem virar handoff.
   private async softNotifyTeam(
@@ -760,7 +784,7 @@ export class MessageOrchestrator {
       );
       if (!opts.skipHandoffMessage) {
         const handoffMessage =
-          "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo — em instantes alguém da nossa equipe entra em contato com você. 😊\n\n" +
+          "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo — em instantes alguém do nosso time entra em contato com você. 😊\n\n" +
           "*Para retornar ao atendimento automático, escreva \"reiniciar\".*";
         await this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
         if (!config.whatsapp.dryRun) {
@@ -922,7 +946,7 @@ const VISIT_ASK_UNIT_REPLY =
 function buildPresentialValuesReply(unit?: string): string {
   const intro =
     "Os valores de *mensalidade*, *matrícula* e *material didático* nós informamos *somente presencialmente* — " +
-    "assim a equipe consegue te apresentar as melhores condições com calma. 🤝\n\n";
+    "assim o nosso time consegue te apresentar as melhores condições com calma. 🤝\n\n";
 
   if (unit && VISIT_LINKS[unit]) {
     return (
@@ -974,7 +998,7 @@ function buildEnrollmentReply(opts: {
     reply =
       `${hi}Que bom seu interesse${nivelTxt} na unidade *${unit}*! 🎓\n` +
       `Os valores de mensalidade, matrícula e material são informados ` +
-      `*presencialmente* — assim a equipe te apresenta as melhores condições. 🤝\n\n` +
+      `*presencialmente* — assim o nosso time te apresenta as melhores condições. 🤝\n\n` +
       `👉 Agende uma visita: ${VISIT_LINKS[unit] ?? VISIT_LINKS["Batista Campos"]}\n` +
       `📞 Ou fale com a secretaria: *${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}*`;
   } else {
@@ -1000,10 +1024,45 @@ function buildEnrollmentReply(opts: {
 // Resposta canônica para temas do colégio que o bot não tem na base (bolsa,
 // desconto, documento, transporte, evento) OU quando o LLM tropeçou numa
 // dúvida concreta que não é de preço. Aponta pra secretaria e mantém a
-// conversa viva — NUNCA é uma resposta de valor.
+// conversa viva — NUNCA é uma resposta de valor. SEM unidade conhecida:
+// pergunta DIRETO qual unidade (nunca um sim/não inútil "quer o telefone?").
 const SECRETARIA_REDIRECT_REPLY =
   "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\n" +
-  "Quer que eu te passe o telefone pra você falar direto com a equipe?";
+  "De qual unidade você é? Aí te passo o telefone certinho:\n" +
+  "🏫 *Sede (Batista Campos)*\n" +
+  "🏫 *Augusto Montenegro*\n" +
+  "🏫 *Cidade Nova (Ananindeua)*";
+
+// Redirect pra secretaria ciente da unidade: se já sabemos a unidade (citada na
+// mensagem ou no histórico), passamos o telefone DAQUELA secretaria direto, sem
+// perguntar nada. Senão, caímos na pergunta canônica acima.
+function buildSecretariaRedirectReply(unit?: string): string {
+  if (!unit) return SECRETARIA_REDIRECT_REPLY;
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  return (
+    "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\n" +
+    `Na *${unit}* é só falar com a secretaria pelo *${phone}* que o nosso time te orienta certinho. 😊`
+  );
+}
+
+// Qual fluxo de "pergunta de unidade" o bot deixou pendente na ÚLTIMA mensagem.
+// Usado pelo follow-up determinístico: se a última fala do bot foi pedir a
+// unidade pra passar um telefone, um nome de unidade sozinho na resposta vira a
+// resposta certa (sem LLM). Olha SÓ a última mensagem do assistant — se não for
+// uma dessas perguntas, devolve null e o fluxo normal de roteamento segue.
+type PendingUnitAsk = "document" | "payment" | "secretaria" | null;
+function detectPendingUnitAsk(history: ConversationMessage[]): PendingUnitAsk {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role !== "assistant") continue;
+    const t = history[i].content;
+    if (/Boletim, hist[óo]rico escolar/i.test(t)) return "document";
+    if (/Pagamento de taxas/i.test(t)) return "payment";
+    if (/De qual unidade voc[êe] [ée]\?|me diz qual voc[êe] prefere que eu te passe o n[úu]mero/i.test(t))
+      return "secretaria";
+    return null;
+  }
+  return null;
+}
 
 // Telefone da secretaria de cada unidade. As chaves casam EXATAMENTE com os
 // rótulos que o intent-router devolve em `unit` (UNIT_NAME_PATTERNS).
@@ -1020,7 +1079,7 @@ function buildDocumentReplyWithUnit(unit: string): string {
   return (
     "Boletim, histórico escolar, declarações e qualquer outro documento são " +
     "emitidos direto na *secretaria* da unidade. 📄\n\n" +
-    `Na *${unit}* é só falar com a secretaria pelo *${phone}* que a equipe te orienta certinho. 😊`
+    `Na *${unit}* é só falar com a secretaria pelo *${phone}* que o nosso time te orienta certinho. 😊`
   );
 }
 
@@ -1074,7 +1133,7 @@ function buildPaymentReplyWithUnit(unit: string): string {
   return (
     "Pagamento de taxas, mensalidade e prova de *segunda chamada* é resolvido " +
     "direto na *secretaria* da unidade. 💳\n\n" +
-    `Na *${unit}*, é só falar com a secretaria pelo *${phone}* que a equipe te orienta certinho. 😊`
+    `Na *${unit}*, é só falar com a secretaria pelo *${phone}* que o nosso time te orienta certinho. 😊`
   );
 }
 
@@ -1169,7 +1228,7 @@ function buildChatSystemPrompt(): string {
 // Gemini still emits them despite the phrasing prompt. ALSO neutraliza
 // alucinações de telefone (qualquer DDD ≠ 91) e qualquer valor em R$
 // que o modelo possa ter inventado.
-function sanitizeReply(text: string): string {
+export function sanitizeReply(text: string): string {
   // 1. Drop function-call-shaped lines
   let cleaned = text
     .split("\n")
@@ -1188,6 +1247,11 @@ function sanitizeReply(text: string): string {
     /R\$\s?[\d.,]+(?:\s?(?:\/m[êe]s|por m[êe]s|mensal|anual|semestral))?/gi,
     "(valor informado na secretaria)"
   );
+
+  // 4. Política do colégio: a palavra "equipe" NUNCA vai pro cliente — usamos
+  //    "time". Trava final preservando a capitalização (Equipe→Time, equipe→time),
+  //    pra blindar até o que o LLM improvisar no chat livre.
+  cleaned = cleaned.replace(/\bequipe\b/gi, (m) => (m[0] === "E" ? "Time" : "time"));
 
   return cleaned.trim();
 }

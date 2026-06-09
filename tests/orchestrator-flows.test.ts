@@ -248,7 +248,7 @@ describe("Orchestrator: enrollment_info determinístico (sem LLM) quando há ní
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
   });
 
-  it("mixed: 'tem médio e desconto pra irmão?' → responde matrícula + aponta secretaria, avisa equipe, sem LLM", async () => {
+  it("mixed: 'tem médio e desconto pra irmão?' → responde matrícula + aponta secretaria, avisa o time, sem LLM", async () => {
     const m = buildMocks({
       history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
     });
@@ -352,6 +352,83 @@ describe("Orchestrator: soft redirect (bolsa/desconto/documento) → secretaria,
   }
 });
 
+describe("Orchestrator: redirect secretaria pergunta a unidade direto (sem sim/não)", () => {
+  it("'quero pagar a festa Junina' (deflexão LLM) → pergunta a unidade, sem sim/não inútil", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    // LLM deflete a dúvida concreta → override pra secretaria
+    (m.llm.generateMessage as any).mockResolvedValue({
+      message: "Não tenho essa informação, fale com a secretaria.",
+      toolCalls: [],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero pagar a festa Junina", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/secretaria/i);
+    expect(sent).toMatch(/de qual unidade voc[êe] [ée]/i);
+    // NUNCA o sim/não antigo "quer que eu te passe o telefone"
+    expect(sent).not.toMatch(/quer que eu te passe/i);
+  });
+
+  it("redirect com unidade já no histórico → passa o telefone DAQUELA secretaria direto", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Oi" },
+        { role: "user", content: "sou da Cidade Nova" },
+      ],
+    });
+    (m.llm.generateMessage as any).mockResolvedValue({
+      message: "Não tenho essa informação, fale com a secretaria.",
+      toolCalls: [],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "tem festa junina esse ano?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/Cidade Nova/);
+    expect(sent).toMatch(/\(91\) 3273-0222/);
+    expect(sent).not.toMatch(/de qual unidade/i);
+  });
+});
+
+describe("Orchestrator: follow-up determinístico de unidade (responde só o nome → telefone)", () => {
+  const cases: Array<{ ask: string; reply: string; phone: string }> = [
+    {
+      ask: "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\nDe qual unidade você é? Aí te passo o telefone certinho:\n🏫 *Sede (Batista Campos)*",
+      reply: "Cidade Nova",
+      phone: "(91) 3273-0222",
+    },
+    {
+      ask: "Boletim, histórico escolar, declarações e qualquer outro documento são emitidos direto na *secretaria* da unidade. 📄\n\nDe qual unidade você precisa?",
+      reply: "Sede",
+      phone: "(91) 3323-5000",
+    },
+    {
+      ask: "Pagamento de taxas, mensalidade e prova de *segunda chamada* é resolvido direto na *secretaria* da unidade. 💳\n\nDe qual unidade você precisa?",
+      reply: "Augusto Montenegro",
+      phone: "(91) 3273-0667",
+    },
+  ];
+  for (const { ask, reply, phone } of cases) {
+    it(`bot perguntou a unidade → '${reply}' devolve ${phone} sem LLM`, async () => {
+      const m = buildMocks({
+        history: [
+          { role: "assistant", content: "Oi" },
+          { role: "user", content: "Ana" },
+          { role: "assistant", content: ask },
+        ],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", reply, "u1");
+      const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+      expect(sent).toMatch(/secretaria/i);
+      expect(sent).toContain(phone);
+      // É determinístico — não improvisa via LLM nem lista todos os telefones
+      expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    });
+  }
+});
+
 describe("Orchestrator: handoff humano de verdade só p/ humano explícito e fora de escopo", () => {
   const hardMsgs = [
     "quero falar com um atendente humano",
@@ -401,7 +478,7 @@ describe("Orchestrator: necessidade documental → secretaria da unidade (com te
     expect(sent).not.toMatch(/presencialmente/i);
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
     expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
-    // Avisa a equipe em silêncio
+    // Avisa o time em silêncio
     expect(m.escalation.escalateToGroup).toHaveBeenCalled();
   });
 

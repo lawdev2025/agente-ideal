@@ -39,7 +39,7 @@ INSERT INTO school_faq (gatilhos, resposta, unit_id, ativo, prioridade) VALUES
   ),
   (
     'material didatico, material escolar, livros, livro, apostila, apostilas',
-    'O material didático é do sistema *Poliedro* e comprado direto na escola — à vista, parcelado ou no Pix. 📚 Os valores a equipe te passa presencialmente na secretaria.',
+    'O material didático é do sistema *Poliedro* e comprado direto na escola — à vista, parcelado ou no Pix. 📚 Os valores o nosso time te passa presencialmente na secretaria.',
     NULL, TRUE, -1
   );
 

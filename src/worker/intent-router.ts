@@ -28,7 +28,7 @@ export type RoutedIntent =
    * Necessidade documental (boletim, histórico escolar, declaração, atestado,
    * 2ª via, transferência). Tudo isso é feito na SECRETARIA da unidade — a
    * gente responde com o telefone da unidade pedida (ou pergunta qual unidade)
-   * e avisa a equipe em silêncio. NÃO pausa o bot.
+   * e avisa o time em silêncio. NÃO pausa o bot.
    */
   | { kind: "document_request"; unit?: string }
   /**
@@ -102,7 +102,7 @@ const HARD_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
 ];
 
 // SOFT off-scope → temas DO colégio que o bot não tem na base. NÃO faz handoff
-// nem pausa: redireciona pra secretaria e avisa a equipe em silêncio.
+// nem pausa: redireciona pra secretaria e avisa o time em silêncio.
 // (Uniforme saiu daqui de propósito — o roteiro já sabe: "malharia das
 // unidades" — então cai no chat livre e é respondido direto.)
 const SOFT_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [

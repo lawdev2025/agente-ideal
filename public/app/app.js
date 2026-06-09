@@ -12,7 +12,7 @@
   // Token embutido p/ login automatico (sem digitar). Tem que bater com o
   // ADMIN_TOKEN configurado na Vercel. Como vai no JS publico, o endpoint de
   // config NAO devolve mais segredos (chaves de API) — ver api/admin/config.ts.
-  const BAKED_TOKEN = "dev-admin-token-2026";
+  const BAKED_TOKEN = "crm_shoHLhRunngIfWB-19A-fANzFOX5RyBg";
   let token = localStorage.getItem("CRM_TOKEN") || BAKED_TOKEN;
   let cfg = {}; // { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY }
   let sb = null; // cliente supabase (realtime)

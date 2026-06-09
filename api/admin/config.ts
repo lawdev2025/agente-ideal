@@ -11,28 +11,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     try {
+      // SEGURANCA: o app mobile usa um token embutido no JS publico (login
+      // automatico), entao este GET NAO devolve mais segredos (chaves de API,
+      // tokens de WhatsApp/Telegram/Vercel, app secret). Devolve so o que o
+      // front precisa (config publica do Supabase/VAPID) + campos de exibicao
+      // nao-sensiveis. Para EDITAR chaves, use o POST (que continua aceitando
+      // todos os campos). Segredos nunca voltam ao navegador.
+      const masked = (v?: string) => (v ? "********" : "");
       res.status(200).json({
         SUPABASE_URL: process.env.SUPABASE_URL || "",
         SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
-        LLM_PROVIDER: process.env.LLM_PROVIDER || "claude",
-        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
-        CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-haiku-4-5-20251001",
-        GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
-        GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.1-flash-lite",
-        TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
-        TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || "",
-        WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
-        WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN || "",
-        WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET || "",
-        WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN || "",
-        ADMIN_TOKEN: process.env.ADMIN_TOKEN || "",
         VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || "",
+        LLM_PROVIDER: process.env.LLM_PROVIDER || "claude",
+        CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-haiku-4-5-20251001",
+        GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.1-flash-lite",
         INSTITUTION_NAME: process.env.INSTITUTION_NAME || "",
         PERSONA_NAME: process.env.PERSONA_NAME || "",
         ENROLLMENT_PERIOD_END: process.env.ENROLLMENT_PERIOD_END || "",
-        VERCEL_AUTH_TOKEN: process.env.VERCEL_AUTH_TOKEN || "",
-        VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID || "",
-        VERCEL_TEAM_ID: process.env.VERCEL_TEAM_ID || "",
+        WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
+        // Apenas indicam se ESTAO setados (mascarado), sem revelar o valor:
+        ANTHROPIC_API_KEY: masked(process.env.ANTHROPIC_API_KEY),
+        GEMINI_API_KEY: masked(process.env.GEMINI_API_KEY),
+        TELEGRAM_BOT_TOKEN: masked(process.env.TELEGRAM_BOT_TOKEN),
+        WHATSAPP_ACCESS_TOKEN: masked(process.env.WHATSAPP_ACCESS_TOKEN),
+        WHATSAPP_APP_SECRET: masked(process.env.WHATSAPP_APP_SECRET),
+        WHATSAPP_VERIFY_TOKEN: masked(process.env.WHATSAPP_VERIFY_TOKEN),
+        VERCEL_AUTH_TOKEN: masked(process.env.VERCEL_AUTH_TOKEN),
       });
     } catch (error: any) {
       logger.error({ error }, "Erro em GET /api/admin/config");
@@ -69,8 +73,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const mappedPayload: Record<string, string> = {};
       for (const [key, envKey] of Object.entries(ENV_MAP)) {
-        if (payload[key] !== undefined) {
-          mappedPayload[envKey] = payload[key];
+        const val = payload[key];
+        // Ignora vazio e o placeholder mascarado "********": evita sobrescrever
+        // um segredo existente quando o painel salva sem ter recebido o valor
+        // real (o GET agora devolve segredos mascarados). Para trocar uma chave,
+        // basta digitar o valor novo.
+        if (val !== undefined && val !== "" && val !== "********") {
+          mappedPayload[envKey] = val;
         }
       }
 

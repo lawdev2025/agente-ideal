@@ -9,7 +9,11 @@
   const $ = (id) => document.getElementById(id);
 
   // ---------------- estado ----------------
-  let token = localStorage.getItem("CRM_TOKEN") || "";
+  // Token embutido p/ login automatico (sem digitar). Tem que bater com o
+  // ADMIN_TOKEN configurado na Vercel. Como vai no JS publico, o endpoint de
+  // config NAO devolve mais segredos (chaves de API) — ver api/admin/config.ts.
+  const BAKED_TOKEN = "dev-admin-token-2026";
+  let token = localStorage.getItem("CRM_TOKEN") || BAKED_TOKEN;
   let cfg = {}; // { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY }
   let sb = null; // cliente supabase (realtime)
   let contacts = []; // lista de contatos
@@ -511,12 +515,9 @@
 
   // ---------------- BOOT ----------------
   function boot() {
-    if (token) {
-      // valida o token salvo buscando a config
-      doLogin(token).catch(() => showScreen("login"));
-    } else {
-      showScreen("login");
-    }
+    // Login automatico: tenta o token salvo/embutido. So mostra a tela de
+    // login se o token for rejeitado (fallback).
+    doLogin(token).catch(() => showScreen("login"));
   }
   if (window.supabase) boot();
   else window.addEventListener("load", boot);

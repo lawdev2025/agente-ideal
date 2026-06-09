@@ -180,6 +180,9 @@
                         <!-- Janela de Chat Principal -->
                         <div class="chat-window">
                             <div class="chat-window-header" id="chat-header-info" style="display: none;">
+                                <button class="chat-back-btn" id="btn-chat-back" title="Voltar para a lista" aria-label="Voltar">
+                                    <i class="fa-solid fa-arrow-left"></i>
+                                </button>
                                 <div class="chat-user-details">
                                     <div class="chat-avatar" id="chat-user-avatar">U</div>
                                     <div class="chat-user-meta">
@@ -200,6 +203,14 @@
                                     <h3>Nenhuma conversa selecionada</h3>
                                     <p>Selecione um contato na barra lateral para visualizar o histórico de mensagens e gerenciar o bot.</p>
                                 </div>
+                            </div>
+
+                            <!-- Composer: atendente humano assume e responde pelo painel -->
+                            <div class="chat-composer" id="chat-composer" style="display: none;">
+                                <textarea id="chat-input" rows="1" placeholder="Escreva para assumir o atendimento... (Enter envia, Shift+Enter quebra linha)"></textarea>
+                                <button class="btn-send" id="btn-send-message" title="Enviar mensagem" aria-label="Enviar">
+                                    <i class="fa-solid fa-paper-plane"></i>
+                                </button>
                             </div>
                         </div>
                     </div>

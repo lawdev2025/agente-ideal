@@ -119,6 +119,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('contact-search').addEventListener('input', filterContacts);
     document.getElementById('btn-toggle-bot').addEventListener('click', toggleBotStatus);
 
+    // Composer (atendente humano assume e responde) + navegação mobile
+    const btnSend = document.getElementById('btn-send-message');
+    if (btnSend) btnSend.addEventListener('click', sendHumanMessage);
+    const btnBack = document.getElementById('btn-chat-back');
+    if (btnBack) btnBack.addEventListener('click', closeChat);
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendHumanMessage(); }
+        });
+        chatInput.addEventListener('input', () => autoGrow(chatInput));
+    }
+
+    // Ao voltar o foco pra aba/janela, puxa novidades na hora (não espera o poll).
+    const refreshOnFocus = () => {
+        if (currentTab !== 'conversas') return;
+        refreshContactsList();
+        if (activeContact) refreshActiveChat(activeContact);
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshOnFocus(); });
+
     // CSV import
     document.getElementById('btn-import-csv').addEventListener('click', openCSVModal);
     document.getElementById('btn-close-csv-modal').addEventListener('click', closeCSVModal);
@@ -527,6 +549,57 @@ function renderCharts(msgCounts, subjects, days) {
 
 // 6. CONVERSAS — dados reais do Supabase
 let allContacts = [];
+let activeContact = null;
+// Nós de contato reaproveitados entre renders (evita reconstruir a lista toda
+// a cada evento → sem flicker, sem perder clique/scroll).
+let contactNodes = {};
+// Ids das mensagens já desenhadas na conversa aberta (append incremental).
+let renderedMsgIds = new Set();
+
+// --- Helpers de render seguros ---
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+function contactInitials(name) {
+    return (String(name || '?').trim().split(/\s+/).map(n => n[0] || '').join('').substring(0, 2).toUpperCase()) || '?';
+}
+function truncate(s, n) {
+    s = String(s || '');
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+// created_at pode vir como epoch ms (número/numérico) OU ISO string — normaliza.
+function tsNum(v) {
+    if (v == null) return 0;
+    if (typeof v === 'number') return v;
+    if (/^\d+$/.test(v)) return parseInt(v, 10);
+    const d = Date.parse(v);
+    return isNaN(d) ? 0 : d;
+}
+function fmtTime(v) {
+    const t = tsNum(v);
+    if (!t) return '';
+    return new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+function autoGrow(el) {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+function showToast(msg) {
+    let t = document.getElementById('admin-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'admin-toast';
+        t.className = 'admin-toast';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 4000);
+}
 
 async function loadConversationsTab() {
     await loadContactsList();
@@ -595,42 +668,93 @@ async function loadContactsList() {
     }
 }
 
+// Render incremental: reaproveita os nós existentes, atualiza só o conteúdo e
+// reordena (mais recente no topo). Sem innerHTML='' na lista toda → sem flicker.
 function renderContactsList(contacts) {
     const listContainer = document.getElementById('contacts-list-container');
     if (!listContainer) return;
 
     if (!contacts || contacts.length === 0) {
+        contactNodes = {};
         listContainer.innerHTML = '<div class="no-records">Nenhum contato ainda.<br>As conversas aparecerão aqui quando chegarem pelo WhatsApp.</div>';
         return;
     }
 
-    listContainer.innerHTML = '';
-    contacts.forEach(contact => {
-        const item = document.createElement('div');
-        item.className = `contact-item ${contact.wa_id === activeContactId ? 'active' : ''}`;
-        item.setAttribute('data-id', contact.wa_id);
+    // Limpa placeholders (loading/erro/vazio) antes do primeiro render real.
+    if (listContainer.querySelector('.no-records, .loading-spinner, .error-msg')) {
+        listContainer.innerHTML = '';
+        contactNodes = {};
+    }
 
-        const displayName = contact.name || contact.wa_id;
-        const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        const botBadge = contact.bot_paused
-            ? '<span class="bot-badge-paused"><i class="fa-solid fa-headset"></i> Humano</span>'
-            : '<span class="bot-badge-active"><i class="fa-solid fa-robot"></i> Bot Ativo</span>';
+    const sorted = [...contacts].sort(
+        (a, b) => tsNum(b.last_message_at ?? b.last_seen_at) - tsNum(a.last_message_at ?? a.last_seen_at)
+    );
 
-        item.innerHTML = `
-            <div class="contact-avatar">${initials}</div>
-            <div class="contact-details">
-                <div class="contact-header"><h4>${displayName}</h4></div>
-                <div class="contact-meta"><p>${contact.phone || contact.wa_id}</p>${botBadge}</div>
-            </div>`;
-
-        item.addEventListener('click', () => {
-            document.querySelectorAll('.contact-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-            activeContactId = contact.wa_id;
-            loadActiveChat(contact);
-        });
-        listContainer.appendChild(item);
+    const present = new Set();
+    sorted.forEach(contact => {
+        const wid = contact.wa_id;
+        present.add(wid);
+        let item = contactNodes[wid];
+        if (!item) {
+            item = document.createElement('div');
+            item.className = 'contact-item';
+            item.setAttribute('data-id', wid);
+            item.addEventListener('click', () => openChat(wid));
+            contactNodes[wid] = item;
+        }
+        updateContactNode(item, contact);
+        listContainer.appendChild(item); // re-append reordena sem recriar o nó
     });
+
+    // Remove nós de contatos que sumiram.
+    Object.keys(contactNodes).forEach(id => {
+        if (!present.has(id)) {
+            contactNodes[id].remove();
+            delete contactNodes[id];
+        }
+    });
+}
+
+function updateContactNode(item, contact) {
+    const displayName = contact.name || contact.wa_id;
+    const badge = contact.bot_paused
+        ? '<span class="bot-badge-paused"><i class="fa-solid fa-headset"></i> Humano</span>'
+        : '<span class="bot-badge-active"><i class="fa-solid fa-robot"></i> Bot</span>';
+    const hasPreview = contact.last_message != null && contact.last_message !== '';
+    const previewText = hasPreview
+        ? (contact.last_message_role && contact.last_message_role !== 'user' ? 'Você: ' : '') + escapeHtml(truncate(contact.last_message, 38))
+        : escapeHtml(contact.phone || contact.wa_id);
+    const time = contact.last_message_at ? fmtTime(contact.last_message_at) : '';
+    const unread = contact.needs_reply ? '<span class="contact-unread" title="Aguardando resposta"></span>' : '';
+
+    item.classList.toggle('active', contact.wa_id === activeContactId);
+    item.classList.toggle('needs-reply', !!contact.needs_reply);
+    item.innerHTML = `
+        <div class="contact-avatar">${escapeHtml(contactInitials(displayName))}</div>
+        <div class="contact-details">
+            <div class="contact-header"><h4>${escapeHtml(displayName)}</h4><span class="contact-time">${time}</span></div>
+            <div class="contact-meta"><p class="contact-preview">${previewText}</p>${unread}${badge}</div>
+        </div>`;
+}
+
+// Abre a conversa (e, no mobile, troca a lista pela janela de chat).
+function openChat(waId) {
+    const contact = allContacts.find(c => c.wa_id === waId);
+    if (!contact) return;
+    activeContactId = waId;
+    activeContact = contact;
+    document.querySelectorAll('.contact-item').forEach(i =>
+        i.classList.toggle('active', i.getAttribute('data-id') === waId)
+    );
+    const wrapper = document.querySelector('.conversations-wrapper');
+    if (wrapper) wrapper.classList.add('chat-open');
+    loadActiveChat(contact);
+}
+
+// Volta pra lista (usado pelo botão de voltar no mobile).
+function closeChat() {
+    const wrapper = document.querySelector('.conversations-wrapper');
+    if (wrapper) wrapper.classList.remove('chat-open');
 }
 
 function filterContacts(e) {
@@ -641,64 +765,109 @@ function filterContacts(e) {
     ));
 }
 
+// Busca o histórico (backend SQLite/Supabase server-side primeiro, _sb depois).
+async function fetchMessages(waId) {
+    if (adminToken && BACKEND_URL !== undefined) {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(waId)}/messages`, {
+                headers: { 'Authorization': `Bearer ${adminToken}` }
+            });
+            if (res.ok) { const data = await res.json(); return data.messages || []; }
+        } catch (e) { /* cai pro supabase */ }
+    }
+    if (_sb) {
+        try {
+            const { data, error } = await _sb
+                .from('messages').select('*').eq('wa_id', waId).order('created_at', { ascending: true });
+            if (!error) return data || [];
+        } catch (e) { console.error('Erro ao carregar mensagens do Supabase:', e); }
+    }
+    return [];
+}
+
+function appendBubble(box, msg) {
+    const el = document.createElement('div');
+    el.className = `chat-bubble-container ${msg.role === 'user' ? 'user' : 'bot'}`;
+    if (msg.id != null) el.setAttribute('data-mid', String(msg.id));
+    el.innerHTML = `<div class="chat-bubble"><p class="bubble-text">${escapeHtml(msg.content || '')}</p><span class="bubble-time">${fmtTime(msg.created_at)}</span></div>`;
+    box.appendChild(el);
+}
+
+function renderMessagesFull(box, messages) {
+    box.innerHTML = '';
+    renderedMsgIds = new Set();
+    messages.filter(m => m.role !== 'tool' && m.role !== 'system').forEach(m => {
+        appendBubble(box, m);
+        if (m.id != null) renderedMsgIds.add(String(m.id));
+    });
+    box.scrollTop = box.scrollHeight;
+}
+
 async function loadActiveChat(contact) {
     const headerInfo = document.getElementById('chat-header-info');
     const messagesBox = document.getElementById('chat-messages-box');
     if (!headerInfo || !messagesBox) return;
 
     headerInfo.style.display = 'flex';
+    const composer = document.getElementById('chat-composer');
+    if (composer) composer.style.display = 'flex';
+
     const displayName = contact.name || contact.wa_id;
     document.getElementById('chat-user-name').textContent = displayName;
     document.getElementById('chat-user-phone').textContent = contact.phone || contact.wa_id;
-    document.getElementById('chat-user-avatar').textContent = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    document.getElementById('chat-user-avatar').textContent = contactInitials(displayName);
     updateBotButtonUI(contact.bot_paused);
 
     messagesBox.innerHTML = '<div class="loading-spinner">Carregando histórico...</div>';
+    renderedMsgIds = new Set();
 
-    let messages = null;
-
-    // Try backend API first (SQLite — most up-to-date)
-    if (adminToken && BACKEND_URL !== undefined) {
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(contact.wa_id)}/messages`, {
-                headers: { 'Authorization': `Bearer ${adminToken}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                messages = data.messages || [];
-            }
-        } catch (e) {
-            console.warn('Backend API indisponível para mensagens, tentando Supabase...', e);
-        }
-    }
-
-    // Fallback: Supabase
-    if (messages === null && _sb) {
-        try {
-            const { data, error } = await _sb
-                .from('messages').select('*').eq('wa_id', contact.wa_id).order('created_at', { ascending: true });
-            if (!error) messages = data || [];
-        } catch (e) {
-            console.error('Erro ao carregar mensagens do Supabase:', e);
-        }
-    }
-
-    messagesBox.innerHTML = '';
-    if (!messages || messages.length === 0) {
+    const messages = await fetchMessages(contact.wa_id);
+    const visible = messages.filter(m => m.role !== 'tool' && m.role !== 'system');
+    if (visible.length === 0) {
         messagesBox.innerHTML = '<div class="chat-placeholder"><i class="fa-solid fa-comments"></i><h3>Nenhuma mensagem</h3><p>Este contato ainda não enviou mensagens.</p></div>';
         return;
     }
+    renderMessagesFull(messagesBox, messages);
+}
 
-    messages.forEach(msg => {
-        if (msg.role === 'tool' || msg.role === 'system') return; // skip internal messages
-        const el = document.createElement('div');
-        el.className = `chat-bubble-container ${msg.role === 'user' ? 'user' : 'bot'}`;
-        const ts = parseInt(msg.created_at) || Date.parse(msg.created_at);
-        const time = isNaN(ts) ? '--:--' : new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        el.innerHTML = `<div class="chat-bubble"><p class="bubble-text">${msg.content || ''}</p><span class="bubble-time">${time}</span></div>`;
-        messagesBox.appendChild(el);
-    });
-    messagesBox.scrollTop = messagesBox.scrollHeight;
+// Envia uma mensagem como ATENDENTE HUMANO (assume o contato). O backend já
+// pausa o bot; aqui refletimos isso na UI e anexamos a mensagem enviada.
+async function sendHumanMessage() {
+    const input = document.getElementById('chat-input');
+    const btn = document.getElementById('btn-send-message');
+    if (!input || !activeContactId) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.disabled = true;
+    if (btn) btn.disabled = true;
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(activeContactId)}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+            body: JSON.stringify({ text })
+        });
+        if (!res.ok) {
+            let msg = 'Não foi possível enviar a mensagem.';
+            try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) { /* ignore */ }
+            throw new Error(msg);
+        }
+        input.value = '';
+        autoGrow(input);
+        // Backend pausou o bot → reflete na UI imediatamente.
+        if (activeContact) activeContact.bot_paused = true;
+        const c = allContacts.find(x => x.wa_id === activeContactId);
+        if (c) c.bot_paused = true;
+        updateBotButtonUI(true);
+        if (activeContact) await refreshActiveChat(activeContact);
+        refreshContactsList();
+    } catch (err) {
+        showToast(err.message || 'Falha ao enviar.');
+    } finally {
+        input.disabled = false;
+        if (btn) btn.disabled = false;
+        input.focus();
+    }
 }
 
 // Funções de sincronização periódica (tempo real silencioso) para o Painel Admin
@@ -733,119 +902,55 @@ async function refreshContactsList() {
     }
 
     if (fetchedContacts.length > 0) {
-        // Ordena contatos por data de visualização/interação mais recente
-        fetchedContacts.sort((a, b) => (b.last_seen_at || 0) - (a.last_seen_at || 0));
-
         allContacts = fetchedContacts;
 
-        // Mantém a UI do botão de controle do bot atualizada caso o status mude
-        const activeContact = allContacts.find(c => c.wa_id === activeContactId);
-        if (activeContact) {
-            updateBotButtonUI(activeContact.bot_paused);
+        // Mantém o contato ativo e o botão do bot em sincronia com o servidor.
+        const active = allContacts.find(c => c.wa_id === activeContactId);
+        if (active) {
+            activeContact = active;
+            updateBotButtonUI(active.bot_paused);
         }
 
-        // Renderiza a lista respeitando a busca atual do usuário
+        // Renderiza (incremental, sem flicker) respeitando a busca atual.
         const searchInput = document.getElementById('contact-search');
         const query = searchInput ? searchInput.value.toLowerCase() : '';
         if (query) {
-            renderContactsListSilently(allContacts.filter(c =>
+            renderContactsList(allContacts.filter(c =>
                 (c.wa_id && c.wa_id.toLowerCase().includes(query)) ||
                 (c.name && c.name.toLowerCase().includes(query))
             ));
         } else {
-            renderContactsListSilently(allContacts);
+            renderContactsList(allContacts);
         }
     }
 }
 
-function renderContactsListSilently(contacts) {
-    const listContainer = document.getElementById('contacts-list-container');
-    if (!listContainer) return;
+// Atualiza a conversa aberta SEM reconstruir tudo: só anexa as mensagens novas
+// (por id) e preserva a rolagem do usuário (só desce se já estava no fim).
+async function refreshActiveChat(contact) {
+    const messagesBox = document.getElementById('chat-messages-box');
+    if (!messagesBox || !contact) return;
 
-    if (!contacts || contacts.length === 0) {
-        listContainer.innerHTML = '<div class="no-records">Nenhum contato ainda.<br>As conversas aparecerão aqui quando chegarem pelo WhatsApp.</div>';
+    const messages = await fetchMessages(contact.wa_id);
+    const visible = messages.filter(m => m.role !== 'tool' && m.role !== 'system');
+
+    // Primeira pintura (ou conversa estava vazia) → render completo.
+    if (messagesBox.querySelector('.chat-placeholder, .loading-spinner') || renderedMsgIds.size === 0) {
+        if (visible.length === 0) return;
+        renderMessagesFull(messagesBox, messages);
         return;
     }
 
-    listContainer.innerHTML = '';
-    contacts.forEach(contact => {
-        const item = document.createElement('div');
-        item.className = `contact-item ${contact.wa_id === activeContactId ? 'active' : ''}`;
-        item.setAttribute('data-id', contact.wa_id);
-
-        const displayName = contact.name || contact.wa_id;
-        const initials = displayName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        const botBadge = contact.bot_paused
-            ? '<span class="bot-badge-paused"><i class="fa-solid fa-headset"></i> Humano</span>'
-            : '<span class="bot-badge-active"><i class="fa-solid fa-robot"></i> Bot Ativo</span>';
-
-        item.innerHTML = `
-            <div class="contact-avatar">${initials}</div>
-            <div class="contact-details">
-                <div class="contact-header"><h4>${displayName}</h4></div>
-                <div class="contact-meta"><p>${contact.phone || contact.wa_id}</p>${botBadge}</div>
-            </div>`;
-
-        item.addEventListener('click', () => {
-            document.querySelectorAll('.contact-item').forEach(i => i.classList.remove('active'));
-            item.classList.add('active');
-            activeContactId = contact.wa_id;
-            loadActiveChat(contact);
-        });
-        listContainer.appendChild(item);
+    const nearBottom = messagesBox.scrollHeight - messagesBox.scrollTop - messagesBox.clientHeight < 120;
+    let added = false;
+    visible.forEach(m => {
+        const key = m.id != null ? String(m.id) : null;
+        if (key && renderedMsgIds.has(key)) return;
+        appendBubble(messagesBox, m);
+        if (key) renderedMsgIds.add(key);
+        added = true;
     });
-}
-
-async function refreshActiveChat(contact) {
-    const messagesBox = document.getElementById('chat-messages-box');
-    if (!messagesBox) return;
-
-    let messages = null;
-
-    // Tenta primeiro obter as mensagens da API do backend (SQLite)
-    if (adminToken && BACKEND_URL !== undefined) {
-        try {
-            const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(contact.wa_id)}/messages`, {
-                headers: { 'Authorization': `Bearer ${adminToken}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                messages = data.messages || [];
-            }
-        } catch (e) {
-            // Falha silenciosa em background
-        }
-    }
-
-    // Fallback: Supabase
-    if (messages === null && _sb) {
-        try {
-            const { data, error } = await _sb
-                .from('messages').select('*').eq('wa_id', contact.wa_id).order('created_at', { ascending: true });
-            if (!error) messages = data || [];
-        } catch (e) {
-            // Falha silenciosa em background
-        }
-    }
-
-    if (messages !== null) {
-        const visibleMessages = messages.filter(msg => msg.role !== 'tool' && msg.role !== 'system');
-        const currentBubbles = messagesBox.querySelectorAll('.chat-bubble-container');
-        
-        // Só atualiza o DOM e move a rolagem se houver novas mensagens para evitar flickers ou interrupções na rolagem do usuário
-        if (visibleMessages.length !== currentBubbles.length) {
-            messagesBox.innerHTML = '';
-            visibleMessages.forEach(msg => {
-                const el = document.createElement('div');
-                el.className = `chat-bubble-container ${msg.role === 'user' ? 'user' : 'bot'}`;
-                const ts = parseInt(msg.created_at) || Date.parse(msg.created_at);
-                const time = isNaN(ts) ? '--:--' : new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                el.innerHTML = `<div class="chat-bubble"><p class="bubble-text">${msg.content || ''}</p><span class="bubble-time">${time}</span></div>`;
-                messagesBox.appendChild(el);
-            });
-            messagesBox.scrollTop = messagesBox.scrollHeight;
-        }
-    }
+    if (added && nearBottom) messagesBox.scrollTop = messagesBox.scrollHeight;
 }
 
 function updateBotButtonUI(botPaused) {
@@ -864,28 +969,31 @@ function updateBotButtonUI(botPaused) {
 
 async function toggleBotStatus() {
     if (!activeContactId) return;
-    if (!_sb) { alert('Conecte ao Supabase primeiro.'); return; }
 
     const contact = allContacts.find(c => c.wa_id === activeContactId);
     if (!contact) return;
 
     const nextState = !contact.bot_paused;
     try {
+        // Caminho principal: backend (não depende do _sb do navegador).
         const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(activeContactId)}/pause`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
             body: JSON.stringify({ paused: nextState })
         });
         if (!res.ok) {
+            // Fallback: escreve direto no Supabase, se conectado.
+            if (!_sb) throw new Error('Backend indisponível e Supabase não conectado.');
             const { error } = await _sb.from('contacts').update({ bot_paused: nextState }).eq('wa_id', activeContactId);
             if (error) throw error;
         }
         contact.bot_paused = nextState;
+        if (activeContact) activeContact.bot_paused = nextState;
         updateBotButtonUI(nextState);
         renderContactsList(allContacts);
     } catch (err) {
         console.error('Erro ao alterar status do bot:', err);
-        alert(`Não foi possível alterar o status do bot.\n${err.message}`);
+        showToast(`Não foi possível alterar o status do bot. ${err.message || ''}`);
     }
 }
 
@@ -1581,7 +1689,7 @@ function onRealtimeContactChange(contact, eventType) {
 
 function activateFallbackPolling() {
     if (realtimeFallbackPolling) return;
-    console.log('[Realtime] polling fallback ATIVO (30s)');
+    console.log('[Realtime] polling fallback ATIVO (8s)');
     realtimeFallbackPolling = setInterval(async () => {
         if (currentTab === 'conversas') {
             await refreshContactsList();
@@ -1592,7 +1700,7 @@ function activateFallbackPolling() {
         } else if (currentTab === 'dashboard') {
             await loadDashboardStats();
         }
-    }, 30000);
+    }, 8000);
 }
 
 function deactivateFallbackPolling() {

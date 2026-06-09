@@ -53,21 +53,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
     if (orphans.length > 0) {
+      // So colunas garantidas: name/phone podem nao existir em instancias
+      // criadas pelo schema antigo (supabase_schema.sql) — nao referencie.
       await sb.from("contacts").insert(
         orphans.map((o) => ({
           wa_id: o.wa_id,
-          name: null,
-          phone: null,
           bot_paused: false,
           last_seen_at: o.last_seen_at,
         }))
       );
     }
 
-    const { data: contacts } = await sb
+    // SELECT "*" em vez de colunas fixas: tolera schema sem name/phone (evita o
+    // erro 42703 que antes derrubava silenciosamente a lista pra vazia). E NAO
+    // engolimos mais o erro do Supabase — devolve 500 visivel se algo falhar.
+    const { data: contacts, error: contactsErr } = await sb
       .from("contacts")
-      .select("wa_id, name, phone, bot_paused, paused_reason, paused_at, last_seen_at")
+      .select("*")
       .order("last_seen_at", { ascending: false, nullsFirst: false });
+    if (contactsErr) {
+      logger.error({ error: contactsErr }, "Erro ao ler contacts no Supabase");
+      res.status(500).json({ error: "Erro ao ler contatos", detail: contactsErr.message });
+      return;
+    }
 
     // Anexa o preview da ultima mensagem e a flag "precisa responder" (ultima
     // mensagem foi do cliente). Sinal stateless pro inbox, sem tabela de leitura.

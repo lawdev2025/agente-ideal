@@ -90,7 +90,7 @@ html.dark {
 body {
     background-color: var(--bg-secondary);
     color: var(--text-primary);
-    font-family: 'Quicksand', sans-serif;
+    font-family: 'Lato', sans-serif;
     font-size: 15px;
     line-height: 1.6;
     overflow-x: hidden;
@@ -98,11 +98,20 @@ body {
     transition: var(--transition-smooth);
 }
 
-/* Títulos marcantes Lato */
+/* Design system Ideal: TÍTULOS em Quicksand, CORPO em Lato. */
 h1, h2, h3, h4, .font-title {
-    font-family: 'Lato', sans-serif;
+    font-family: 'Quicksand', sans-serif;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
+}
+
+/* Quicksand também na "chrome" da UI (rótulos, navegação, botões, status) —
+   é assim que o protótipo usa a fonte de marca. O corpo de leitura fica em Lato. */
+.sidebar-brand, .sidebar-menu li, .theme-toggle, .user-profile,
+.metric-info p, .metric-info .trend, .k-lab, .chart-header h3,
+.btn, .status-indicator, .table-group-label, .db-table thead th,
+.config-card h3, .modal-header h3, .csv-row-count, .unit-filter-label {
+    font-family: 'Quicksand', sans-serif;
 }
 
 /* Scrollbar fina premium vermelha */
@@ -168,27 +177,33 @@ html.dark .glass {
     margin-bottom: 24px;
 }
 
+/* "id" badge — espelha o .logo-dot do protótipo (gradiente #E03C49→#A31621). */
 .brand-logo {
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, var(--brand-color), var(--brand-dark));
-    border-radius: 10px;
+    width: 34px;
+    height: 34px;
+    background: linear-gradient(150deg, #E03C49, #A31621);
+    border-radius: 11px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-size: 20px;
+    color: #fff;
+    font: 700 16px 'Quicksand', sans-serif;
+    flex-shrink: 0;
     box-shadow: 0 4px 12px rgba(200, 32, 46, 0.3);
 }
 
-.sidebar-brand h2 {
-    color: var(--sidebar-title-color);
-    font-size: 18px;
-    font-weight: 900;
+.brand-text b {
+    display: block;
+    color: #fff;
+    font: 700 16px 'Quicksand', sans-serif;
+    letter-spacing: .2px;
 }
 
-.sidebar-brand h2 span {
-    color: var(--brand-light);
+.brand-text small {
+    display: block;
+    color: #9B8385;
+    font: 600 10px 'Quicksand', sans-serif;
+    letter-spacing: 1.2px;
 }
 
 /* Menu de navegação sidebar */
@@ -226,10 +241,14 @@ html.dark .glass {
     background-color: var(--sidebar-hover-bg);
 }
 
+/* Estado ativo: pílula de tom vermelho suave com texto rosado (igual ao proto). */
 .sidebar-menu li.active {
-    color: white;
-    background-color: var(--brand-color);
-    box-shadow: 0 4px 15px var(--brand-glow);
+    color: #FF8A91;
+    background-color: rgba(224, 60, 73, 0.18);
+}
+
+.sidebar-menu li.active i {
+    opacity: 1;
 }
 
 /* Sidebar Footer */
@@ -284,6 +303,15 @@ html.dark .glass {
 .user-profile .user-info p {
     color: var(--sidebar-subtitle-color);
     font-size: 11px;
+}
+
+.user-online-dot {
+    margin-left: auto;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #3DBF77;
+    flex-shrink: 0;
 }
 
 /* CONTEÚDO PRINCIPAL */
@@ -404,11 +432,12 @@ html.dark .glass {
 }
 
 .metric-info h3 {
-    font-size: 32px;
-    font-weight: 900;
+    font-size: 30px;
+    font-weight: 700;
     color: var(--text-primary);
     margin: 4px 0;
-    font-family: 'Lato', sans-serif;
+    font-family: 'Quicksand', sans-serif;
+    line-height: 1;
 }
 
 .metric-info .trend {
@@ -1258,21 +1287,23 @@ html.dark .glass {
     display: flex;
     max-width: 75%;
 }
-.chat-bubble-container.user {
+/* Convenção do protótipo/app: o lado que ENVIA (bot/atendente) fica à direita
+   em vermelho sólido; o contato (parent) fica à esquerda, em branco. */
+.chat-bubble-container.bot {
     align-self: flex-end;
     flex-direction: row-reverse;
 }
-.chat-bubble-container.bot {
+.chat-bubble-container.user {
     align-self: flex-start;
 }
-.chat-bubble-container.user .chat-bubble {
+.chat-bubble-container.bot .chat-bubble {
     background-color: var(--brand-color);
     color: white;
     border-bottom-right-radius: 2px;
     padding: 10px 14px;
     border-radius: var(--radius-lg);
 }
-.chat-bubble-container.bot .chat-bubble {
+.chat-bubble-container.user .chat-bubble {
     background-color: var(--bg-card);
     color: var(--text-primary);
     border: 1px solid var(--border-color);

@@ -23,14 +23,14 @@
 <body>
 <div id="ideal-root" class="ideal light">
 
-  <!-- ============ LOGIN (imersivo vermelho) ============ -->
+  <!-- ============ LOGIN (A — imersivo vermelho) ============ -->
   <section id="screen-login" class="screen active">
     <div class="scr scr-login">
       <div class="login-wrap">
         <div class="login-brand card-in">
           <div class="id-badge"><span>id</span></div>
           <h1>ideal <span>CRM</span></h1>
-          <p class="login-sub">Atendimento em tempo real</p>
+          <p class="login-sub">Atendimento WhatsApp em tempo real</p>
         </div>
         <div class="card login-card card-in" style="--d:.12s">
           <label class="login-label">Token de acesso</label>
@@ -44,7 +44,7 @@
     </div>
   </section>
 
-  <!-- ============ LISTA ============ -->
+  <!-- ============ LISTA (B — cards flutuantes + swipe + pull-to-refresh) ============ -->
   <section id="screen-list" class="screen">
     <div class="scr">
       <div class="red-head list-head">
@@ -53,17 +53,17 @@
             <p class="greeting" id="greeting">Olá,</p>
             <h1 class="head-name">Time Ideal</h1>
           </div>
-          <button id="theme-btn" class="head-round tap" aria-label="Alternar tema" title="Alternar tema">
-            <svg id="theme-moon" width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12.3 3a9 9 0 1 0 8.7 11.3A7.2 7.2 0 0 1 12.3 3z"></path></svg>
-          </button>
-        </div>
-        <div class="head-actions">
-          <button id="notif-btn" class="head-round tap" title="Ativar notificações" aria-label="Ativar notificações">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-          </button>
-          <button id="logout-btn" class="head-round tap" title="Sair" aria-label="Sair">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M16 13v-2H7V8l-5 4 5 4v-3h9zM20 3h-9a2 2 0 0 0-2 2v4h2V5h9v14h-9v-4H9v4a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
-          </button>
+          <div class="head-actions">
+            <button id="notif-btn" class="head-round tap" title="Ativar notificações" aria-label="Ativar notificações">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+            </button>
+            <button id="theme-btn" class="head-round tap theme-ic" aria-label="Alternar tema" title="Alternar tema">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12.3 3a9 9 0 1 0 8.7 11.3A7.2 7.2 0 0 1 12.3 3z"></path></svg>
+            </button>
+            <button id="logout-btn" class="head-round tap" title="Sair" aria-label="Sair">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M16 13v-2H7V8l-5 4 5 4v-3h9zM20 3h-9a2 2 0 0 0-2 2v4h2V5h9v14h-9v-4H9v4a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+            </button>
+          </div>
         </div>
         <div class="stat-tiles">
           <div class="stat-tile"><b id="stat-conversas">0</b><span>conversas</span></div>
@@ -79,13 +79,17 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.5-4.5"></path></svg>
           <input id="search-input" type="search" placeholder="Pesquisar conversa" />
         </div>
+
+        <!-- indicador pull-to-refresh -->
+        <div class="ptr-host"><span id="ptr-spin" class="ptr-spin"></span></div>
+
         <div id="contacts-list" class="list-scroll"></div>
         <div id="list-empty" class="list-empty hidden">Nenhuma conversa ainda.</div>
       </div>
     </div>
   </section>
 
-  <!-- ============ CHAT ============ -->
+  <!-- ============ CHAT (A — header vermelho + folha + bolha sólida) ============ -->
   <section id="screen-chat" class="screen">
     <div class="scr">
       <div class="red-head chat-head">
@@ -103,15 +107,15 @@
         <div id="messages" class="messages"></div>
 
         <div class="pill-row">
-          <button id="bot-toggle" class="pill-toggle pause">
-            <span id="bot-toggle-icon">⏸</span>
+          <button id="bot-toggle" class="pill-toggle pause tap">
+            <span id="bot-toggle-icon" class="pill-ic"></span>
             <span id="bot-toggle-label">Pausar bot e assumir</span>
           </button>
         </div>
 
         <div class="composer">
-          <textarea id="composer-input" rows="1" placeholder="Bot operando. Assuma o controle para digitar." disabled></textarea>
-          <button id="send-btn" class="send off" aria-label="Enviar" disabled>
+          <textarea id="composer-input" rows="1" placeholder="Bot operando — pause para responder" disabled></textarea>
+          <button id="send-btn" class="send off tap" aria-label="Enviar" disabled>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
           </button>
         </div>
@@ -123,6 +127,6 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/app/app.js?v=2" defer></script>
+<script src="/app/app.js?v=4" defer></script>
 </body>
 </html>

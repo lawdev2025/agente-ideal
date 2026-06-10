@@ -190,30 +190,119 @@
     return "a" + (1 + (h % 4));
   }
 
+  // Ícones SVG das ações de swipe (mesmos do protótipo proto-screens.jsx).
+  const SWIPE_ICON = {
+    pause: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.4"></rect><rect x="14" y="4" width="4" height="16" rx="1.4"></rect></svg>',
+    play: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>',
+    check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 7"></path></svg>',
+  };
+  const SWIPE_OPEN = -156; // quanto o card abre revelando as ações
+
   function contactRow(c) {
-    const card = document.createElement("div");
-    card.className = "card";
-    card.dataset.wa = c.wa_id;
+    const wrap = document.createElement("div");
+    wrap.className = "card-wrap";
+    wrap.dataset.wa = c.wa_id;
     const st = c.bot_paused ? "manual" : "bot";
     const n = unread[c.wa_id] || 0;
     const av = avatarVariant(c.wa_id);
     const preview = c.last_message_role === "user" ? "" : c.last_message_role === "assistant" ? "✓ " : "";
-    card.innerHTML = `
-      <div class="row">
-        <div class="avatar ${av}">${initials(c)}<span class="st-dot ${st}"></span></div>
-        <div class="row-main">
-          <div class="row-top">
-            <span class="row-name">${escapeHtml(displayName(c))}</span>
-            <span class="row-time${n ? " unread" : ""}">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
-          </div>
-          <div class="row-bottom">
-            <span class="row-preview">${escapeHtml(preview + (c.last_message || ""))}</span>
-            ${n > 0 ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : `<span class="chip ${st}">${st === "bot" ? "Bot" : "Time"}</span>`}
+    wrap.innerHTML = `
+      <div class="card-in" style="position:relative;border-radius:18px">
+        <div class="swipe-actions">
+          <button class="swipe-act act-pause" style="background:var(--warn)">${st === "bot" ? SWIPE_ICON.pause : SWIPE_ICON.play}${st === "bot" ? "Pausar" : "Reativar"}</button>
+          <button class="swipe-act act-done" style="background:var(--ok)">${SWIPE_ICON.check}Concluir</button>
+        </div>
+        <div class="card swipe-front">
+          <div class="row">
+            <div class="avatar ${av}">${initials(c)}<span class="st-dot ${st}"></span></div>
+            <div class="row-main">
+              <div class="row-top">
+                <span class="row-name">${escapeHtml(displayName(c))}</span>
+                <span class="row-time${n ? " unread" : ""}">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
+              </div>
+              <div class="row-bottom">
+                <span class="row-preview">${escapeHtml(preview + (c.last_message || ""))}</span>
+                ${n > 0 ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : `<span class="chip ${st}">${st === "bot" ? "Bot" : "Time"}</span>`}
+              </div>
+            </div>
           </div>
         </div>
       </div>`;
-    card.addEventListener("click", () => openChat(c.wa_id));
-    return card;
+    attachSwipe(wrap, c.wa_id);
+    return wrap;
+  }
+
+  // Swipe horizontal no card (estilo proto): puxa pra esquerda e revela
+  // "Pausar/Reativar" (real) + "Concluir" (descarte local). Toque curto = abrir.
+  function attachSwipe(wrap, waId) {
+    const front = wrap.querySelector(".swipe-front");
+    const s = { active: false, x: 0, y: 0, base: 0, dir: null, moved: 0, dx: 0 };
+    const setDx = (v) => { s.dx = v; front.style.transform = "translateX(" + v + "px)"; };
+
+    front.addEventListener("pointerdown", (e) => {
+      s.active = true; s.x = e.clientX; s.y = e.clientY; s.base = s.dx; s.dir = null; s.moved = 0;
+      front.classList.add("dragging");
+    });
+    front.addEventListener("pointermove", (e) => {
+      if (!s.active) return;
+      const ddx = e.clientX - s.x, ddy = e.clientY - s.y;
+      if (!s.dir) {
+        if (Math.abs(ddx) < 7 && Math.abs(ddy) < 7) return;
+        s.dir = Math.abs(ddx) > Math.abs(ddy) ? "h" : "v";
+        if (s.dir === "h") { try { front.setPointerCapture(e.pointerId); } catch (_) {} }
+      }
+      if (s.dir !== "h") return;
+      s.moved = Math.abs(ddx);
+      let v = s.base + ddx;
+      if (v > 0) v = v * 0.2;                          // resistência ao puxar pra direita
+      if (v < SWIPE_OPEN) v = SWIPE_OPEN + (v - SWIPE_OPEN) * 0.25; // resistência além do aberto
+      setDx(v);
+    });
+    const up = () => {
+      if (!s.active) return;
+      s.active = false;
+      front.classList.remove("dragging");
+      if (!s.dir || s.moved < 6) {           // toque curto, não arrasto
+        if (s.dx !== 0) { setDx(0); return; } // estava aberto: só fecha
+        openChat(waId); return;
+      }
+      setDx(s.dx < SWIPE_OPEN * 0.4 ? SWIPE_OPEN : 0); // snap aberto/fechado
+    };
+    front.addEventListener("pointerup", up);
+    front.addEventListener("pointercancel", up);
+
+    wrap.querySelector(".act-pause").addEventListener("click", (e) => {
+      e.stopPropagation();
+      setDx(0);
+      setPaused(waId);
+    });
+    wrap.querySelector(".act-done").addEventListener("click", (e) => {
+      e.stopPropagation();
+      // Sem estado "concluído" no backend: descarte local com a animação do proto.
+      // O card reaparece num refresh — é cosmético até existir um flag no servidor.
+      wrap.classList.add("removing");
+      unread[waId] = 0;
+      setTimeout(() => wrap.remove(), 400);
+    });
+  }
+
+  // Pausa/reativa o bot de um contato qualquer da lista (usado pelo swipe).
+  async function setPaused(waId) {
+    const c = byId[waId] || { wa_id: waId };
+    const willPause = !c.bot_paused;
+    try {
+      const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(waId)}/pause`, {
+        method: "PATCH",
+        body: JSON.stringify({ paused: willPause }),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      c.bot_paused = willPause;
+      byId[waId] = c;
+      if (waId === currentChat) { updateChatHeader(c); updateBotControls(c); }
+      renderContacts();
+    } catch (e) {
+      toast("Não consegui alterar o estado do bot.");
+    }
   }
 
   // Atualiza o cabeçalho vermelho da lista: saudação + tiles de contagem.
@@ -586,6 +675,52 @@
   $("notif-btn").addEventListener("click", enableNotifications);
   $("theme-btn").addEventListener("click", toggleTheme);
   $("search-input").addEventListener("input", renderContacts);
+
+  // Pull-to-refresh na lista: puxa pra baixo no topo -> recarrega contatos.
+  (function initPullToRefresh() {
+    const scroll = $("contacts-list");
+    const spin = $("ptr-spin");
+    if (!scroll || !spin) return;
+    const p = { active: false, y: 0, pull: 0, busy: false };
+    function render(v) {
+      p.pull = v;
+      spin.style.transition = v === 0 ? "transform .3s, opacity .3s" : "none";
+      spin.style.transform = `translateX(-50%) translateY(${Math.max(-40, v - 40)}px) rotate(${v * 3}deg)`;
+      spin.style.opacity = String(Math.min(1, v / 55));
+      scroll.style.transition = v === 0 ? "transform .35s cubic-bezier(.25,1,.4,1)" : "none";
+      scroll.style.transform = `translateY(${v}px)`;
+    }
+    scroll.addEventListener("pointerdown", (e) => {
+      if (p.busy || scroll.scrollTop > 0) return;
+      p.active = true; p.y = e.clientY;
+    });
+    scroll.addEventListener("pointermove", (e) => {
+      if (!p.active || p.busy) return;
+      const d = e.clientY - p.y;
+      if (d > 0) render(Math.min(110, d * 0.45));
+      else { p.active = false; render(0); }
+    });
+    async function end() {
+      if (!p.active) return;
+      p.active = false;
+      if (p.pull > 62) {
+        p.busy = true;
+        spin.classList.add("spinning");
+        spin.style.transition = "transform .25s, opacity .25s";
+        spin.style.transform = "translateX(-50%) translateY(-14px)";
+        spin.style.opacity = "1";
+        scroll.style.transition = "transform .25s";
+        scroll.style.transform = "translateY(26px)";
+        try { await loadContacts(); } catch (_) {}
+        p.busy = false;
+        spin.classList.remove("spinning");
+      }
+      render(0);
+    }
+    scroll.addEventListener("pointerup", end);
+    scroll.addEventListener("pointercancel", end);
+  })();
+
   // Scroll infinito: perto do topo, carrega o historico anterior.
   $("messages").addEventListener("scroll", () => {
     if ($("messages").scrollTop < 80) loadOlderMessages();

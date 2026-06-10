@@ -4,6 +4,15 @@
 >
 > **Esta versão é específica do projeto Agente Ideal.** A stack já foi mapeada (ver "Realidade do Projeto" abaixo). Onde o roteiro genérico assumia React/Recharts/Socket.io/Baileys, este aqui aponta os arquivos e tabelas reais. Se algo divergir do código no momento da execução, o código vence — atualize o roteiro.
 
+> **Status (atualizado conforme a execução):**
+> - ✅ **Fase 1 — Performance** (gargalos #1–#4): RPC de contatos, RPCs de stats, paginação do chat com scroll infinito, cache de 30s no /stats.
+> - ✅ **Fase 3.1 — Assuntos persistidos**: tabela `conversation_topics`, classificação híbrida (regex + gancho LLM), 7ª categoria "Reclamações".
+> - ✅ **Job LLM** (o "depois" do híbrido): `/api/jobs/classify-topics` via Vercel Cron diário, grava `source='llm'`.
+> - ✅ **Fase 4 (parcial)**: donut por conversa + drill-down (clicar no assunto → conversas filtradas).
+> - ⬜ **Fase 3.2 / resto da Fase 4**: seletor de período global, volume por hora, top contatos, KPIs extras.
+> - ⬜ **Fase 2**: tags/anotações de CRM no chat. **Fase 5**: polimento, testes de analytics, README.
+> - ⚠️ **Deploy**: rodar as migrations em `public/admin/*.sql` no Supabase e setar `CRON_SECRET` na Vercel pro cron autorizar.
+
 ---
 
 ## Contexto do Projeto

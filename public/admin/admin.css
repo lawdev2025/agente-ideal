@@ -523,6 +523,44 @@ html.dark .glass {
     border-bottom: 1px solid var(--border-color);
 }
 
+/* Banner do filtro de assunto (drill-down a partir do donut do dashboard). */
+.topic-filter-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--brand-color);
+    background: var(--brand-subtle);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.topic-filter-banner span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.topic-filter-banner button {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--brand-color);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    line-height: 1;
+}
+
+.topic-filter-banner button:hover {
+    background: var(--brand-glow);
+}
+
 .search-box i {
     position: absolute;
     left: 28px;

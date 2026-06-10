@@ -175,27 +175,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 function initTabs() {
     document.querySelectorAll('.sidebar-menu li').forEach(item => {
         item.addEventListener('click', (e) => {
-            document.querySelectorAll('.sidebar-menu li').forEach(i => i.classList.remove('active'));
-            e.currentTarget.classList.add('active');
-
-            currentTab = e.currentTarget.getAttribute('data-tab');
-            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-            document.getElementById(`tab-${currentTab}`).classList.add('active');
-
-            const titles = {
-                dashboard: { title: 'Painel de Controle', subtitle: 'Resumo estatístico do Agente Ideal e atendimento escolar' },
-                conversas: { title: 'Central de Conversas', subtitle: 'Visualize os atendimentos do bot e gerencie o status em tempo real' },
-                banco: { title: 'Banco de Dados', subtitle: 'Edite, adicione ou exclua informações da base de conhecimento da escola' },
-                config: { title: 'Configurações de Conexão', subtitle: 'Gerencie as chaves de integração do Supabase' }
-            };
-            document.getElementById('tab-title').textContent = titles[currentTab].title;
-            document.getElementById('tab-subtitle').textContent = titles[currentTab].subtitle;
-
-            if (currentTab === 'dashboard') loadDashboardStats();
-            else if (currentTab === 'conversas') loadConversationsTab();
-            else if (currentTab === 'banco') loadDatabaseTable();
+            activateTab(e.currentTarget.getAttribute('data-tab'));
         });
     });
+}
+
+// Troca de aba reutilizável (clique na sidebar ou navegação programática, ex.:
+// drill-down de assunto). Devolve a promise do loader pra quem precisar aguardar.
+function activateTab(tab) {
+    document.querySelectorAll('.sidebar-menu li').forEach(i =>
+        i.classList.toggle('active', i.getAttribute('data-tab') === tab));
+
+    currentTab = tab;
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+
+    const titles = {
+        dashboard: { title: 'Painel de Controle', subtitle: 'Resumo estatístico do Agente Ideal e atendimento escolar' },
+        conversas: { title: 'Central de Conversas', subtitle: 'Visualize os atendimentos do bot e gerencie o status em tempo real' },
+        banco: { title: 'Banco de Dados', subtitle: 'Edite, adicione ou exclua informações da base de conhecimento da escola' },
+        config: { title: 'Configurações de Conexão', subtitle: 'Gerencie as chaves de integração do Supabase' }
+    };
+    document.getElementById('tab-title').textContent = titles[tab].title;
+    document.getElementById('tab-subtitle').textContent = titles[tab].subtitle;
+
+    if (tab === 'dashboard') return loadDashboardStats();
+    if (tab === 'conversas') return loadConversationsTab();
+    if (tab === 'banco') return loadDatabaseTable();
 }
 
 // 3. TEMA
@@ -337,7 +343,10 @@ async function loadDashboardStats() {
                     learnTrendEl.innerHTML = `<i class="fa-solid fa-brain"></i> ${cacheHits} acertos · ${candidates} candidatas`;
                 }
 
-                renderCharts(s.msgCounts || [0,0,0,0,0,0,0], s.subjects || {}, s.days || []);
+                // Donut usa a distribuição POR CONVERSA (conversation_topics);
+                // se indisponível, cai pro subjects message-level do /stats.
+                const topicSubjects = await fetchTopicsDistribution();
+                renderCharts(s.msgCounts || [0,0,0,0,0,0,0], topicSubjects || s.subjects || {}, s.days || []);
                 return;
             }
         } catch (e) {
@@ -432,6 +441,81 @@ function niceCeiling(value) {
     else if (norm < 5) nice = 5;
     else nice = 10;
     return nice * pow;
+}
+
+// Ordem fixa das categorias → cores consistentes no donut (Reclamações = âmbar).
+const CATEGORY_ORDER = [
+    'Mensalidades / Valores', 'Matrículas & Vagas', 'Materiais / Livros',
+    'Contatos / Secretaria', 'Horários & Grade', 'Reclamações', 'Outras dúvidas'
+];
+
+// Distribuição de assuntos POR CONVERSA (conversation_topics) pro donut.
+// Retorna { categoria: nº de conversas } na ordem canônica, ou null se o
+// endpoint não estiver disponível (cai pro subjects message-level do /stats).
+async function fetchTopicsDistribution() {
+    if (!adminToken) return null;
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/analytics/topics`, {
+            headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.unavailable || !Array.isArray(data.distribution) || data.distribution.length === 0) return null;
+        const counts = {};
+        data.distribution.forEach(d => { counts[d.topic] = Number(d.conversations) || 0; });
+        const ordered = {};
+        CATEGORY_ORDER.forEach(cat => { ordered[cat] = counts[cat] || 0; });
+        // Categorias fora da ordem canônica (defensivo) entram no fim.
+        Object.keys(counts).forEach(k => { if (!(k in ordered)) ordered[k] = counts[k]; });
+        return ordered;
+    } catch (e) { return null; }
+}
+
+// Clique numa fatia do donut → abre a aba Conversas filtrada por aquele assunto.
+async function drilldownByTopic(topic) {
+    if (!adminToken || !topic) return;
+    let ids = [];
+    try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/analytics/topics?topic=${encodeURIComponent(topic)}`, {
+            headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            ids = (data.conversations || []).map(c => c.wa_id).filter(Boolean);
+        }
+    } catch (e) { /* segue com lista possivelmente vazia */ }
+
+    topicFilterIds = new Set(ids);
+    topicFilterLabel = topic;
+    await activateTab('conversas');     // troca aba + carrega contatos
+    showTopicFilterBanner(topic, ids.length);
+    renderContactsFiltered();
+}
+
+// Banner acima da lista informando o filtro ativo, com botão pra limpar.
+function showTopicFilterBanner(topic, count) {
+    const sidebar = document.querySelector('.contacts-sidebar');
+    if (!sidebar) return;
+    let banner = document.getElementById('topic-filter-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'topic-filter-banner';
+        banner.className = 'topic-filter-banner';
+        const list = document.getElementById('contacts-list-container');
+        sidebar.insertBefore(banner, list);
+    }
+    banner.innerHTML =
+        `<span><i class="fa-solid fa-filter"></i> ${escapeHtml(topic)} · ${count} ${count === 1 ? 'conversa' : 'conversas'}</span>` +
+        `<button id="clear-topic-filter" title="Limpar filtro" aria-label="Limpar filtro"><i class="fa-solid fa-xmark"></i></button>`;
+    banner.querySelector('#clear-topic-filter').addEventListener('click', clearTopicFilter);
+}
+
+function clearTopicFilter() {
+    topicFilterIds = null;
+    topicFilterLabel = null;
+    const banner = document.getElementById('topic-filter-banner');
+    if (banner) banner.remove();
+    renderContactsFiltered();
 }
 
 function renderCharts(msgCounts, subjects, days) {
@@ -540,6 +624,15 @@ function renderCharts(msgCounts, subjects, days) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            // Clique numa fatia → abre as conversas daquele assunto.
+            onClick: (evt, elements) => {
+                if (!elements || elements.length === 0) return;
+                const label = chartSubjects.data.labels[elements[0].index];
+                if (label) drilldownByTopic(label);
+            },
+            onHover: (evt, elements) => {
+                evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+            },
             plugins: {
                 legend: {
                     position: 'right',
@@ -632,7 +725,7 @@ async function loadContactsList() {
             if (res.ok) {
                 const { contacts } = await res.json();
                 allContacts = contacts || [];
-                renderContactsList(allContacts);
+                renderContactsFiltered();
                 return;
             }
         } catch (e) {
@@ -674,11 +767,29 @@ async function loadContactsList() {
             .order('last_seen_at', { ascending: false, nullsFirst: false });
         if (error) throw error;
         allContacts = contacts || [];
-        renderContactsList(allContacts);
+        renderContactsFiltered();
     } catch (err) {
         console.error('Erro ao carregar contatos:', err);
         listContainer.innerHTML = '<div class="error-msg">Erro ao carregar contatos.</div>';
     }
+}
+
+// Drill-down de assunto: quando ativo, a lista de conversas mostra só os
+// contatos daquele tópico. Sobrevive aos refreshes de tempo real porque todos
+// passam por renderContactsFiltered().
+let topicFilterIds = null;   // Set<wa_id> ou null
+let topicFilterLabel = null;
+
+// Renderiza a lista aplicando busca textual + filtro de assunto (se ativos).
+function renderContactsFiltered() {
+    const searchInput = document.getElementById('contact-search');
+    const query = searchInput ? searchInput.value.toLowerCase() : '';
+    let list = allContacts;
+    if (topicFilterIds) list = list.filter(c => topicFilterIds.has(c.wa_id));
+    if (query) list = list.filter(c =>
+        (c.wa_id && c.wa_id.toLowerCase().includes(query)) ||
+        (c.name && c.name.toLowerCase().includes(query)));
+    renderContactsList(list);
 }
 
 // Render incremental: reaproveita os nós existentes, atualiza só o conteúdo e
@@ -770,12 +881,8 @@ function closeChat() {
     if (wrapper) wrapper.classList.remove('chat-open');
 }
 
-function filterContacts(e) {
-    const query = e.target.value.toLowerCase();
-    renderContactsList(allContacts.filter(c =>
-        (c.wa_id && c.wa_id.toLowerCase().includes(query)) ||
-        (c.name && c.name.toLowerCase().includes(query))
-    ));
+function filterContacts() {
+    renderContactsFiltered();
 }
 
 // Busca uma página do histórico (backend server-side primeiro, _sb depois).
@@ -978,17 +1085,8 @@ async function refreshContactsList() {
             updateBotButtonUI(active.bot_paused);
         }
 
-        // Renderiza (incremental, sem flicker) respeitando a busca atual.
-        const searchInput = document.getElementById('contact-search');
-        const query = searchInput ? searchInput.value.toLowerCase() : '';
-        if (query) {
-            renderContactsList(allContacts.filter(c =>
-                (c.wa_id && c.wa_id.toLowerCase().includes(query)) ||
-                (c.name && c.name.toLowerCase().includes(query))
-            ));
-        } else {
-            renderContactsList(allContacts);
-        }
+        // Renderiza (incremental, sem flicker) respeitando busca + filtro de assunto.
+        renderContactsFiltered();
     }
 }
 

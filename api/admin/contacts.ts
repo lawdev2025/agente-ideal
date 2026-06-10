@@ -15,6 +15,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const sb = getSupabase();
 
+    // Caminho rápido: a RPC get_contacts_inbox() faz backfill de órfãos + preview
+    // da última mensagem TODO no Postgres (LATERAL LIMIT 1 por contato, casando
+    // com idx_messages_wa). Evita trazer a tabela `messages` inteira pro Node.
+    // Ver public/admin/supabase-contacts-inbox-rpc.sql.
+    const { data: rpcContacts, error: rpcErr } = await sb.rpc("get_contacts_inbox");
+    if (!rpcErr) {
+      res.status(200).json({ contacts: rpcContacts || [] });
+      return;
+    }
+    // Fallback: migração ainda não rodada (função inexistente → erro 42883).
+    // Mantém o comportamento antigo pra não derrubar o painel; loga pra avisar.
+    logger.warn(
+      { error: rpcErr },
+      "RPC get_contacts_inbox indisponível — usando fallback (rode supabase-contacts-inbox-rpc.sql)"
+    );
+
     // Backfill: cria contact rows para wa_ids que existem em messages mas
     // nao em contacts (usuarios antigos antes do auto-create no webhook).
     // Tras tambem role/content pra montar o preview da ultima mensagem por

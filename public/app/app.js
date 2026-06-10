@@ -179,31 +179,53 @@
     });
     $("list-empty").classList.toggle("hidden", items.length > 0);
     for (const c of items) list.appendChild(contactRow(c));
+    updateListHeader();
+  }
+
+  // Variante de cor do avatar (a1..a4) determinística por wa_id.
+  function avatarVariant(wa) {
+    let h = 0;
+    const s = String(wa || "");
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return "a" + (1 + (h % 4));
   }
 
   function contactRow(c) {
-    const li = document.createElement("li");
-    li.className = "contact";
-    li.dataset.wa = c.wa_id;
-    const botActive = !c.bot_paused;
+    const card = document.createElement("div");
+    card.className = "card";
+    card.dataset.wa = c.wa_id;
+    const st = c.bot_paused ? "manual" : "bot";
     const n = unread[c.wa_id] || 0;
+    const av = avatarVariant(c.wa_id);
     const preview = c.last_message_role === "user" ? "" : c.last_message_role === "assistant" ? "✓ " : "";
-    li.innerHTML = `
-      <div class="contact-avatar">${initials(c)}
-        <span class="status-dot ${botActive ? "bot" : "manual"}"></span>
-      </div>
-      <div class="contact-main">
-        <div class="contact-top">
-          <span class="contact-name">${escapeHtml(displayName(c))}</span>
-          <span class="contact-time">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
-        </div>
-        <div class="contact-bottom">
-          <span class="contact-preview">${escapeHtml(preview + (c.last_message || ""))}</span>
-          ${n > 0 ? `<span class="unread-badge">${n > 99 ? "99+" : n}</span>` : `<span class="tag ${botActive ? "bot" : "manual"}">${botActive ? "Bot" : "Manual"}</span>`}
+    card.innerHTML = `
+      <div class="row">
+        <div class="avatar ${av}">${initials(c)}<span class="st-dot ${st}"></span></div>
+        <div class="row-main">
+          <div class="row-top">
+            <span class="row-name">${escapeHtml(displayName(c))}</span>
+            <span class="row-time${n ? " unread" : ""}">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
+          </div>
+          <div class="row-bottom">
+            <span class="row-preview">${escapeHtml(preview + (c.last_message || ""))}</span>
+            ${n > 0 ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : `<span class="chip ${st}">${st === "bot" ? "Bot" : "Time"}</span>`}
+          </div>
         </div>
       </div>`;
-    li.addEventListener("click", () => openChat(c.wa_id));
-    return li;
+    card.addEventListener("click", () => openChat(c.wa_id));
+    return card;
+  }
+
+  // Atualiza o cabeçalho vermelho da lista: saudação + tiles de contagem.
+  function updateListHeader() {
+    const total = contacts.length;
+    const nBot = contacts.filter((c) => !c.bot_paused).length;
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set("stat-conversas", total);
+    set("stat-bot", nBot);
+    set("stat-time", total - nBot);
+    const h = new Date().getHours();
+    set("greeting", h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,");
   }
 
   function escapeHtml(s) {
@@ -227,10 +249,9 @@
   }
 
   function updateChatHeader(c) {
-    const el = $("chat-status");
     const botActive = !c.bot_paused;
-    el.textContent = botActive ? "🤖 Bot ativo" : "🟡 Atendimento manual";
-    el.className = "chat-status " + (botActive ? "bot" : "manual");
+    $("chat-status").textContent = botActive ? "Bot ativo" : "Você está atendendo";
+    $("chat-dot").className = "hdr-dot " + (botActive ? "bot" : "manual");
   }
 
   async function loadMessages(waId) {
@@ -290,13 +311,14 @@
 
     const div = document.createElement("div");
     if (m.role === "system") {
-      div.className = "msg system";
+      div.className = "msg system msg-in";
       div.textContent = m.content || "";
     } else {
       const out = m.role === "assistant";
-      div.className = "msg " + (out ? "out" : "in");
+      // Bolha enviada: vermelho sólido (estilo "sólida" do protótipo).
+      div.className = "msg " + (out ? "out solid" : "in") + " msg-in";
       const time = fmtTime(m.created_at) || fmtTime(Date.now());
-      div.innerHTML = `${escapeHtml(m.content || "")}<span class="msg-time">${time}${out ? '<span class="read-ticks">✓✓</span>' : ""}</span>`;
+      div.innerHTML = `<div>${escapeHtml(m.content || "")}</div><span class="msg-time">${time}${out ? " ✓✓" : ""}</span>`;
     }
     return div;
   }
@@ -321,16 +343,17 @@
 
     input.disabled = !manual;
     sendBtn.disabled = !manual;
-    input.placeholder = manual ? "Digite uma mensagem" : "Bot operando. Assuma o controle para digitar.";
+    sendBtn.classList.toggle("off", !manual || !input.value.trim());
+    input.placeholder = manual ? "Mensagem" : "Bot operando — pause para responder";
 
     if (manual) {
-      toggle.classList.add("resume");
+      toggle.className = "pill-toggle resume";
       $("bot-toggle-icon").textContent = "▶";
-      $("bot-toggle-label").textContent = "Reativar Bot";
+      $("bot-toggle-label").textContent = "Reativar bot";
     } else {
-      toggle.classList.remove("resume");
+      toggle.className = "pill-toggle pause";
       $("bot-toggle-icon").textContent = "⏸";
-      $("bot-toggle-label").textContent = "Pausar Bot";
+      $("bot-toggle-label").textContent = "Pausar bot e assumir";
       input.value = "";
     }
   }
@@ -408,6 +431,24 @@
     const ta = $("composer-input");
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+    if (!ta.disabled) $("send-btn").classList.toggle("off", !ta.value.trim());
+  }
+
+  // ---------------- TEMA (claro/escuro do design) ----------------
+  const ICON_MOON = '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12.3 3a9 9 0 1 0 8.7 11.3A7.2 7.2 0 0 1 12.3 3z"></path></svg>';
+  const ICON_SUN = '<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4.6"></circle><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"></path></g></svg>';
+  function applyTheme(t) {
+    const root = $("ideal-root");
+    const dark = t === "dark";
+    root.classList.toggle("dark", dark);
+    root.classList.toggle("light", !dark);
+    const btn = $("theme-btn");
+    if (btn) btn.innerHTML = dark ? ICON_SUN : ICON_MOON;
+  }
+  function toggleTheme() {
+    const next = $("ideal-root").classList.contains("dark") ? "light" : "dark";
+    localStorage.setItem("CRM_THEME", next);
+    applyTheme(next);
   }
 
   // ---------------- REALTIME ----------------
@@ -543,6 +584,7 @@
     location.reload();
   });
   $("notif-btn").addEventListener("click", enableNotifications);
+  $("theme-btn").addEventListener("click", toggleTheme);
   $("search-input").addEventListener("input", renderContacts);
   // Scroll infinito: perto do topo, carrega o historico anterior.
   $("messages").addEventListener("scroll", () => {
@@ -565,6 +607,7 @@
 
   // ---------------- BOOT ----------------
   function boot() {
+    applyTheme(localStorage.getItem("CRM_THEME") || "light");
     // Login automatico: tenta o token salvo/embutido. So mostra a tela de
     // login se o token for rejeitado (fallback).
     doLogin(token).catch(() => showScreen("login"));

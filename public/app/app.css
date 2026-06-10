@@ -36,10 +36,11 @@ body { overflow: hidden; }
 .screen-login { align-items: center; justify-content: center; background: var(--bg); padding: 24px; }
 .login-box { width: 100%; max-width: 360px; text-align: center; }
 .login-logo {
-  width: 92px; height: 92px; margin: 0 auto 18px; border-radius: 50%;
-  background: var(--accent); display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 8px 30px rgba(200,32,46,.35);
+  width: 188px; margin: 0 auto 22px; border-radius: 22px;
+  background: #fff; padding: 16px 20px;
+  box-shadow: 0 12px 34px rgba(0,0,0,.4);
 }
+.login-logo img { width: 100%; display: block; }
 .login-box h1 { font-size: 30px; font-weight: 800; margin: 0 0 4px; letter-spacing: .5px; }
 .login-box h1 span { color: var(--accent-light); }
 .login-sub { color: var(--text-dim); margin: 0 0 28px; font-size: 14px; }

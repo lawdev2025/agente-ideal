@@ -44,6 +44,7 @@ stable
 as $$
   select
     case
+      when content ~* 'reclama|insatisf|p[ée]ssim|horr[íi]vel|absurd|descaso|decep|n[ãa]o gostei|vergonha|pior atend' then 'Reclamações'
       when content ~* 'mensal|pre[çc]o|valor|pagamento|custo'        then 'Mensalidades / Valores'
       when content ~* 'matr[íi]cula|vaga|inscri[çc][ãa]o|inscrever'   then 'Matrículas & Vagas'
       when content ~* 'material|livro|apostila|caderno'               then 'Materiais / Livros'

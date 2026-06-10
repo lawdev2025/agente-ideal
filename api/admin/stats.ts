@@ -78,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "Materiais / Livros": 0,
       "Contatos / Secretaria": 0,
       "Horários & Grade": 0,
+      "Reclamações": 0,
       "Outras dúvidas": 0,
     };
 
@@ -127,7 +128,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       for (const m of userMsgs || []) {
         const t = ((m as any).content || "").toLowerCase();
-        if (/mensal|pre[çc]o|valor|pagamento|custo/.test(t))
+        if (/reclama|insatisf|p[ée]ssim|horr[íi]vel|absurd|descaso|decep|n[ãa]o gostei|vergonha|pior atend/.test(t))
+          subjects["Reclamações"]++;
+        else if (/mensal|pre[çc]o|valor|pagamento|custo/.test(t))
           subjects["Mensalidades / Valores"]++;
         else if (/matr[íi]cula|vaga|inscri[çc][ãa]o|inscrever/.test(t))
           subjects["Matrículas & Vagas"]++;

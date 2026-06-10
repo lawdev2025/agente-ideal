@@ -394,12 +394,13 @@ async function loadDashboardStats() {
             msgCounts.push(uniq.size);
         }
 
-        const subjects = { 'Mensalidades / Valores': 0, 'Matrículas & Vagas': 0, 'Materiais / Livros': 0, 'Contatos / Secretaria': 0, 'Horários & Grade': 0, 'Outras dúvidas': 0 };
+        const subjects = { 'Mensalidades / Valores': 0, 'Matrículas & Vagas': 0, 'Materiais / Livros': 0, 'Contatos / Secretaria': 0, 'Horários & Grade': 0, 'Reclamações': 0, 'Outras dúvidas': 0 };
         const { data: userMsgs } = await _sb.from('messages').select('content').eq('role', 'user');
         if (userMsgs) {
             userMsgs.forEach(msg => {
                 const t = (msg.content || '').toLowerCase();
-                if (t.match(/mensal|preço|valor|pagamento|custo/)) subjects['Mensalidades / Valores']++;
+                if (t.match(/reclama|insatisf|péssim|pessim|horrível|horrivel|absurd|descaso|decep|não gostei|nao gostei|vergonha|pior atend/)) subjects['Reclamações']++;
+                else if (t.match(/mensal|preço|valor|pagamento|custo/)) subjects['Mensalidades / Valores']++;
                 else if (t.match(/matrícula|matricula|vaga|inscrição|inscrever/)) subjects['Matrículas & Vagas']++;
                 else if (t.match(/material|livro|apostila|caderno/)) subjects['Materiais / Livros']++;
                 else if (t.match(/contato|telefone|whatsapp|secretaria|falar com/)) subjects['Contatos / Secretaria']++;
@@ -525,7 +526,9 @@ function renderCharts(msgCounts, subjects, days) {
     const subjectLabels  = subjectEntries.map(([k]) => k);
     const subjectData    = subjectEntries.map(([, v]) => v);
     const isDark = document.documentElement.classList.contains('dark');
-    const pieColors = ['#AF1411','#D32F2F','#F44336','#E57373','#FFCDD2', isDark ? '#555555' : '#9CA3AF'];
+    // Ordem segue as chaves de `subjects` (sem "Outras"): as 5 primeiras em tons
+    // do vermelho do tema; "Reclamações" em âmbar pra destacar; cinza sobra.
+    const pieColors = ['#AF1411','#D32F2F','#F44336','#E57373','#FFCDD2','#F59E0B', isDark ? '#555555' : '#9CA3AF'];
 
     const ctx2 = document.getElementById('chart-subjects').getContext('2d');
     chartSubjects = new Chart(ctx2, {

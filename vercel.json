@@ -9,8 +9,12 @@
     { "source": "/", "destination": "/admin", "permanent": false }
   ],
   "functions": {
-    "api/webhook.ts": { "maxDuration": 30 }
+    "api/webhook.ts": { "maxDuration": 30 },
+    "api/jobs/classify-topics.ts": { "maxDuration": 60 }
   },
+  "crons": [
+    { "path": "/api/jobs/classify-topics", "schedule": "0 3 * * *" }
+  ],
   "headers": [
     {
       "source": "/admin/(.*)",

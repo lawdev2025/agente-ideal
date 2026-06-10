@@ -2094,3 +2094,61 @@ html.dark .glass {
     .chat-window-header { padding: 0 14px; }
     .chat-composer { padding: 10px 12px; }
 }
+
+/* ==========================================================================
+   RESPONSIVO MOBILE — sidebar vira drawer, grids empilham, tabela rola
+   ========================================================================== */
+.nav-toggle { display: none; }
+.sidebar-overlay { display: none; }
+
+@media (max-width: 768px) {
+    /* Hambúrguer visível no header */
+    .nav-toggle {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 40px; height: 40px; margin-right: 12px; flex-shrink: 0;
+        border: none; border-radius: 11px; cursor: pointer;
+        background: var(--bg-secondary); color: var(--text-primary);
+        font-size: 18px;
+    }
+
+    /* Sidebar off-canvas */
+    .sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0; z-index: 60;
+        transform: translateX(-100%);
+        transition: transform .28s cubic-bezier(.4,0,.2,1);
+        box-shadow: 0 0 40px rgba(0,0,0,.5);
+    }
+    .admin-container.nav-open .sidebar { transform: translateX(0); }
+
+    .sidebar-overlay {
+        display: block; position: fixed; inset: 0; z-index: 50;
+        background: rgba(0,0,0,.5); opacity: 0; pointer-events: none;
+        transition: opacity .28s ease;
+    }
+    .admin-container.nav-open .sidebar-overlay { opacity: 1; pointer-events: auto; }
+
+    /* Header e conteúdo */
+    .content-header { padding: 0 16px; height: 64px; }
+    .header-title h1 { font-size: 18px; }
+    .header-title p { display: none; }
+    .tab-container { padding: 16px; }
+
+    /* Grids empilham */
+    .metrics-grid { grid-template-columns: 1fr; gap: 12px; }
+    .charts-grid { grid-template-columns: 1fr; }
+    .config-grid { grid-template-columns: 1fr !important; }
+
+    /* Conversas: lista OU chat ocupando a largura toda */
+    .conversations-wrapper { flex-direction: column; height: calc(100vh - 96px); }
+    .contacts-sidebar { width: 100%; }
+
+    /* Gerenciar Banco: tabela com scroll horizontal */
+    .database-table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .db-table { min-width: 720px; }
+    .database-nav { flex-direction: column; align-items: stretch; gap: 12px; }
+    .db-action-btns { display: flex; gap: 8px; }
+    .db-action-btns .btn { flex: 1; }
+
+    /* Modais quase full-width */
+    .modal-card { width: calc(100vw - 24px); max-width: none; }
+}

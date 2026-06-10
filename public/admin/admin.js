@@ -169,6 +169,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Realtime via Supabase: subscriptions substituem o polling de 2s.
     // Fallback automatico pra polling de 30s se o canal nao subir em 10s.
     initRealtimeSubscriptions();
+
+    // Drawer mobile: hambúrguer abre, overlay/click em item fecha.
+    const navToggle = document.getElementById('nav-toggle-btn');
+    const navOverlay = document.getElementById('sidebar-overlay');
+    const adminContainer = document.querySelector('.admin-container');
+    function closeNav() { if (adminContainer) adminContainer.classList.remove('nav-open'); }
+    if (navToggle && adminContainer) {
+        navToggle.addEventListener('click', function () { adminContainer.classList.toggle('nav-open'); });
+    }
+    if (navOverlay) navOverlay.addEventListener('click', closeNav);
+    document.querySelectorAll('.sidebar-menu li').forEach(function (li) {
+        li.addEventListener('click', closeNav);
+    });
+
+    // Abre a aba a partir do #hash (ex.: /admin#config vindo do drawer do app).
+    function tabFromHash() {
+        const h = (location.hash || '').replace('#', '');
+        if (['dashboard', 'conversas', 'banco', 'config'].indexOf(h) !== -1) {
+            activateTab(h);
+        }
+    }
+    window.addEventListener('hashchange', tabFromHash);
+    tabFromHash();
 });
 
 // 2. ABAS

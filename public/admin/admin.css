@@ -1,83 +1,83 @@
 /* ==========================================================================
-   DESIGN SYSTEM - INSPIRADO NO REPRESENTA PLUS
-   Cores: Vermelho Vinho (#AF1411), Grafite Escuro (#0d0d0d / #171717)
-   Fontes: Lato (Títulos) e Quicksand (Textos)
+   DESIGN SYSTEM - IDEAL CRM (Claude Design)
+   Marca: Vermelho Ideal (#C8202E / #A31621), fundos quentes (#FAF7F6)
+   Fontes: Quicksand (títulos) e Lato (texto)
    ========================================================================== */
 
 :root {
-    /* ── Tema Claro ── */
-    --bg-primary: #FFFFFF;
-    --bg-secondary: #F1F5F9;
-    --bg-card: #FFFFFF;
+    /* ── Tema Claro (Ideal) ── */
+    --bg-primary: #FAF7F6;       /* fundo da página (warm off-white) */
+    --bg-secondary: #F4EFEE;     /* surface-2 */
+    --bg-card: #FFFFFF;          /* surface */
     --bg-glass: rgba(255, 255, 255, 0.85);
-    --border-color: #E2E8F0;
-    --border-bright: #CBD5E1;
+    --border-color: #EDE5E3;     /* divider */
+    --border-bright: #E0D5D2;
 
-    --brand-color: #AF1411;
-    --brand-dark: #8a0d0a;
-    --brand-light: #C8302D;
-    --brand-glow: rgba(175, 20, 17, 0.12);
-    --brand-subtle: rgba(175, 20, 17, 0.06);
+    --brand-color: #C8202E;
+    --brand-dark: #A31621;
+    --brand-light: #E03C49;
+    --brand-glow: rgba(200, 32, 46, 0.12);
+    --brand-subtle: rgba(200, 32, 46, 0.06);
 
-    --text-primary: #1E293B;
-    --text-secondary: #475569;
-    --text-muted: #94A3B8;
+    --text-primary: #221C1C;     /* ink */
+    --text-secondary: #6B5E5E;
+    --text-muted: #8A7E7E;       /* dim */
 
-    --accent-gold: #d97706;
-    --accent-green: #059669;
-    --accent-error: #DC2626;
+    --accent-gold: #C77B14;      /* warn */
+    --accent-green: #1F9D55;     /* ok */
+    --accent-error: #C8202E;
     --accent-info: #2563EB;
 
-    /* ── Sidebar Claro ── */
-    --sidebar-bg: #1E293B;
-    --sidebar-border: rgba(255, 255, 255, 0.06);
-    --sidebar-text: #94A3B8;
-    --sidebar-text-hover: #F1F5F9;
-    --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
-    --sidebar-title-color: #F1F5F9;
-    --sidebar-subtitle-color: #64748B;
-    --sidebar-footer-border: rgba(255, 255, 255, 0.06);
+    /* ── Sidebar (warm near-black do Ideal) ── */
+    --sidebar-bg: #221518;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+    --sidebar-text: #CBB9BA;
+    --sidebar-text-hover: #FFFFFF;
+    --sidebar-hover-bg: rgba(224, 60, 73, 0.12);
+    --sidebar-title-color: #FFFFFF;
+    --sidebar-subtitle-color: #9B8385;
+    --sidebar-footer-border: rgba(255, 255, 255, 0.08);
 
-    --radius-sm: 6px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
+    --radius-sm: 8px;
+    --radius-md: 11px;
+    --radius-lg: 14px;
     --radius-xl: 16px;
     --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html.dark {
-    /* ── Tema Escuro ── */
-    --bg-primary: #0d0d0d;
-    --bg-secondary: #121212;
-    --bg-card: #171717;
-    --bg-glass: rgba(28, 28, 28, 0.7);
-    --border-color: #242424;
-    --border-bright: #2e2e2e;
+    /* ── Tema Escuro (Ideal) ── */
+    --bg-primary: #171213;
+    --bg-secondary: #1D1718;
+    --bg-card: #221B1D;          /* surface */
+    --bg-glass: rgba(34, 27, 29, 0.72);
+    --border-color: #342A2C;     /* divider */
+    --border-bright: #423436;
 
-    --brand-color: #AF1411;
-    --brand-dark: #8a0d0a;
-    --brand-light: #E04340;
-    --brand-glow: rgba(175, 20, 17, 0.18);
-    --brand-subtle: rgba(175, 20, 17, 0.08);
+    --brand-color: #E5484D;
+    --brand-dark: #C8202E;
+    --brand-light: #F2666B;
+    --brand-glow: rgba(229, 72, 77, 0.18);
+    --brand-subtle: rgba(229, 72, 77, 0.08);
 
-    --text-primary: #f5f5f5;
-    --text-secondary: #b3b3b3;
-    --text-muted: #777777;
+    --text-primary: #F3ECEB;
+    --text-secondary: #C9B9B9;
+    --text-muted: #A19292;       /* dim */
 
-    --accent-gold: #f5a623;
-    --accent-green: #10B981;
-    --accent-error: #EF4444;
+    --accent-gold: #E0A23C;      /* warn */
+    --accent-green: #3DBF77;     /* ok */
+    --accent-error: #F2666B;
     --accent-info: #3B82F6;
 
-    /* ── Sidebar Escuro ── */
-    --sidebar-bg: #0d0d0d;
-    --sidebar-border: rgba(255, 255, 255, 0.05);
-    --sidebar-text: #888888;
-    --sidebar-text-hover: #ffffff;
-    --sidebar-hover-bg: rgba(255, 255, 255, 0.03);
-    --sidebar-title-color: #ffffff;
-    --sidebar-subtitle-color: #555555;
-    --sidebar-footer-border: rgba(255, 255, 255, 0.05);
+    /* ── Sidebar Escuro (Ideal) ── */
+    --sidebar-bg: #1B1314;
+    --sidebar-border: rgba(255, 255, 255, 0.06);
+    --sidebar-text: #B7A4A5;
+    --sidebar-text-hover: #FFFFFF;
+    --sidebar-hover-bg: rgba(242, 102, 107, 0.12);
+    --sidebar-title-color: #FFFFFF;
+    --sidebar-subtitle-color: #9B8385;
+    --sidebar-footer-border: rgba(255, 255, 255, 0.06);
 }
 
 /* Reset Geral */
@@ -178,7 +178,7 @@ html.dark .glass {
     justify-content: center;
     color: white;
     font-size: 20px;
-    box-shadow: 0 4px 12px rgba(175, 20, 17, 0.3);
+    box-shadow: 0 4px 12px rgba(200, 32, 46, 0.3);
 }
 
 .sidebar-brand h2 {
@@ -611,7 +611,7 @@ html.dark .glass {
 
 .contact-item.active {
     background-color: var(--brand-subtle);
-    border: 1px solid rgba(175, 20, 17, 0.1);
+    border: 1px solid rgba(200, 32, 46, 0.1);
 }
 
 .contact-avatar {

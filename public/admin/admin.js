@@ -570,12 +570,12 @@ function renderCharts(msgCounts, subjects, days) {
             datasets: [{
                 label: 'Contatos',
                 data: msgCounts || [],
-                borderColor: '#AF1411',
-                backgroundColor: 'rgba(175,20,17,0.08)',
+                borderColor: '#C8202E',
+                backgroundColor: 'rgba(200,32,46,0.08)',
                 borderWidth: 3,
                 fill: true,
                 tension: 0.4,
-                pointBackgroundColor: '#AF1411',
+                pointBackgroundColor: '#C8202E',
                 pointBorderColor: '#fff',
                 pointRadius: 4
             }]
@@ -612,7 +612,7 @@ function renderCharts(msgCounts, subjects, days) {
     const isDark = document.documentElement.classList.contains('dark');
     // Ordem segue as chaves de `subjects` (sem "Outras"): as 5 primeiras em tons
     // do vermelho do tema; "Reclamações" em âmbar pra destacar; cinza sobra.
-    const pieColors = ['#AF1411','#D32F2F','#F44336','#E57373','#FFCDD2','#F59E0B', isDark ? '#555555' : '#9CA3AF'];
+    const pieColors = ['#C8202E','#E03C49','#E86A73','#F09AA0','#F8CDD0','#F59E0B', isDark ? '#555555' : '#9CA3AF'];
 
     const ctx2 = document.getElementById('chart-subjects').getContext('2d');
     chartSubjects = new Chart(ctx2, {

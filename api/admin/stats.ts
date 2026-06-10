@@ -23,7 +23,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { count: activeContacts },
       { count: escalations },
       { count: escalationMessages },
-      { data: userMsgs },
+      uniqueUsersRes,
+      subjectsRes,
     ] = await Promise.all([
       sb.from("messages").select("*", { count: "exact", head: true }),
       sb.from("contacts").select("*", { count: "exact", head: true }),
@@ -34,7 +35,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select("*", { count: "exact", head: true })
         .eq("role", "tool")
         .like("content", "%escalate_to_specialist%"),
-      sb.from("messages").select("content, created_at, wa_id").eq("role", "user"),
+      // Agregações no Postgres em vez de trazer todas as msgs de usuário pro Node.
+      // Ver public/admin/supabase-stats-rpc.sql.
+      sb.rpc("stats_unique_users_7d"),
+      sb.rpc("stats_subjects"),
     ]);
 
     const inactiveContacts = (totalContacts ?? 0) - (activeContacts ?? 0);
@@ -53,32 +57,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       logger.warn({ err }, "Métricas de aprendizado indisponíveis (migração pendente?)");
     }
 
-    // Últimos 7 dias: contagem de USUÁRIOS ÚNICOS por dia (não de mensagens).
-    // Cada dia conta cada wa_id no máximo uma vez, mesmo que ele mande 50 msgs.
-    const days: string[] = [];
-    const msgCounts: number[] = [];
     const dayLabels = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const start = new Date(d);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(d);
-      end.setHours(23, 59, 59, 999);
-      days.push(`${dayLabels[d.getDay()]} ${d.getDate()}`);
-      const uniqueUsers = new Set<string>();
-      for (const m of userMsgs || []) {
-        const ts = (m as any).created_at;
-        if (ts >= start.getTime() && ts <= end.getTime()) {
-          const id = (m as any).wa_id;
-          if (id) uniqueUsers.add(id);
-        }
-      }
-      msgCounts.push(uniqueUsers.size);
-    }
 
-    // Topic buckets
+    // Topic buckets — ordem/chaves fixas pro gráfico renderizar consistente.
     const subjects: Record<string, number> = {
       "Mensalidades / Valores": 0,
       "Matrículas & Vagas": 0,
@@ -87,19 +68,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "Horários & Grade": 0,
       "Outras dúvidas": 0,
     };
-    for (const m of userMsgs || []) {
-      const t = ((m as any).content || "").toLowerCase();
-      if (/mensal|pre[çc]o|valor|pagamento|custo/.test(t))
-        subjects["Mensalidades / Valores"]++;
-      else if (/matr[íi]cula|vaga|inscri[çc][ãa]o|inscrever/.test(t))
-        subjects["Matrículas & Vagas"]++;
-      else if (/material|livro|apostila|caderno/.test(t))
-        subjects["Materiais / Livros"]++;
-      else if (/contato|telefone|whatsapp|secretaria|falar com/.test(t))
-        subjects["Contatos / Secretaria"]++;
-      else if (/hor[áa]rio|aula|grade|calend[áa]rio/.test(t))
-        subjects["Horários & Grade"]++;
-      else subjects["Outras dúvidas"]++;
+
+    let days: string[] = [];
+    let msgCounts: number[] = [];
+
+    // Caminho rápido: as RPCs (supabase-stats-rpc.sql) já devolvem os agregados.
+    if (!uniqueUsersRes.error && !subjectsRes.error) {
+      for (const row of (uniqueUsersRes.data || []) as any[]) {
+        // row.day vem como 'YYYY-MM-DD' (date). Monta label "seg 5".
+        const d = new Date(`${row.day}T00:00:00`);
+        days.push(`${dayLabels[d.getDay()]} ${d.getDate()}`);
+        msgCounts.push(Number(row.unique_users) || 0);
+      }
+      for (const row of (subjectsRes.data || []) as any[]) {
+        if (row.subject in subjects) subjects[row.subject] = Number(row.total) || 0;
+      }
+    } else {
+      // Fallback: migração não rodada. Recalcula em JS (carrega as msgs de user).
+      logger.warn(
+        { uniqueErr: uniqueUsersRes.error, subjErr: subjectsRes.error },
+        "RPCs de stats indisponíveis — usando fallback (rode supabase-stats-rpc.sql)"
+      );
+      const { data: userMsgs } = await sb
+        .from("messages")
+        .select("content, created_at, wa_id")
+        .eq("role", "user");
+
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const start = new Date(d);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(d);
+        end.setHours(23, 59, 59, 999);
+        days.push(`${dayLabels[d.getDay()]} ${d.getDate()}`);
+        const uniqueUsers = new Set<string>();
+        for (const m of userMsgs || []) {
+          const ts = (m as any).created_at;
+          if (ts >= start.getTime() && ts <= end.getTime()) {
+            const id = (m as any).wa_id;
+            if (id) uniqueUsers.add(id);
+          }
+        }
+        msgCounts.push(uniqueUsers.size);
+      }
+      for (const m of userMsgs || []) {
+        const t = ((m as any).content || "").toLowerCase();
+        if (/mensal|pre[çc]o|valor|pagamento|custo/.test(t))
+          subjects["Mensalidades / Valores"]++;
+        else if (/matr[íi]cula|vaga|inscri[çc][ãa]o|inscrever/.test(t))
+          subjects["Matrículas & Vagas"]++;
+        else if (/material|livro|apostila|caderno/.test(t))
+          subjects["Materiais / Livros"]++;
+        else if (/contato|telefone|whatsapp|secretaria|falar com/.test(t))
+          subjects["Contatos / Secretaria"]++;
+        else if (/hor[áa]rio|aula|grade|calend[áa]rio/.test(t))
+          subjects["Horários & Grade"]++;
+        else subjects["Outras dúvidas"]++;
+      }
     }
 
     res.status(200).json({

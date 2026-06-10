@@ -5,6 +5,12 @@ import { getSupabase } from "../../src/db/supabase-client";
 import { logger } from "../../src/logger";
 import { LearningRepository } from "../../src/learning/repository";
 
+// Cache em memória do payload de stats. Vive enquanto a function está "warm"
+// (singleton por módulo no Vercel). Métricas de dashboard toleram ~30s de
+// atraso, e isso corta o recomputo em aberturas/refreshes repetidos.
+const STATS_TTL_MS = 30_000;
+let statsCache: { at: number; payload: any } | null = null;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
   if (req.method !== "GET") {
@@ -12,6 +18,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
   if (!checkAdminAuth(req, res)) return;
+
+  if (statsCache && Date.now() - statsCache.at < STATS_TTL_MS) {
+    res.setHeader("X-Cache", "HIT");
+    res.status(200).json(statsCache.payload);
+    return;
+  }
 
   try {
     const sb = getSupabase();
@@ -129,7 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    res.status(200).json({
+    const payload = {
       totalMessages: totalMessages ?? 0,
       totalContacts: totalContacts ?? 0,
       activeContacts: activeContacts ?? 0,
@@ -140,7 +152,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       msgCounts,
       subjects,
       learning,
-    });
+    };
+    statsCache = { at: Date.now(), payload };
+    res.setHeader("X-Cache", "MISS");
+    res.status(200).json(payload);
   } catch (error) {
     logger.error({ error }, "Erro em GET /api/admin/stats");
     res.status(500).json({ error: "Internal error" });

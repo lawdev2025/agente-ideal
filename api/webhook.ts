@@ -4,6 +4,7 @@ import { logger } from "../src/logger";
 import { validateMetaSignature } from "../src/webhook/signature";
 import { StateRepository } from "../src/state/repository";
 import { shouldProcessMessage } from "../src/state/dedupe";
+import { buildProfileNameMap } from "../src/webhook/contacts";
 import { ClaudeProvider } from "../src/llm/claude";
 import { GeminiProvider } from "../src/llm/gemini";
 import { WhatsAppClient } from "../src/whatsapp/client";
@@ -117,6 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const entry of body.entry || []) {
         // Formato WhatsApp Cloud API (changes/value/messages)
         for (const change of entry.changes || []) {
+          const nameByWaId = buildProfileNameMap(change.value);
           const messages = change.value?.messages || [];
           for (const msg of messages) {
             if (msg.type !== "text" || !msg.text?.body) continue;
@@ -137,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             logger.info({ messageId, senderId }, "Received message");
 
             try {
-              await stateRepo.getOrCreateContact(senderId);
+              await stateRepo.getOrCreateContact(senderId, nameByWaId[senderId]);
               await stateRepo.updateLastSeen(senderId);
               await stateRepo.appendMessage(senderId, "user", text);
               await orchestrator.processMessage(senderId, text, senderId);

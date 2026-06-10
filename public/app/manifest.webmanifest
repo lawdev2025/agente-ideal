@@ -3,7 +3,7 @@
   "short_name": "CRM IDEAL",
   "description": "Atendimento WhatsApp do Colegio Ideal — bot e atendimento humano em tempo real.",
   "start_url": "/app/",
-  "scope": "/app/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#171213",

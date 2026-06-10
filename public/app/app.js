@@ -674,6 +674,14 @@
   });
   $("notif-btn").addEventListener("click", enableNotifications);
   $("theme-btn").addEventListener("click", toggleTheme);
+  // Drawer lateral
+  const drawer = $("app-drawer");
+  const drawerOverlay = $("drawer-overlay");
+  function openDrawer() { drawer.classList.add("open"); drawerOverlay.classList.add("show"); }
+  function closeDrawer() { drawer.classList.remove("open"); drawerOverlay.classList.remove("show"); }
+  $("menu-btn").addEventListener("click", openDrawer);
+  drawerOverlay.addEventListener("click", closeDrawer);
+  $("drawer-conversas").addEventListener("click", closeDrawer);
   $("search-input").addEventListener("input", renderContacts);
 
   // Pull-to-refresh na lista: puxa pra baixo no topo -> recarrega contatos.

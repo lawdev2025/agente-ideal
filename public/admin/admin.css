@@ -1449,53 +1449,12 @@ html.dark .glass {
 
 @media (max-width: 768px) {
     .admin-container {
-        flex-direction: column !important;
-        height: auto !important;
         width: 100% !important;
-        overflow: auto !important;
     }
 
-    .sidebar {
-        width: 100% !important;
-        height: auto !important;
-        padding: 16px !important;
-        border-right: none !important;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
-    }
-
-    .sidebar-brand {
-        padding-bottom: 12px !important;
-        margin-bottom: 16px !important;
-        justify-content: center;
-    }
-
-    .sidebar-menu ul {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 8px !important;
-    }
-
-    .sidebar-menu li {
-        flex: 1 1 calc(50% - 8px) !important;
-        margin-bottom: 0 !important;
-        padding: 10px 12px !important;
-        justify-content: center !important;
-        border-radius: var(--radius-md) !important;
-    }
-
-    .sidebar-footer {
-        flex-direction: row !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-        margin-top: 16px !important;
-        padding-top: 16px !important;
-        border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
-    }
-
-    .theme-toggle {
-        margin-bottom: 0 !important;
-        padding: 8px 12px !important;
-    }
+    /* No mobile a sidebar vira drawer off-canvas — regras no @media de
+       "RESPONSIVO MOBILE" mais abaixo (.sidebar fixed + overlay). Aqui só
+       removemos a antiga abordagem de "barra no topo". */
 
     .main-content {
         height: auto !important;
@@ -1503,13 +1462,10 @@ html.dark .glass {
     }
 
     .content-header {
-        height: auto !important;
-        padding: 20px 16px !important;
-        flex-direction: column !important;
         gap: 12px !important;
-        align-items: flex-start !important;
         border-bottom: 1px solid var(--border-color) !important;
     }
+    .header-status { margin-left: auto; }
 
     .tab-container {
         padding: 16px !important;
@@ -2128,7 +2084,7 @@ html.dark .glass {
     .admin-container.nav-open .sidebar-overlay { opacity: 1; pointer-events: auto; }
 
     /* Header e conteúdo */
-    .content-header { padding: 0 16px; height: 64px; }
+    .content-header { padding: 0 16px; height: 64px; justify-content: flex-start; }
     .header-title h1 { font-size: 18px; }
     .header-title p { display: none; }
     .tab-container { padding: 16px; }

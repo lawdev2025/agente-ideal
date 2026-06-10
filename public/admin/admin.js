@@ -124,6 +124,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnSend) btnSend.addEventListener('click', sendHumanMessage);
     const btnBack = document.getElementById('btn-chat-back');
     if (btnBack) btnBack.addEventListener('click', closeChat);
+    // Scroll infinito: ao chegar perto do topo, carrega o histórico anterior.
+    const chatBox = document.getElementById('chat-messages-box');
+    if (chatBox) chatBox.addEventListener('scroll', () => {
+        if (chatBox.scrollTop < 80) loadOlderMessages();
+    });
     const chatInput = document.getElementById('chat-input');
     if (chatInput) {
         chatInput.addEventListener('keydown', (e) => {
@@ -555,6 +560,11 @@ let activeContact = null;
 let contactNodes = {};
 // Ids das mensagens já desenhadas na conversa aberta (append incremental).
 let renderedMsgIds = new Set();
+// Paginação do histórico: cursor da mensagem mais antiga já carregada,
+// se ainda há histórico anterior, e trava anti-corrida ao carregar mais.
+let chatOldestTs = null;
+let chatHasMore = false;
+let chatLoadingMore = false;
 
 // --- Helpers de render seguros ---
 function escapeHtml(s) {
@@ -765,24 +775,72 @@ function filterContacts(e) {
     ));
 }
 
-// Busca o histórico (backend SQLite/Supabase server-side primeiro, _sb depois).
-async function fetchMessages(waId) {
+// Busca uma página do histórico (backend server-side primeiro, _sb depois).
+// before = cursor (created_at) pra carregar mensagens mais antigas; null = recentes.
+// Retorna { messages: [ascendente], hasMore }.
+async function fetchMessagesPage(waId, before = null) {
     if (adminToken && BACKEND_URL !== undefined) {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(waId)}/messages`, {
+            const qs = before != null ? `?limit=50&before=${encodeURIComponent(before)}` : '?limit=50';
+            const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(waId)}/messages${qs}`, {
                 headers: { 'Authorization': `Bearer ${adminToken}` }
             });
-            if (res.ok) { const data = await res.json(); return data.messages || []; }
+            if (res.ok) {
+                const data = await res.json();
+                return { messages: data.messages || [], hasMore: !!data.hasMore };
+            }
         } catch (e) { /* cai pro supabase */ }
     }
     if (_sb) {
         try {
+            // Fallback direto no Supabase: traz tudo de uma vez (sem paginação).
             const { data, error } = await _sb
                 .from('messages').select('*').eq('wa_id', waId).order('created_at', { ascending: true });
-            if (!error) return data || [];
+            if (!error) return { messages: data || [], hasMore: false };
         } catch (e) { console.error('Erro ao carregar mensagens do Supabase:', e); }
     }
-    return [];
+    return { messages: [], hasMore: false };
+}
+
+// Wrapper compatível: refresh em realtime só precisa das mensagens recentes.
+async function fetchMessages(waId) {
+    return (await fetchMessagesPage(waId)).messages;
+}
+
+// Insere mensagens MAIS ANTIGAS no topo preservando a posição de rolagem.
+function prependOlderMessages(box, messages) {
+    const visible = messages.filter(m => m.role !== 'tool' && m.role !== 'system');
+    if (visible.length === 0) return;
+    const prevHeight = box.scrollHeight;
+    const prevTop = box.scrollTop;
+    const frag = document.createDocumentFragment();
+    visible.forEach(m => {
+        const tmp = document.createElement('div');
+        appendBubble(tmp, m);
+        const node = tmp.firstChild;
+        frag.appendChild(node);
+        if (m.id != null) renderedMsgIds.add(String(m.id));
+    });
+    box.insertBefore(frag, box.firstChild);
+    // Mantém o usuário olhando pra mesma mensagem (compensa a altura inserida).
+    box.scrollTop = prevTop + (box.scrollHeight - prevHeight);
+}
+
+// Carrega o lote anterior ao rolar pro topo do chat.
+async function loadOlderMessages() {
+    if (chatLoadingMore || !chatHasMore || !activeContactId || chatOldestTs == null) return;
+    chatLoadingMore = true;
+    const box = document.getElementById('chat-messages-box');
+    try {
+        const { messages, hasMore } = await fetchMessagesPage(activeContactId, chatOldestTs);
+        if (messages.length > 0) {
+            chatOldestTs = messages[0].created_at;
+            prependOlderMessages(box, messages);
+        }
+        chatHasMore = hasMore;
+    } finally {
+        chatLoadingMore = false;
+    }
 }
 
 function appendBubble(box, msg) {
@@ -796,7 +854,9 @@ function appendBubble(box, msg) {
 function renderMessagesFull(box, messages) {
     box.innerHTML = '';
     renderedMsgIds = new Set();
-    messages.filter(m => m.role !== 'tool' && m.role !== 'system').forEach(m => {
+    const visible = messages.filter(m => m.role !== 'tool' && m.role !== 'system');
+    if (visible.length > 0) chatOldestTs = visible[0].created_at;
+    visible.forEach(m => {
         appendBubble(box, m);
         if (m.id != null) renderedMsgIds.add(String(m.id));
     });
@@ -820,13 +880,17 @@ async function loadActiveChat(contact) {
 
     messagesBox.innerHTML = '<div class="loading-spinner">Carregando histórico...</div>';
     renderedMsgIds = new Set();
+    chatOldestTs = null;
+    chatHasMore = false;
+    chatLoadingMore = false;
 
-    const messages = await fetchMessages(contact.wa_id);
+    const { messages, hasMore } = await fetchMessagesPage(contact.wa_id);
     const visible = messages.filter(m => m.role !== 'tool' && m.role !== 'system');
     if (visible.length === 0) {
         messagesBox.innerHTML = '<div class="chat-placeholder"><i class="fa-solid fa-comments"></i><h3>Nenhuma mensagem</h3><p>Este contato ainda não enviou mensagens.</p></div>';
         return;
     }
+    chatHasMore = hasMore;
     renderMessagesFull(messagesBox, messages);
 }
 

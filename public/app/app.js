@@ -23,6 +23,10 @@
   const unread = {}; // wa_id -> contador local de nao lidas
   let realtimeChannel = null;
   let pendingChat = null; // ?chat= ou clique em notificacao antes de carregar
+  // Paginacao do historico do chat aberto.
+  let chatOldestTs = null; // created_at da msg mais antiga ja carregada
+  let chatHasMore = false; // ainda ha historico anterior?
+  let chatLoadingMore = false; // trava anti-corrida
 
   // ---------------- helpers ----------------
   function showScreen(name) {
@@ -230,21 +234,58 @@
   }
 
   async function loadMessages(waId) {
+    chatOldestTs = null;
+    chatHasMore = false;
+    chatLoadingMore = false;
     try {
-      const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(waId)}/messages`);
+      const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(waId)}/messages?limit=50`);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
-      for (const m of data.messages || []) renderMessage(m, false);
+      const msgs = data.messages || [];
+      chatHasMore = !!data.hasMore;
+      if (msgs.length > 0) chatOldestTs = msgs[0].created_at;
+      for (const m of msgs) renderMessage(m, false);
       scrollToBottom();
     } catch (e) {
       toast("Não consegui carregar o histórico.");
     }
   }
 
-  function renderMessage(m, animate) {
-    if (m.role === "tool") return;
+  // Carrega o lote anterior ao rolar pro topo, preservando a posicao de scroll.
+  async function loadOlderMessages() {
+    if (chatLoadingMore || !chatHasMore || !currentChat || chatOldestTs == null) return;
+    chatLoadingMore = true;
+    const box = $("messages");
+    try {
+      const res = await authedFetch(
+        `/api/admin/contacts/${encodeURIComponent(currentChat)}/messages?limit=50&before=${encodeURIComponent(chatOldestTs)}`
+      );
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const msgs = data.messages || [];
+      chatHasMore = !!data.hasMore;
+      if (msgs.length === 0) return;
+      chatOldestTs = msgs[0].created_at;
+      const anchor = box.firstChild; // tudo entra ACIMA do que ja esta na tela
+      const prevHeight = box.scrollHeight;
+      const prevTop = box.scrollTop;
+      for (const m of msgs) {
+        const el = buildMessageEl(m);
+        if (el) box.insertBefore(el, anchor);
+      }
+      box.scrollTop = prevTop + (box.scrollHeight - prevHeight);
+    } catch (e) {
+      /* silencioso: tenta de novo no proximo scroll */
+    } finally {
+      chatLoadingMore = false;
+    }
+  }
+
+  // Constroi o elemento de uma mensagem (ou null se tool/duplicada). Nao insere.
+  function buildMessageEl(m) {
+    if (m.role === "tool") return null;
     const id = String(m.id != null ? m.id : `${m.role}:${m.created_at}:${(m.content || "").slice(0, 16)}`);
-    if (renderedIds.has(id)) return; // dedupe (stress test: nunca duplica)
+    if (renderedIds.has(id)) return null; // dedupe (stress test: nunca duplica)
     renderedIds.add(id);
 
     const div = document.createElement("div");
@@ -257,7 +298,12 @@
       const time = fmtTime(m.created_at) || fmtTime(Date.now());
       div.innerHTML = `${escapeHtml(m.content || "")}<span class="msg-time">${time}${out ? '<span class="read-ticks">✓✓</span>' : ""}</span>`;
     }
-    $("messages").appendChild(div);
+    return div;
+  }
+
+  function renderMessage(m, animate) {
+    const el = buildMessageEl(m);
+    if (el) $("messages").appendChild(el);
   }
 
   function scrollToBottom() {
@@ -498,6 +544,10 @@
   });
   $("notif-btn").addEventListener("click", enableNotifications);
   $("search-input").addEventListener("input", renderContacts);
+  // Scroll infinito: perto do topo, carrega o historico anterior.
+  $("messages").addEventListener("scroll", () => {
+    if ($("messages").scrollTop < 80) loadOlderMessages();
+  });
   $("back-btn").addEventListener("click", () => {
     currentChat = null;
     showScreen("list");

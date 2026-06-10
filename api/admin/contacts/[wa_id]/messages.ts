@@ -25,17 +25,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // GET — histórico da conversa
+  // GET — histórico da conversa (paginado).
+  // ?limit=N (default 50, máx 200) e ?before=<created_at> (cursor, exclusivo).
+  // Retorna as N mensagens mais recentes anteriores ao cursor, em ordem
+  // ascendente. hasMore indica se ainda há histórico mais antigo pra carregar.
   if (req.method === "GET") {
     try {
       const sb = getSupabase();
-      const { data } = await sb
+      const limit = Math.min(
+        Math.max(parseInt((req.query.limit as string) || "50", 10) || 50, 1),
+        200
+      );
+      const before = req.query.before ? Number(req.query.before) : null;
+
+      let q = sb
         .from("messages")
         .select("id, wa_id, role, content, created_at")
         .eq("wa_id", wa_id)
-        .order("created_at", { ascending: true })
-        .order("id", { ascending: true });
-      res.status(200).json({ messages: data || [] });
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(limit);
+      if (before != null && !Number.isNaN(before)) q = q.lt("created_at", before);
+
+      const { data } = await q;
+      const batch = data || [];
+      const hasMore = batch.length === limit;
+      // Veio descendente (do mais novo pro mais antigo); inverte pra ascendente.
+      const messages = batch.slice().reverse();
+      res.status(200).json({ messages, hasMore });
     } catch (error) {
       logger.error({ error, wa_id }, "Erro em GET /api/admin/contacts/:wa_id/messages");
       res.status(500).json({ error: "Internal error" });

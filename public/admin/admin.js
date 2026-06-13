@@ -862,8 +862,21 @@ function renderContactsList(contacts) {
     });
 }
 
+// Tag de intenção → rótulo + classe de cor (selo ao lado do nome).
+function tagInfo(tag) {
+    switch (tag) {
+        case 'matricula': return { label: 'Matrícula', cls: 'itag-matricula' };
+        case 'rematricula': return { label: 'Rematrícula', cls: 'itag-rematricula' };
+        case 'eixo': return { label: 'Eixo', cls: 'itag-eixo' };
+        case 'esporte': return { label: 'Esporte', cls: 'itag-esporte' };
+        default: return null;
+    }
+}
+
 function updateContactNode(item, contact) {
     const displayName = contact.name || contact.wa_id;
+    const ti = tagInfo(contact.tag);
+    const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : '';
     const badge = contact.bot_paused
         ? '<span class="bot-badge-paused"><i class="fa-solid fa-headset"></i> Humano</span>'
         : '<span class="bot-badge-active"><i class="fa-solid fa-robot"></i> Bot</span>';
@@ -879,7 +892,7 @@ function updateContactNode(item, contact) {
     item.innerHTML = `
         <div class="contact-avatar">${escapeHtml(contactInitials(displayName))}</div>
         <div class="contact-details">
-            <div class="contact-header"><h4>${escapeHtml(displayName)}</h4><span class="contact-time">${time}</span></div>
+            <div class="contact-header"><h4>${escapeHtml(displayName)}</h4>${tagHtml}<span class="contact-time">${time}</span></div>
             <div class="contact-meta"><p class="contact-preview">${previewText}</p>${unread}${badge}</div>
         </div>`;
 }

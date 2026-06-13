@@ -80,6 +80,22 @@ body {
 .list-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 14px calc(env(safe-area-inset-bottom, 0px) + 28px); touch-action: pan-y; overscroll-behavior-y: contain; }
 .list-scroll .card-wrap { margin-bottom: 10px; }
 .list-scroll .card { border-radius: 18px; }
+
+/* Selo de intenção ao lado do nome (matrícula/rematrícula/eixo/esporte) */
+.row-name-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+.row-name-wrap .row-name { flex: 0 1 auto; }
+.itag {
+  flex-shrink: 0; font: 700 9.5px 'Quicksand', sans-serif;
+  padding: 2px 7px; border-radius: 7px; line-height: 1.6;
+  text-transform: uppercase; letter-spacing: .3px; white-space: nowrap;
+}
+.itag-matricula { background: var(--brand-tint); color: var(--brand-deep); }
+.itag-rematricula { background: var(--ok-tint); color: var(--ok); }
+.itag-eixo { background: rgba(108,92,231,.14); color: #6C5CE7; }
+.itag-esporte { background: rgba(37,99,235,.14); color: #2563EB; }
+.ideal.dark .itag-matricula { color: var(--brand-bright); }
+.ideal.dark .itag-eixo { color: #9D8CFF; }
+.ideal.dark .itag-esporte { color: #6FA8F5; }
 .list-empty { padding: 40px 20px; text-align: center; color: var(--dim); font-size: 13px; }
 
 /* ---------------- CHAT ---------------- */

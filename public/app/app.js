@@ -182,6 +182,17 @@
     updateListHeader();
   }
 
+  // Tag de intenção → rótulo + classe de cor (selo ao lado do nome).
+  function tagInfo(tag) {
+    switch (tag) {
+      case "matricula": return { label: "Matrícula", cls: "itag-matricula" };
+      case "rematricula": return { label: "Rematrícula", cls: "itag-rematricula" };
+      case "eixo": return { label: "Eixo", cls: "itag-eixo" };
+      case "esporte": return { label: "Esporte", cls: "itag-esporte" };
+      default: return null;
+    }
+  }
+
   // Variante de cor do avatar (a1..a4) determinística por wa_id.
   function avatarVariant(wa) {
     let h = 0;
@@ -206,6 +217,8 @@
     const n = unread[c.wa_id] || 0;
     const av = avatarVariant(c.wa_id);
     const preview = c.last_message_role === "user" ? "" : c.last_message_role === "assistant" ? "✓ " : "";
+    const ti = tagInfo(c.tag);
+    const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
     wrap.innerHTML = `
       <div class="card-in" style="position:relative;border-radius:18px">
         <div class="swipe-actions">
@@ -217,7 +230,7 @@
             <div class="avatar ${av}">${initials(c)}<span class="st-dot ${st}"></span></div>
             <div class="row-main">
               <div class="row-top">
-                <span class="row-name">${escapeHtml(displayName(c))}</span>
+                <span class="row-name-wrap"><span class="row-name">${escapeHtml(displayName(c))}</span>${tagHtml}</span>
                 <span class="row-time${n ? " unread" : ""}">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
               </div>
               <div class="row-bottom">

@@ -1898,8 +1898,23 @@ html.dark .glass {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
 }
+.contact-header h4 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.contact-header .contact-time { margin-left: auto; }
+
+/* Selo de intenção ao lado do nome (matrícula/rematrícula/eixo/esporte) */
+.itag {
+    flex-shrink: 0; font-family: 'Quicksand', sans-serif; font-weight: 700;
+    font-size: 9px; padding: 1px 6px; border-radius: 6px; line-height: 1.7;
+    text-transform: uppercase; letter-spacing: .3px; white-space: nowrap;
+}
+.itag-matricula { background: var(--brand-subtle); color: var(--brand-color); }
+.itag-rematricula { background: rgba(31,157,85,.12); color: var(--accent-green); }
+.itag-eixo { background: rgba(108,92,231,.14); color: #6C5CE7; }
+.itag-esporte { background: rgba(37,99,235,.12); color: var(--accent-info); }
+html.dark .itag-eixo { color: #9D8CFF; }
+html.dark .itag-esporte { color: #6FA8F5; }
 .contact-time {
     font-size: 10px;
     color: var(--text-muted);

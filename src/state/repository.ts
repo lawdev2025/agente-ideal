@@ -138,6 +138,22 @@ export class StateRepository {
     }
   }
 
+  /**
+   * Grava a tag de intenção do contato (matricula/rematricula/eixo/esporte).
+   * Best-effort: silencia se a coluna `tag` ainda não existir no schema
+   * (PGRST204) — basta rodar supabase-contact-tags.sql.
+   */
+  async setContactTag(waId: string, tag: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ tag })
+      .eq("wa_id", waId);
+    if (error && error.code !== "PGRST204") {
+      logger.warn({ error, waId, tag }, "Falha ao salvar tag do contato (nao critico)");
+    }
+  }
+
   async pauseBot(waId: string, reason: string): Promise<void> {
     const supabase = getSupabase();
     await this.getOrCreateContact(waId);

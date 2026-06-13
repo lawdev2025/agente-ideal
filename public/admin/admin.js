@@ -637,6 +637,9 @@ function renderCharts(msgCounts, subjects, days) {
     // do vermelho do tema; "Reclamações" em âmbar pra destacar; cinza sobra.
     const pieColors = ['#C8202E','#E03C49','#E86A73','#F09AA0','#F8CDD0','#F59E0B', isDark ? '#555555' : '#9CA3AF'];
 
+    // Mobile: legenda à direita com rótulos longos espremia o donut até sumir.
+    // Em tela estreita joga a legenda pra baixo (donut usa a largura toda).
+    const narrowChart = window.matchMedia('(max-width: 700px)').matches;
     const ctx2 = document.getElementById('chart-subjects').getContext('2d');
     chartSubjects = new Chart(ctx2, {
         type: 'doughnut',
@@ -658,15 +661,17 @@ function renderCharts(msgCounts, subjects, days) {
             },
             plugins: {
                 legend: {
-                    position: 'right',
+                    position: narrowChart ? 'bottom' : 'right',
                     labels: {
                         color: legendColor,
-                        font: { family: 'Quicksand', size: 12 },
-                        padding: 15
+                        font: { family: 'Quicksand', size: narrowChart ? 11 : 12 },
+                        padding: narrowChart ? 10 : 15,
+                        boxWidth: 14,
+                        usePointStyle: true
                     }
                 }
             },
-            cutout: '70%'
+            cutout: '66%'
         }
     });
 }

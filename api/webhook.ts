@@ -59,11 +59,18 @@ async function readRawBody(req: VercelRequest): Promise<string> {
 // (handoff humano ou contato ja em atendimento manual), avisa o celular do
 // atendente via Web Push. Bot ativo respondendo sozinho nao gera push. Nunca
 // lanca — push e best-effort e nao pode derrubar o webhook.
-async function notifyHumanIfManual(senderId: string, text: string): Promise<void> {
+async function notifyIncoming(
+  senderId: string,
+  text: string,
+  name?: string
+): Promise<void> {
   try {
-    if (!(await stateRepo.isBotPaused(senderId))) return;
+    const paused = await stateRepo.isBotPaused(senderId);
+    const who = name || senderId;
     await sendPushToAll({
-      title: "Atendimento manual — cliente aguardando",
+      title: paused
+        ? `${who} — aguardando atendimento`
+        : `Nova mensagem de ${who}`,
       body: text.length > 120 ? text.slice(0, 117) + "..." : text,
       wa_id: senderId,
       tag: `crm-ideal-${senderId}`,
@@ -146,7 +153,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               const tag = classifyContactTag(text);
               if (tag) await stateRepo.setContactTag(senderId, tag);
               await orchestrator.processMessage(senderId, text, senderId);
-              await notifyHumanIfManual(senderId, text);
+              await notifyIncoming(senderId, text, nameByWaId[senderId]);
             } catch (procErr) {
               logger.error(
                 { error: procErr, messageId },
@@ -179,7 +186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const legacyTag = classifyContactTag(text);
             if (legacyTag) await stateRepo.setContactTag(senderId, legacyTag);
             await orchestrator.processMessage(senderId, text, senderId);
-            await notifyHumanIfManual(senderId, text);
+            await notifyIncoming(senderId, text);
           } catch (procErr) {
             logger.error(
               { error: procErr, messageId },

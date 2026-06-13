@@ -2108,6 +2108,8 @@ html.dark .itag-esporte { color: #6FA8F5; }
     .metrics-grid { grid-template-columns: 1fr; gap: 12px; }
     .charts-grid { grid-template-columns: 1fr; }
     .config-grid { grid-template-columns: 1fr !important; }
+    /* Donut com legenda embaixo no mobile precisa de um respiro de altura */
+    .chart-wrapper { height: 340px; }
 
     /* Conversas: lista OU chat ocupando a largura toda */
     .conversations-wrapper { flex-direction: column; height: calc(100vh - 96px); }

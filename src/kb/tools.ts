@@ -72,7 +72,7 @@ const consultarMensalidadesTool: KBTool = {
       unit: {
         type: "string",
         description:
-          "Nome da unidade: 'Batista Campos'/'Sede', 'Augusto Montenegro', 'Cidade Nova' (opcional). Cada unidade tem seus próprios valores.",
+          "Nome da unidade: 'Batista Campos', 'Augusto Montenegro', 'Cidade Nova' (opcional; o cliente pode chamar Batista Campos de 'sede'). Cada unidade tem seus próprios valores.",
       },
     },
     required: [],
@@ -114,7 +114,7 @@ const consultarMensalidadesTool: KBTool = {
 
       const unidadeRef = unit
         ? `da unidade ${unit}`
-        : "em todas as 3 unidades (Sede/Batista Campos, Augusto Montenegro e Cidade Nova)";
+        : "em todas as 3 unidades (Batista Campos, Augusto Montenegro e Cidade Nova)";
 
       return [
         `✅ Sim, ${nivelLabel} está disponível ${unidadeRef}.`,
@@ -204,13 +204,13 @@ const consultarContatoMatriculaTool: KBTool = {
 const consultarUnidadesTool: KBTool = {
   name: "get_unit_info",
   description:
-    "Obtém informações sobre as unidades/campi do Colégio Ideal: endereço, telefone fixo, horário de funcionamento, níveis oferecidos, infraestrutura, atividades extracurriculares, capacidade e link de agendamento de visita. Use sempre que o cliente perguntar sobre unidade, sede, campus, endereço, onde fica, horário de funcionamento da escola, quantos alunos, capacidade, infraestrutura, atividades ou quiser agendar uma visita. Aceita o argumento opcional 'unit' com nome da unidade (Sede/Batista Campos, Augusto Montenegro, Cidade Nova). Se não especificar, retorna resumo de todas.",
+    "Obtém informações sobre as unidades/campi do Colégio Ideal: endereço, telefone fixo, horário de funcionamento, níveis oferecidos, infraestrutura, atividades extracurriculares, capacidade e link de agendamento de visita. Use sempre que o cliente perguntar sobre unidade, sede, campus, endereço, onde fica, horário de funcionamento da escola, quantos alunos, capacidade, infraestrutura, atividades ou quiser agendar uma visita. Aceita o argumento opcional 'unit' com nome da unidade (Batista Campos, Augusto Montenegro, Cidade Nova). Se não especificar, retorna resumo de todas.",
   inputSchema: {
     type: "object",
     properties: {
       unit: {
         type: "string",
-        description: "Nome da unidade: 'Batista Campos' (Sede), 'Augusto Montenegro' ou 'Cidade Nova' (opcional)",
+        description: "Nome da unidade: 'Batista Campos', 'Augusto Montenegro' ou 'Cidade Nova' (opcional; 'sede' = Batista Campos)",
       },
     },
     required: [],

@@ -361,7 +361,7 @@ export class MessageOrchestrator {
     if (intent.kind === "enrollment_contact" && !intent.unit) {
       const ask =
         "Claro! Temos 3 unidades — me diz qual você prefere que eu te passe o número:\n\n" +
-        "🏫 *Sede (Batista Campos)*\n" +
+        "🏫 *Batista Campos*\n" +
         "🏫 *Augusto Montenegro*\n" +
         "🏫 *Cidade Nova (Ananindeua)*";
       await this.stateRepository.appendMessage(conversationId, "assistant", ask);
@@ -935,7 +935,7 @@ function buildVisitReplyWithUnit(unit: string): string {
 const VISIT_ASK_UNIT_REPLY =
   "Que ótimo que você quer conhecer a gente! 🎉\n\n" +
   "Temos 3 unidades — é só clicar no link da que você prefere pra agendar a visita:\n" +
-  `🏫 *Sede (Batista Campos)*: ${VISIT_LINKS["Batista Campos"]}\n` +
+  `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
   `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
   `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}`;
 
@@ -959,7 +959,7 @@ function buildPresentialValuesReply(unit?: string): string {
   return (
     intro +
     "Quer agendar uma visita? Escolha a unidade mais próxima:\n" +
-    `🏫 *Sede (Batista Campos)*: ${VISIT_LINKS["Batista Campos"]}\n` +
+    `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
     `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
     `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}`
   );
@@ -1006,7 +1006,7 @@ function buildEnrollmentReply(opts: {
     reply =
       `${hi}Que bom seu interesse${nivelTxt}! 🎓 Temos 3 unidades — me diz qual ` +
       `fica melhor pra você que eu já te passo a visita e o contato certinho:\n` +
-      `🏫 *Sede (Batista Campos)*\n🏫 *Augusto Montenegro*\n🏫 *Cidade Nova (Ananindeua)*`;
+      `🏫 *Batista Campos*\n🏫 *Augusto Montenegro*\n🏫 *Cidade Nova (Ananindeua)*`;
   }
 
   if (escalateAfter) {
@@ -1029,7 +1029,7 @@ function buildEnrollmentReply(opts: {
 const SECRETARIA_REDIRECT_REPLY =
   "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\n" +
   "De qual unidade você é? Aí te passo o telefone certinho:\n" +
-  "🏫 *Sede (Batista Campos)*\n" +
+  "🏫 *Batista Campos*\n" +
   "🏫 *Augusto Montenegro*\n" +
   "🏫 *Cidade Nova (Ananindeua)*";
 
@@ -1089,7 +1089,7 @@ const DOCUMENT_ASK_UNIT_REPLY =
   "Boletim, histórico escolar, declarações e qualquer outro documento são " +
   "emitidos direto na *secretaria* da unidade. 📄\n\n" +
   "De qual unidade você precisa? Aí te passo o telefone certinho:\n" +
-  "🏫 *Sede (Batista Campos)*\n" +
+  "🏫 *Batista Campos*\n" +
   "🏫 *Augusto Montenegro*\n" +
   "🏫 *Cidade Nova (Ananindeua)*";
 
@@ -1142,7 +1142,7 @@ const PAYMENT_ASK_UNIT_REPLY =
   "Pagamento de taxas, mensalidade e prova de *segunda chamada* é resolvido " +
   "direto na *secretaria* da unidade. 💳\n\n" +
   "De qual unidade você precisa? Aí te passo o telefone certinho:\n" +
-  "🏫 *Sede (Batista Campos)*\n" +
+  "🏫 *Batista Campos*\n" +
   "🏫 *Augusto Montenegro*\n" +
   "🏫 *Cidade Nova (Ananindeua)*";
 
@@ -1173,9 +1173,9 @@ const IDENTIDADE_ATENDIMENTO =
 
 const DADOS_COLEGIO = [
   "DADOS OFICIAIS (use VERBATIM — nunca invente outros):",
-  `• Telefones fixos (NUNCA ofereça WhatsApp — o cliente já está no WhatsApp): Sede/Batista Campos ${UNIT_SECRETARIA_PHONE["Batista Campos"]} · Augusto Montenegro ${UNIT_SECRETARIA_PHONE["Augusto Montenegro"]} · Cidade Nova/Ananindeua ${UNIT_SECRETARIA_PHONE["Cidade Nova"]}.`,
-  "• Endereços (dê a rua completa quando perguntarem): Sede — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esq. WE-21), Coqueiro, Ananindeua-PA.",
-  `• Links de visita: Sede → ${VISIT_LINKS["Batista Campos"]} · Augusto Montenegro → ${VISIT_LINKS["Augusto Montenegro"]} · Cidade Nova → ${VISIT_LINKS["Cidade Nova"]}.`,
+  `• Telefones fixos (NUNCA ofereça WhatsApp — o cliente já está no WhatsApp): Batista Campos ${UNIT_SECRETARIA_PHONE["Batista Campos"]} · Augusto Montenegro ${UNIT_SECRETARIA_PHONE["Augusto Montenegro"]} · Cidade Nova/Ananindeua ${UNIT_SECRETARIA_PHONE["Cidade Nova"]}.`,
+  "• Endereços (dê a rua completa quando perguntarem): Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esq. WE-21), Coqueiro, Ananindeua-PA.",
+  `• Links de visita: Batista Campos → ${VISIT_LINKS["Batista Campos"]} · Augusto Montenegro → ${VISIT_LINKS["Augusto Montenegro"]} · Cidade Nova → ${VISIT_LINKS["Cidade Nova"]}.`,
   "• 3 unidades, todas do Maternal ao Pré-Enem: Maternal, Jardim, Fund 1 (1º-5º), Fund 2 (6º-9º), Médio, Pré-Enem (Eixo). Sistema Poliedro. Material/uniforme comprados na escola/malharia. Aulas 07:30 (30 min de tolerância), iguais nas 3 unidades.",
 ].join("\n");
 
@@ -1185,9 +1185,9 @@ const DADOS_COLEGIO = [
 const REGRAS_COMUNS = [
   "REGRAS:",
   "- Tom WhatsApp, frases curtas. Use o nome do cliente se ele já apareceu na conversa.",
-  "- Telefone/número/secretaria → dê o telefone fixo da unidade pedida (Sede por padrão se não disser qual). Nunca ofereça WhatsApp, nunca diga 'não tenho essa informação' (os números estão acima).",
+  "- Telefone/número/secretaria → dê o telefone fixo da unidade pedida (Batista Campos por padrão se não disser qual). Nunca ofereça WhatsApp, nunca diga 'não tenho essa informação' (os números estão acima).",
   "- Valor/mensalidade/preço/taxa → diga que os valores são informados presencialmente e convide para agendar visita pelo link da unidade (ou liste os 3 se não souber qual). Nunca cite R$. Não use 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
-  "- Dado concreto fora dos dados acima (taxa de matrícula, vencimento, desconto, pagamento, início das aulas, documentos, link de cadastro, prazo): NÃO invente — diga que a secretaria confirma certinho e ofereça o telefone (ex.: Sede (91) 3323-5000).",
+  "- Dado concreto fora dos dados acima (taxa de matrícula, vencimento, desconto, pagamento, início das aulas, documentos, link de cadastro, prazo): NÃO invente — diga que a secretaria confirma certinho e ofereça o telefone (ex.: Batista Campos (91) 3323-5000).",
   "- Nunca invente telefone com DDD diferente de 91. Nunca escreva texto que pareça chamada de função (ex.: get_enrollment_info(...)). Nunca diga 'aguarde' / 'um momento' / 'vou verificar'.",
 ].join("\n");
 

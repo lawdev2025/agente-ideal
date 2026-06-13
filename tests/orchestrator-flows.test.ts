@@ -394,7 +394,7 @@ describe("Orchestrator: redirect secretaria pergunta a unidade direto (sem sim/n
 describe("Orchestrator: follow-up determinístico de unidade (responde só o nome → telefone)", () => {
   const cases: Array<{ ask: string; reply: string; phone: string }> = [
     {
-      ask: "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\nDe qual unidade você é? Aí te passo o telefone certinho:\n🏫 *Sede (Batista Campos)*",
+      ask: "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\nDe qual unidade você é? Aí te passo o telefone certinho:\n🏫 *Batista Campos*",
       reply: "Cidade Nova",
       phone: "(91) 3273-0222",
     },

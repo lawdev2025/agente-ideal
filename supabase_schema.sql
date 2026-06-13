@@ -141,7 +141,7 @@ INSERT INTO school_schedule (student_id, day_of_week, class_time, subject) VALUE
 ON CONFLICT DO NOTHING;
 
 INSERT INTO school_contacts (name, role_title, phone_number) VALUES
-('Atendimento Sede',                'Telefone fixo Sede (Batista Campos)',           '559133235000'),
+('Atendimento Batista Campos',                'Telefone fixo Batista Campos',           '559133235000'),
 ('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559132730667'),
 ('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222')
 ON CONFLICT DO NOTHING;

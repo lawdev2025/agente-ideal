@@ -152,7 +152,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
 VALUES
   (
     'sede',
-    'Sede (Batista Campos)',
+    'Batista Campos',
     'Rua dos Mundurucus, 1412 — Batista Campos, Belém — PA',
     '(91) 3323-5000',
     NULL,

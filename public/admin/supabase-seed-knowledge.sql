@@ -114,7 +114,7 @@ DELETE FROM school_contacts;
 -- WhatsApp, então não faz sentido o bot devolver um número de WhatsApp. Só os
 -- telefones fixos das unidades/secretaria.
 INSERT INTO school_contacts (name, role_title, phone_number) VALUES
-  ('Atendimento Sede',                'Telefone fixo Sede (Batista Campos)',           '559133235000'),
+  ('Atendimento Batista Campos',                'Telefone fixo Batista Campos',           '559133235000'),
   ('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559132730667'),
   ('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222');
 
@@ -127,7 +127,7 @@ DELETE FROM school_units;
 INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, system, infrastructure, activities, capacity, visit_link) VALUES
   (
     'sede',
-    'Sede (Batista Campos)',
+    'Batista Campos',
     'Rua dos Mundurucus, 1412 — Batista Campos, Belém — PA',
     '(91) 3323-5000',
     NULL,

@@ -591,7 +591,7 @@ export class MessageOrchestrator {
     if (isFirstInteraction) {
       const greeting =
         "Olá! Aqui é o atendimento oficial do *Grupo Ideal* 🎓✨\n" +
-        "É um prazer falar com você! Estamos prontos pra te ajudar com informações sobre nossas turmas, unidades e o processo de matrícula 2026.\n\n" +
+        "É um prazer falar com você! Estamos prontos pra te ajudar com informações sobre nossas turmas, unidades e o processo de matrícula 2027.\n\n" +
         "Pra começar, como posso te chamar? 😊";
       await this.stateRepository.appendMessage(conversationId, "assistant", greeting);
       await this.whatsappClient.sendMessage(studentId, greeting);

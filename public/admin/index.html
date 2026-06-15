@@ -291,6 +291,48 @@
                             </table>
                         </div>
                     </div>
+
+                    <!-- PAINEL B: O que o bot aprendeu (intent_learning) -->
+                    <div class="database-wrapper glass banco-learning-wrapper" id="banco-learning" style="display:none;">
+                        <div class="banco-section-title">
+                            <span><i class="fa-solid fa-brain"></i> O que o bot aprendeu</span>
+                            <small>Intenções acumuladas automaticamente nas conversas</small>
+                        </div>
+
+                        <!-- Mini-cards de resumo -->
+                        <div class="learning-strip" id="learning-strip">
+                            <div class="learning-stat">
+                                <span class="learning-stat-value" id="learn-active-count">—</span>
+                                <span class="learning-stat-label">ativas</span>
+                            </div>
+                            <div class="learning-stat">
+                                <span class="learning-stat-value" id="learn-candidate-count">—</span>
+                                <span class="learning-stat-label">candidatas</span>
+                            </div>
+                            <div class="learning-stat">
+                                <span class="learning-stat-value" id="learn-cache-hits">—</span>
+                                <span class="learning-stat-label">acertos de cache</span>
+                            </div>
+                        </div>
+
+                        <!-- Tabela de intenções -->
+                        <div class="database-table-container">
+                            <table class="db-table" id="learning-table">
+                                <thead>
+                                    <tr>
+                                        <th>Intenção</th>
+                                        <th>Tipo</th>
+                                        <th>Acertos</th>
+                                        <th>Taxa de sucesso</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="learning-table-body">
+                                    <tr><td colspan="5" class="loading-spinner">Carregando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- 4. Aba Configurações -->

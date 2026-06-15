@@ -6,19 +6,20 @@
 //
 // IMPORTANTE: bump CACHE quando mudar arquivos do shell, senao o celular serve
 // a versao velha do cache. O Vercel atualiza no servidor, mas o SW intercepta.
-const CACHE = "crm-ideal-v12";
+const CACHE = "crm-ideal-v13";
 const SHELL = [
   "/app/",
   "/app/index.html",
   "/app/ideal-ui.css",
   "/app/proto.css",
   "/app/app.css",
-  "/app/app.js?v=7",
+  "/app/app.js?v=8",
   "/app/manifest.webmanifest",
   "/app/icons/icon-192.png",
   "/app/icons/icon-512.png",
   "/app/icons/icon-192-mask.png",
   "/app/icons/icon-512-mask.png",
+  "/app/icons/icon-badge.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -71,13 +72,15 @@ self.addEventListener("push", (event) => {
     data = { title: "CRM IDEAL", body: event.data ? event.data.text() : "" };
   }
   const title = data.title || "CRM IDEAL";
+  const urgent = !!data.urgent; // atendimento humano necessário → heads-up
   const options = {
     body: data.body || "Nova mensagem",
-    icon: "/app/icons/icon-192.png",
-    badge: "/app/icons/icon-192.png",
+    icon: "/app/icons/icon-192.png",        // ícone grande = logo do app
+    badge: "/app/icons/icon-badge.png",     // status bar = silhueta monocromática
     tag: data.tag || "crm-ideal",
     renotify: true,
-    vibrate: [200, 100, 200],
+    vibrate: urgent ? [220, 80, 220, 80, 320] : [180, 80, 180],
+    requireInteraction: urgent,             // urgente fica fixa (suspensa) até interagir
     data: { wa_id: data.wa_id || null },
   };
   event.waitUntil(self.registration.showNotification(title, options));

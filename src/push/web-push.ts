@@ -36,6 +36,9 @@ export interface PushPayload {
   // wa_id do contato — o service worker usa pra abrir a conversa certa.
   wa_id?: string;
   tag?: string;
+  // urgent=true → notificação heads-up (suspensa) no celular: usada quando a
+  // conversa chega ao ponto de atendimento humano (bot pausado/escalado).
+  urgent?: boolean;
 }
 
 interface SubscriptionRow {

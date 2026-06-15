@@ -1242,8 +1242,14 @@ html.dark .glass {
     color: var(--accent-green);
 }
 .bot-badge-paused {
-    background-color: rgba(245, 166, 35, 0.1);
+    background-color: rgba(245, 166, 35, 0.12);
     color: var(--accent-gold);
+    /* Pulsa pra chamar atenção: conversa em atendimento humano (escalada). */
+    animation: badgeAttnPulse 1.5s ease-in-out infinite;
+}
+@keyframes badgeAttnPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, 0); }
+    50% { box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.22); }
 }
 
 /* Detalhes do contato na lista */

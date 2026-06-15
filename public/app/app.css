@@ -103,6 +103,10 @@ body {
   padding: 2px 6px; border-radius: 7px; line-height: 1.6; letter-spacing: .4px;
   background: var(--surface-2); color: var(--dim); border: 1px solid var(--divider);
 }
+/* Ícone pulsante "precisa de atendimento" (bot pausado/escalado) */
+.attn-ic { display: inline-flex; align-items: center; color: var(--warn); flex-shrink: 0; transform-origin: center; animation: attnPulse 1.3s ease-in-out infinite; }
+@keyframes attnPulse { 0%,100% { opacity: .45; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.15); } }
+
 .utag-am { color: #0E8E9E; border-color: rgba(14,142,158,.35); }
 .utag-bc { color: var(--brand-deep); border-color: rgba(200,32,46,.30); }
 .utag-cn { color: #8A6D1E; border-color: rgba(199,123,20,.35); }

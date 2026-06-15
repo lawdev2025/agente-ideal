@@ -1826,6 +1826,7 @@ function clearConfig() {
 // =============================================================
 let realtimeFallbackPolling = null;
 let realtimeChannel = null;
+let adminSafetyTimer = null; // poll de segurança da conversa aberta (realtime cai calado)
 
 function initRealtimeSubscriptions() {
     if (!_sb) {
@@ -1855,6 +1856,15 @@ function initRealtimeSubscriptions() {
                 activateFallbackPolling();
             }
         }, 10000);
+
+        // Rede de segurança SEMPRE ativa: o Realtime às vezes fica "SUBSCRIBED"
+        // mas o socket morre calado (mensagem só aparecia após F5). A cada 15s
+        // re-busca a conversa aberta (refreshActiveChat é incremental/dedup).
+        if (adminSafetyTimer) clearInterval(adminSafetyTimer);
+        adminSafetyTimer = setInterval(() => {
+            if (document.hidden || currentTab !== 'conversas') return;
+            if (activeContact) refreshActiveChat(activeContact);
+        }, 15000);
     } catch (e) {
         console.error('[Realtime] erro ao subscrever:', e);
         activateFallbackPolling();

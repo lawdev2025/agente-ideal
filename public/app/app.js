@@ -22,6 +22,8 @@
   const renderedIds = new Set(); // ids de mensagens ja na tela (dedupe)
   const unread = {}; // wa_id -> contador local de nao lidas
   let realtimeChannel = null;
+  let reconnectTimer = null; // reconexão do realtime após queda
+  let safetyTimer = null;    // poll de segurança (realtime cai às vezes)
   let pendingChat = null; // ?chat= ou clique em notificacao antes de carregar
   // Paginacao do historico do chat aberto.
   let chatOldestTs = null; // created_at da msg mais antiga ja carregada
@@ -116,6 +118,7 @@
     refreshNotifBtn();
     await loadContacts();
     subscribeRealtime();
+    startSafetyNet();
     // ?chat= (abertura via notificacao push)
     const params = new URLSearchParams(location.search);
     const chat = pendingChat || params.get("chat");
@@ -182,6 +185,9 @@
     updateListHeader();
   }
 
+  // Ícone de "precisa de atendimento" (pulsa quando o bot está pausado/escalado).
+  const HEADSET_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 1a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1v-8H5v-1a7 7 0 0 1 14 0v1h-2v8h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"></path></svg>';
+
   // Tag de intenção → rótulo + classe de cor (selo ao lado do nome).
   function tagInfo(tag) {
     switch (tag) {
@@ -220,6 +226,7 @@
     const ti = tagInfo(c.tag);
     const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
     const utHtml = c.unit_tag ? `<span class="utag utag-${String(c.unit_tag).toLowerCase()}">${escapeHtml(c.unit_tag)}</span>` : "";
+    const attnHtml = c.bot_paused ? `<span class="attn-ic" title="Precisa de atendimento humano">${HEADSET_SVG}</span>` : "";
     wrap.innerHTML = `
       <div class="card-in" style="position:relative;border-radius:18px">
         <div class="swipe-actions">
@@ -231,7 +238,7 @@
             <div class="avatar ${av}">${initials(c)}<span class="st-dot ${st}"></span></div>
             <div class="row-main">
               <div class="row-top">
-                <span class="row-name-wrap"><span class="row-name">${escapeHtml(displayName(c))}</span>${tagHtml}${utHtml}</span>
+                <span class="row-name-wrap"><span class="row-name">${escapeHtml(displayName(c))}</span>${attnHtml}${tagHtml}${utHtml}</span>
                 <span class="row-time${n ? " unread" : ""}">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
               </div>
               <div class="row-bottom">
@@ -580,9 +587,44 @@
       })
       .subscribe((status) => {
         if (status === "SUBSCRIBED") setBanner("Conectado em tempo real", true);
-        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           setBanner("Reconectando ao tempo real…");
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(subscribeRealtime, 3000); // reconecta sozinho
+        }
       });
+  }
+
+  // Rede de segurança: o Realtime cai às vezes (app em background, troca de rede)
+  // sem reconectar — e a mensagem só aparecia após F5. Re-busca a conversa aberta
+  // (anexa só o que falta, dedup por id) ao voltar o foco e a cada 10s.
+  async function refreshOpenChat() {
+    if (!currentChat) return;
+    try {
+      const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(currentChat)}/messages?limit=50`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const box = $("messages");
+      const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+      let added = false;
+      for (const m of (data.messages || [])) {
+        const el = buildMessageEl(m); // dedup por id — anexa só as novas
+        if (el) { box.appendChild(el); added = true; }
+      }
+      if (added && nearBottom) scrollToBottom();
+    } catch (e) { /* silencioso */ }
+  }
+
+  function startSafetyNet() {
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) return;
+      loadContacts();    // atualiza a lista
+      refreshOpenChat(); // e a conversa aberta
+    });
+    if (safetyTimer) clearInterval(safetyTimer);
+    safetyTimer = setInterval(() => {
+      if (!document.hidden) refreshOpenChat();
+    }, 10000);
   }
 
   function onNewMessage(m) {

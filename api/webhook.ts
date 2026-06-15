@@ -70,11 +70,13 @@ async function notifyIncoming(
     const who = name || senderId;
     await sendPushToAll({
       title: paused
-        ? `${who} — aguardando atendimento`
+        ? `🔴 ${who} precisa de atendimento`
         : `Nova mensagem de ${who}`,
       body: text.length > 120 ? text.slice(0, 117) + "..." : text,
       wa_id: senderId,
       tag: `crm-ideal-${senderId}`,
+      // Bot pausado = conversa no ponto de atendimento humano → heads-up.
+      urgent: paused,
     });
   } catch (pushErr) {
     logger.warn({ pushErr, senderId }, "Falha ao enviar push (ignorado)");

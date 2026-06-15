@@ -639,7 +639,6 @@ function renderCharts(msgCounts, subjects, days) {
 
     // Mobile: legenda à direita com rótulos longos espremia o donut até sumir.
     // Em tela estreita joga a legenda pra baixo (donut usa a largura toda).
-    const narrowChart = window.matchMedia('(max-width: 700px)').matches;
     const ctx2 = document.getElementById('chart-subjects').getContext('2d');
     chartSubjects = new Chart(ctx2, {
         type: 'doughnut',
@@ -661,11 +660,11 @@ function renderCharts(msgCounts, subjects, days) {
             },
             plugins: {
                 legend: {
-                    position: narrowChart ? 'bottom' : 'right',
+                    position: 'bottom',
                     labels: {
                         color: legendColor,
-                        font: { family: 'Quicksand', size: narrowChart ? 11 : 12 },
-                        padding: narrowChart ? 10 : 15,
+                        font: { family: 'Quicksand', size: 11 },
+                        padding: 10,
                         boxWidth: 14,
                         usePointStyle: true
                     }

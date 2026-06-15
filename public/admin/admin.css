@@ -490,7 +490,7 @@ html.dark .glass {
 /* Grid de gráficos */
 .charts-grid {
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 20px;
 }
 
@@ -525,6 +525,11 @@ html.dark .glass {
     position: relative;
     height: 320px;
     width: 100%;
+}
+
+/* donut com legenda embaixo precisa de menos altura vertical */
+.chart-card:last-child .chart-wrapper {
+    height: 260px;
 }
 
 /* ==========================================================================

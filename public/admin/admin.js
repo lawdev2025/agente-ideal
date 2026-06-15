@@ -224,7 +224,7 @@ function activateTab(tab) {
 
     if (tab === 'dashboard') return loadDashboardStats();
     if (tab === 'conversas') return loadConversationsTab();
-    if (tab === 'banco') return loadDatabaseTable();
+    if (tab === 'banco') { loadDatabaseTable(); loadIntentLearning(); return; }
 }
 
 // 3. TEMA
@@ -1200,6 +1200,66 @@ async function toggleBotStatus() {
     } catch (err) {
         console.error('Erro ao alterar status do bot:', err);
         showToast(`Não foi possível alterar o status do bot. ${err.message || ''}`);
+    }
+}
+
+// 6b. APRENDIZADO DO BOT — lê intent_learning (read-only, aditivo)
+async function loadIntentLearning() {
+    const wrapper = document.getElementById('banco-learning');
+    if (!wrapper || !_sb) return;
+
+    try {
+        const { data, error } = await _sb
+            .from('intent_learning')
+            .select('canonical_key, intent_kind, cache_hits, positive_outcomes, negative_outcomes, status')
+            .order('cache_hits', { ascending: false })
+            .limit(50);
+
+        if (error || !data || data.length === 0) {
+            wrapper.style.display = 'none';
+            return;
+        }
+
+        wrapper.style.display = 'block';
+
+        const active    = data.filter(r => r.status === 'active').length;
+        const candidate = data.filter(r => r.status === 'candidate').length;
+        const totalHits = data.reduce((s, r) => s + (r.cache_hits || 0), 0);
+
+        document.getElementById('learn-active-count').textContent    = active;
+        document.getElementById('learn-candidate-count').textContent = candidate;
+        document.getElementById('learn-cache-hits').textContent      = totalHits;
+
+        const tbody = document.getElementById('learning-table-body');
+        tbody.innerHTML = '';
+        data.forEach(r => {
+            const total   = (r.positive_outcomes || 0) + (r.negative_outcomes || 0);
+            const pct     = total > 0 ? Math.round((r.positive_outcomes / total) * 100) : null;
+            const pctText = pct !== null ? `${pct}%` : '—';
+            const barFill = pct !== null ? `style="width:${pct}%"` : '';
+            const isActive = r.status === 'active';
+            const badge = isActive
+                ? '<span class="intent-badge active"><i class="fa-solid fa-circle-check"></i> ativa</span>'
+                : '<span class="intent-badge candidate"><i class="fa-solid fa-clock"></i> candidata</span>';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><code style="font-size:12px">${escapeHtml(r.canonical_key || '')}</code></td>
+                <td>${escapeHtml(r.intent_kind || '—')}</td>
+                <td>${r.cache_hits || 0}</td>
+                <td>
+                    <div class="success-bar-wrap">
+                        <div class="success-bar"><div class="success-bar-fill" ${barFill}></div></div>
+                        <span class="success-pct">${pctText}</span>
+                    </div>
+                </td>
+                <td>${badge}</td>`;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        console.warn('intent_learning indisponível (migração pode não ter rodado):', e);
+        const wrapper2 = document.getElementById('banco-learning');
+        if (wrapper2) wrapper2.style.display = 'none';
     }
 }
 

@@ -260,11 +260,13 @@
       if (!s.active) return;
       const ddx = e.clientX - s.x, ddy = e.clientY - s.y;
       if (!s.dir) {
-        if (Math.abs(ddx) < 7 && Math.abs(ddy) < 7) return;
-        s.dir = Math.abs(ddx) > Math.abs(ddy) ? "h" : "v";
+        if (Math.abs(ddx) < 8 && Math.abs(ddy) < 8) return;
+        // Só vira "swipe horizontal" se o gesto for CLARAMENTE horizontal.
+        // Qualquer ambiguidade → "v": deixa a lista rolar nativamente.
+        s.dir = Math.abs(ddx) > Math.abs(ddy) * 1.3 ? "h" : "v";
         if (s.dir === "h") { try { front.setPointerCapture(e.pointerId); } catch (_) {} }
       }
-      if (s.dir !== "h") return;
+      if (s.dir !== "h") return;             // vertical → não mexe no card (rola a lista)
       s.moved = Math.abs(ddx);
       let v = s.base + ddx;
       if (v > 0) v = v * 0.2;                          // resistência ao puxar pra direita
@@ -275,14 +277,21 @@
       if (!s.active) return;
       s.active = false;
       front.classList.remove("dragging");
-      if (!s.dir || s.moved < 6) {           // toque curto, não arrasto
+      if (s.dir === "v") return;             // arrasto vertical = rolagem da lista, ignora
+      if (!s.dir) {                          // não passou do threshold → toque curto
         if (s.dx !== 0) { setDx(0); return; } // estava aberto: só fecha
         openChat(waId); return;
       }
-      setDx(s.dx < SWIPE_OPEN * 0.4 ? SWIPE_OPEN : 0); // snap aberto/fechado
+      setDx(s.dx < SWIPE_OPEN * 0.4 ? SWIPE_OPEN : 0); // horizontal: snap aberto/fechado
     };
     front.addEventListener("pointerup", up);
-    front.addEventListener("pointercancel", up);
+    // Cancel (browser assumiu a rolagem nativa): nunca abre o chat.
+    front.addEventListener("pointercancel", () => {
+      if (!s.active) return;
+      s.active = false;
+      front.classList.remove("dragging");
+      if (s.dir === "h") setDx(s.dx < SWIPE_OPEN * 0.4 ? SWIPE_OPEN : 0);
+    });
 
     wrap.querySelector(".act-pause").addEventListener("click", (e) => {
       e.stopPropagation();

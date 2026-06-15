@@ -1915,6 +1915,18 @@ html.dark .glass {
 .itag-esporte { background: rgba(37,99,235,.12); color: var(--accent-info); }
 html.dark .itag-eixo { color: #9D8CFF; }
 html.dark .itag-esporte { color: #6FA8F5; }
+/* Selo de UNIDADE (AM/BC/CN) — discreto, ao lado da tag de intenção */
+.utag {
+    flex-shrink: 0; font-family: 'Quicksand', sans-serif; font-weight: 700;
+    font-size: 9px; padding: 1px 6px; border-radius: 6px; line-height: 1.7;
+    letter-spacing: .4px; white-space: nowrap;
+    background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border-color);
+}
+.utag-am { color: #0E8E9E; border-color: rgba(14,142,158,.35); }
+.utag-bc { color: var(--brand-color); border-color: rgba(200,32,46,.30); }
+.utag-cn { color: #B07d14; border-color: rgba(199,123,20,.35); }
+html.dark .utag-am { color: #57C7D6; }
+html.dark .utag-cn { color: #E0A23C; }
 .contact-time {
     font-size: 10px;
     color: var(--text-muted);

@@ -40,3 +40,19 @@ export function classifyContactTag(text: string): ContactTag | null {
 
   return null;
 }
+
+/**
+ * Tag de UNIDADE de interesse a partir do nome de unidade detectado
+ * (reaproveita detectUnit do intent-router). Abreviações do selo:
+ *   AM = Augusto Montenegro · BC = Batista Campos · CN = Cidade Nova
+ */
+export type UnitTag = "AM" | "BC" | "CN";
+
+export function unitAbbrev(unit: string | null | undefined): UnitTag | null {
+  if (!unit) return null;
+  const u = norm(unit);
+  if (u.includes("augusto") || u.includes("montenegro")) return "AM";
+  if (u.includes("batista")) return "BC";
+  if (u.includes("cidade nova") || u.includes("ananindeua")) return "CN";
+  return null;
+}

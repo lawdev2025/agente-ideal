@@ -882,6 +882,7 @@ function updateContactNode(item, contact) {
     const displayName = contact.name || contact.wa_id;
     const ti = tagInfo(contact.tag);
     const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : '';
+    const utHtml = contact.unit_tag ? `<span class="utag utag-${String(contact.unit_tag).toLowerCase()}">${escapeHtml(contact.unit_tag)}</span>` : '';
     const badge = contact.bot_paused
         ? '<span class="bot-badge-paused"><i class="fa-solid fa-headset"></i> Humano</span>'
         : '<span class="bot-badge-active"><i class="fa-solid fa-robot"></i> Bot</span>';
@@ -897,7 +898,7 @@ function updateContactNode(item, contact) {
     item.innerHTML = `
         <div class="contact-avatar">${escapeHtml(contactInitials(displayName))}</div>
         <div class="contact-details">
-            <div class="contact-header"><h4>${escapeHtml(displayName)}</h4>${tagHtml}<span class="contact-time">${time}</span></div>
+            <div class="contact-header"><h4>${escapeHtml(displayName)}</h4>${tagHtml}${utHtml}<span class="contact-time">${time}</span></div>
             <div class="contact-meta"><p class="contact-preview">${previewText}</p>${unread}${badge}</div>
         </div>`;
 }

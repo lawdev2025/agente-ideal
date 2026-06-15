@@ -154,6 +154,22 @@ export class StateRepository {
     }
   }
 
+  /**
+   * Grava a tag de UNIDADE de interesse do contato (AM/BC/CN).
+   * Best-effort: silencia se a coluna `unit_tag` ainda não existir no schema
+   * (PGRST204) — basta rodar supabase-contact-unit-tag.sql.
+   */
+  async setContactUnitTag(waId: string, unitTag: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ unit_tag: unitTag })
+      .eq("wa_id", waId);
+    if (error && error.code !== "PGRST204") {
+      logger.warn({ error, waId, unitTag }, "Falha ao salvar unit_tag do contato (nao critico)");
+    }
+  }
+
   async pauseBot(waId: string, reason: string): Promise<void> {
     const supabase = getSupabase();
     await this.getOrCreateContact(waId);

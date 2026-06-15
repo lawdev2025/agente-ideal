@@ -219,6 +219,7 @@
     const preview = c.last_message_role === "user" ? "" : c.last_message_role === "assistant" ? "✓ " : "";
     const ti = tagInfo(c.tag);
     const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
+    const utHtml = c.unit_tag ? `<span class="utag utag-${String(c.unit_tag).toLowerCase()}">${escapeHtml(c.unit_tag)}</span>` : "";
     wrap.innerHTML = `
       <div class="card-in" style="position:relative;border-radius:18px">
         <div class="swipe-actions">
@@ -230,7 +231,7 @@
             <div class="avatar ${av}">${initials(c)}<span class="st-dot ${st}"></span></div>
             <div class="row-main">
               <div class="row-top">
-                <span class="row-name-wrap"><span class="row-name">${escapeHtml(displayName(c))}</span>${tagHtml}</span>
+                <span class="row-name-wrap"><span class="row-name">${escapeHtml(displayName(c))}</span>${tagHtml}${utHtml}</span>
                 <span class="row-time${n ? " unread" : ""}">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
               </div>
               <div class="row-bottom">

@@ -96,6 +96,19 @@ body {
 .ideal.dark .itag-matricula { color: var(--brand-bright); }
 .ideal.dark .itag-eixo { color: #9D8CFF; }
 .ideal.dark .itag-esporte { color: #6FA8F5; }
+
+/* Selo de UNIDADE (AM/BC/CN) — discreto, ao lado da tag de intenção */
+.utag {
+  flex-shrink: 0; font: 700 9.5px 'Quicksand', sans-serif;
+  padding: 2px 6px; border-radius: 7px; line-height: 1.6; letter-spacing: .4px;
+  background: var(--surface-2); color: var(--dim); border: 1px solid var(--divider);
+}
+.utag-am { color: #0E8E9E; border-color: rgba(14,142,158,.35); }
+.utag-bc { color: var(--brand-deep); border-color: rgba(200,32,46,.30); }
+.utag-cn { color: #8A6D1E; border-color: rgba(199,123,20,.35); }
+.ideal.dark .utag-am { color: #57C7D6; }
+.ideal.dark .utag-bc { color: var(--brand-bright); }
+.ideal.dark .utag-cn { color: #E0A23C; }
 .list-empty { padding: 40px 20px; text-align: center; color: var(--dim); font-size: 13px; }
 
 /* ---------------- CHAT ---------------- */

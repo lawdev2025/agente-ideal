@@ -5,7 +5,8 @@ import { validateMetaSignature } from "../src/webhook/signature";
 import { StateRepository } from "../src/state/repository";
 import { shouldProcessMessage } from "../src/state/dedupe";
 import { buildProfileNameMap } from "../src/webhook/contacts";
-import { classifyContactTag } from "../src/kb/contact-tags";
+import { classifyContactTag, unitAbbrev } from "../src/kb/contact-tags";
+import { detectUnit } from "../src/worker/intent-router";
 import { ClaudeProvider } from "../src/llm/claude";
 import { GeminiProvider } from "../src/llm/gemini";
 import { WhatsAppClient } from "../src/whatsapp/client";
@@ -152,6 +153,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               await stateRepo.appendMessage(senderId, "user", text);
               const tag = classifyContactTag(text);
               if (tag) await stateRepo.setContactTag(senderId, tag);
+              const unitTag = unitAbbrev(detectUnit(text));
+              if (unitTag) await stateRepo.setContactUnitTag(senderId, unitTag);
               await orchestrator.processMessage(senderId, text, senderId);
               await notifyIncoming(senderId, text, nameByWaId[senderId]);
             } catch (procErr) {
@@ -185,6 +188,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             await stateRepo.appendMessage(senderId, "user", text);
             const legacyTag = classifyContactTag(text);
             if (legacyTag) await stateRepo.setContactTag(senderId, legacyTag);
+            const legacyUnitTag = unitAbbrev(detectUnit(text));
+            if (legacyUnitTag) await stateRepo.setContactUnitTag(senderId, legacyUnitTag);
             await orchestrator.processMessage(senderId, text, senderId);
             await notifyIncoming(senderId, text);
           } catch (procErr) {

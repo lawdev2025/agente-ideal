@@ -421,6 +421,24 @@
     }
   }
 
+  function buildMediaHtml(m) {
+    if (!m.media_type || !m.media_url) return "";
+    const url = escapeHtml(m.media_url);
+    const t = m.media_type;
+    if (t === "image" || t === "sticker")
+      return `<a href="${url}" target="_blank" rel="noopener"><img class="msg-media-img" src="${url}" alt="Imagem" loading="lazy"></a>`;
+    if (t === "video")
+      return `<video class="msg-media-video" controls preload="none"><source src="${url}" type="${escapeHtml(m.media_mime || "video/mp4")}"></video>`;
+    if (t === "audio")
+      return `<audio class="msg-media-audio" controls preload="none"><source src="${url}" type="${escapeHtml(m.media_mime || "audio/ogg")}"></audio>`;
+    if (t === "document") {
+      const name = escapeHtml(m.media_filename || "Arquivo");
+      const docSvg = `<svg class="doc-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+      return `<a class="msg-doc-link" href="${url}" target="_blank" rel="noopener" download>${docSvg}<span>${name}</span></a>`;
+    }
+    return "";
+  }
+
   // Constroi o elemento de uma mensagem (ou null se tool/duplicada). Nao insere.
   function buildMessageEl(m) {
     if (m.role === "tool") return null;
@@ -434,10 +452,13 @@
       div.textContent = m.content || "";
     } else {
       const out = m.role === "assistant";
-      // Bolha enviada: vermelho sólido (estilo "sólida" do protótipo).
       div.className = "msg " + (out ? "out solid" : "in") + " msg-in";
       const time = fmtTime(m.created_at) || fmtTime(Date.now());
-      div.innerHTML = `<div>${escapeHtml(m.content || "")}</div><span class="msg-time">${time}${out ? " ✓✓" : ""}</span>`;
+      const mediaHtml = buildMediaHtml(m);
+      const autoPlaceholder = /^\[(imagem|vídeo|áudio|sticker|documento|arquivo)/i.test(m.content || "");
+      const textHtml = (m.content && (!mediaHtml || !autoPlaceholder))
+        ? `<div>${escapeHtml(m.content)}</div>` : "";
+      div.innerHTML = `${mediaHtml}${textHtml}<span class="msg-time">${time}${out ? " ✓✓" : ""}</span>`;
     }
     return div;
   }
@@ -459,9 +480,11 @@
     const input = $("composer-input");
     const sendBtn = $("send-btn");
     const toggle = $("bot-toggle");
+    const attachBtn = $("app-attach-btn");
 
     input.disabled = !manual;
     sendBtn.disabled = !manual;
+    if (attachBtn) attachBtn.disabled = !manual;
     sendBtn.classList.toggle("off", !manual || !input.value.trim());
     input.placeholder = manual ? "Mensagem" : "Bot operando — pause para responder";
 
@@ -513,6 +536,55 @@
   }
 
   // ---------------- ENVIAR (atendente humano) ----------------
+  async function sendMedia(file) {
+    if (!file || !currentChat) return;
+    if (!sb) { toast("Supabase não conectado — não é possível enviar arquivos."); return; }
+    const attachBtn = $("app-attach-btn");
+    const sendBtn = $("send-btn");
+    if (attachBtn) { attachBtn.disabled = true; attachBtn.classList.add("loading"); }
+    if (sendBtn) sendBtn.disabled = true;
+    const mime = file.type;
+    let mediaType = "document";
+    if (mime.startsWith("image/")) mediaType = "image";
+    else if (mime.startsWith("video/")) mediaType = "video";
+    else if (mime.startsWith("audio/")) mediaType = "audio";
+    try {
+      const ext = file.name.split(".").pop() || "bin";
+      const path = `crm/${Date.now()}-${(currentChat || "").slice(-8)}.${ext}`;
+      const { error: upErr } = await sb.storage.from("whatsapp-media").upload(path, file, { contentType: mime, upsert: false });
+      if (upErr) throw new Error("Upload falhou: " + upErr.message);
+      const { data: { publicUrl } } = sb.storage.from("whatsapp-media").getPublicUrl(path);
+      const caption = $("composer-input").value.trim();
+      const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(currentChat)}/messages`, {
+        method: "POST",
+        body: JSON.stringify({
+          mediaUrl: publicUrl,
+          mediaType,
+          caption: caption || undefined,
+          filename: mediaType === "document" ? file.name : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(data.error || "Falha ao enviar."); return; }
+      $("composer-input").value = "";
+      autoGrow();
+      const c = byId[currentChat] || { wa_id: currentChat };
+      c.bot_paused = true;
+      byId[currentChat] = c;
+      updateChatHeader(c);
+      updateBotControls(c);
+      await loadMessages(currentChat);
+    } catch (e) {
+      toast(e.message || "Falha ao enviar arquivo.");
+    } finally {
+      if (attachBtn) { attachBtn.disabled = false; attachBtn.classList.remove("loading"); }
+      const c = byId[currentChat];
+      if (sendBtn) sendBtn.disabled = !c || !c.bot_paused;
+      const fi = $("app-media-input");
+      if (fi) fi.value = "";
+    }
+  }
+
   async function sendMessage() {
     const input = $("composer-input");
     const text = input.value.trim();
@@ -806,6 +878,12 @@
   $("bot-toggle").addEventListener("click", toggleBot);
   $("send-btn").addEventListener("click", sendMessage);
   $("composer-input").addEventListener("input", autoGrow);
+  const attachBtn = $("app-attach-btn");
+  const mediaInput = $("app-media-input");
+  if (attachBtn && mediaInput) {
+    attachBtn.addEventListener("click", () => mediaInput.click());
+    mediaInput.addEventListener("change", () => { if (mediaInput.files?.[0]) sendMedia(mediaInput.files[0]); });
+  }
   $("composer-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();

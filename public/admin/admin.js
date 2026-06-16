@@ -326,6 +326,26 @@ async function initConnection() {
     }
 }
 
+// Classifica mensagens do Supabase em categorias de assunto para o donut.
+async function fetchSubjectsFromSb() {
+    const out = { 'Mensalidades / Valores': 0, 'Matrículas & Vagas': 0, 'Materiais / Livros': 0, 'Contatos / Secretaria': 0, 'Horários & Grade': 0, 'Reclamações': 0, 'Outras dúvidas': 0 };
+    if (!_sb) return out;
+    try {
+        const { data: msgs } = await _sb.from('messages').select('content').eq('role', 'user');
+        (msgs || []).forEach(msg => {
+            const t = (msg.content || '').toLowerCase();
+            if (t.match(/reclama|insatisf|péssim|pessim|horrível|horrivel|absurd|descaso|decep|não gostei|nao gostei|vergonha|pior atend/)) out['Reclamações']++;
+            else if (t.match(/mensal|preço|valor|pagamento|custo/)) out['Mensalidades / Valores']++;
+            else if (t.match(/matrícula|matricula|vaga|inscrição|inscrever/)) out['Matrículas & Vagas']++;
+            else if (t.match(/material|livro|apostila|caderno/)) out['Materiais / Livros']++;
+            else if (t.match(/contato|telefone|whatsapp|secretaria|falar com/)) out['Contatos / Secretaria']++;
+            else if (t.match(/horário|horario|aula|grade|calendário/)) out['Horários & Grade']++;
+            else out['Outras dúvidas']++;
+        });
+    } catch (e) { /* silencia — retorna zeros */ }
+    return out;
+}
+
 async function loadDashboardStats() {
     // Try backend API first (SQLite — auto-updates with each new message)
     if (adminToken) {
@@ -366,10 +386,11 @@ async function loadDashboardStats() {
                     learnTrendEl.innerHTML = `<i class="fa-solid fa-brain"></i> ${cacheHits} acertos · ${candidates} candidatas`;
                 }
 
-                // Donut usa a distribuição POR CONVERSA (conversation_topics);
-                // se indisponível, cai pro subjects message-level do /stats.
+                // Donut: tenta conversation_topics → subjects do backend → Supabase messages
                 const topicSubjects = await fetchTopicsDistribution();
-                renderCharts(s.msgCounts || [0,0,0,0,0,0,0], topicSubjects || s.subjects || {}, s.days || []);
+                const backendSubjects = s.subjects && Object.keys(s.subjects).length > 0 ? s.subjects : null;
+                const chartSubjects = topicSubjects || backendSubjects || (_sb ? await fetchSubjectsFromSb() : null);
+                renderCharts(s.msgCounts || [0,0,0,0,0,0,0], chartSubjects || {}, s.days || []);
                 return;
             }
         } catch (e) {
@@ -426,21 +447,7 @@ async function loadDashboardStats() {
             msgCounts.push(uniq.size);
         }
 
-        const subjects = { 'Mensalidades / Valores': 0, 'Matrículas & Vagas': 0, 'Materiais / Livros': 0, 'Contatos / Secretaria': 0, 'Horários & Grade': 0, 'Reclamações': 0, 'Outras dúvidas': 0 };
-        const { data: userMsgs } = await _sb.from('messages').select('content').eq('role', 'user');
-        if (userMsgs) {
-            userMsgs.forEach(msg => {
-                const t = (msg.content || '').toLowerCase();
-                if (t.match(/reclama|insatisf|péssim|pessim|horrível|horrivel|absurd|descaso|decep|não gostei|nao gostei|vergonha|pior atend/)) subjects['Reclamações']++;
-                else if (t.match(/mensal|preço|valor|pagamento|custo/)) subjects['Mensalidades / Valores']++;
-                else if (t.match(/matrícula|matricula|vaga|inscrição|inscrever/)) subjects['Matrículas & Vagas']++;
-                else if (t.match(/material|livro|apostila|caderno/)) subjects['Materiais / Livros']++;
-                else if (t.match(/contato|telefone|whatsapp|secretaria|falar com/)) subjects['Contatos / Secretaria']++;
-                else if (t.match(/horário|horario|aula|grade|calendário/)) subjects['Horários & Grade']++;
-                else subjects['Outras dúvidas']++;
-            });
-        }
-
+        const subjects = await fetchSubjectsFromSb();
         renderCharts(msgCounts, subjects, days);
     } catch (e) {
         console.error('Erro ao buscar estatísticas:', e);

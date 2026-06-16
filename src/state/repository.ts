@@ -1,12 +1,23 @@
 import { getSupabase } from "../db/supabase-client";
 import { logger } from "../logger";
 
+export interface MediaFields {
+  media_type?: string;
+  media_url?: string;
+  media_mime?: string;
+  media_filename?: string;
+}
+
 export interface Message {
   id: number;
   wa_id: string;
   role: "user" | "assistant" | "system" | "tool";
   content: string;
   created_at: number;
+  media_type?: string;
+  media_url?: string;
+  media_mime?: string;
+  media_filename?: string;
 }
 
 export interface Contact {
@@ -23,13 +34,14 @@ export class StateRepository {
   async appendMessage(
     waId: string,
     role: "user" | "assistant" | "system" | "tool",
-    content: string
+    content: string,
+    media?: MediaFields
   ): Promise<number> {
     const supabase = getSupabase();
     const createdAt = Date.now();
     const { data, error } = await supabase
       .from("messages")
-      .insert({ wa_id: waId, role, content, created_at: createdAt })
+      .insert({ wa_id: waId, role, content, created_at: createdAt, ...(media ?? {}) })
       .select("id")
       .single();
     if (error) {

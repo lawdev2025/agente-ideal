@@ -64,34 +64,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Envia pelo WhatsApp, salva no histórico e PAUSA o bot pra ele não responder
   // junto. A próxima mensagem do cliente fica pro humano até clicar "Retomar Bot".
   if (req.method === "POST") {
-    const body = (req.body || {}) as { text?: string };
+    const body = (req.body || {}) as {
+      text?: string;
+      mediaUrl?: string;
+      mediaType?: string;
+      caption?: string;
+      filename?: string;
+    };
     const text = (body.text || "").trim();
-    if (!text) {
-      res.status(400).json({ error: "Body must contain non-empty { text }" });
+    const mediaUrl = (body.mediaUrl || "").trim();
+    const mediaType = (body.mediaType || "").trim();
+
+    if (!text && !mediaUrl) {
+      res.status(400).json({ error: "Body must contain text or mediaUrl" });
       return;
     }
 
     try {
-      // 1. Garante que o bot fica pausado (assumimos o contato).
       await repo.pauseBot(wa_id, "Atendimento humano via painel");
 
-      // 2. Envia pelo WhatsApp Cloud API. Pode falhar fora da janela de 24h.
-      await whatsapp.sendMessage(wa_id, text);
+      if (mediaUrl) {
+        const caption = (body.caption || "").trim();
+        const filename = (body.filename || "").trim();
 
-      // 3. Registra no histórico (role assistant → aparece como mensagem enviada).
-      await repo.appendMessage(wa_id, "assistant", text);
+        if (mediaType === "image" || mediaType === "sticker") {
+          await whatsapp.sendImage(wa_id, mediaUrl, caption || undefined);
+        } else if (mediaType === "video") {
+          await whatsapp.sendVideo(wa_id, mediaUrl, caption || undefined);
+        } else if (mediaType === "audio") {
+          await whatsapp.sendAudio(wa_id, mediaUrl);
+        } else {
+          // document or unknown
+          await whatsapp.sendDocument(wa_id, mediaUrl, filename || undefined);
+        }
+
+        const content = caption || (filename ? `[documento: ${filename}]` : `[${mediaType || 'arquivo'}]`);
+        await repo.appendMessage(wa_id, "assistant", content, {
+          media_type: mediaType || "document",
+          media_url: mediaUrl,
+          media_filename: filename || undefined,
+        });
+      } else {
+        await whatsapp.sendMessage(wa_id, text);
+        await repo.appendMessage(wa_id, "assistant", text);
+      }
 
       res.status(200).json({ ok: true, wa_id });
     } catch (error: any) {
-      // Erro mais comum: janela de 24h fechada (cliente não escreve há +24h) —
-      // o WhatsApp exige template aprovado nesse caso. Devolvemos 422 com uma
-      // mensagem amigável pro painel mostrar, sem quebrar.
       const apiErr = error?.response?.data?.error;
       const code = apiErr?.code;
       const friendly =
         code === 131047 || code === 131051
-          ? "Não dá pra enviar: faz mais de 24h que o cliente não escreve. Ele precisa mandar uma mensagem primeiro (regra do WhatsApp)."
-          : apiErr?.message || "Falha ao enviar a mensagem pelo WhatsApp.";
+          ? "Não dá pra enviar: faz mais de 24h que o cliente não escreve."
+          : apiErr?.message || "Falha ao enviar pelo WhatsApp.";
       logger.error({ error, wa_id, code }, "Erro em POST /api/admin/contacts/:wa_id/messages");
       res.status(422).json({ error: friendly, code: code ?? null });
     }

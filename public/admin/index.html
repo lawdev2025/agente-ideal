@@ -220,6 +220,10 @@
 
                             <!-- Composer: atendente humano assume e responde pelo painel -->
                             <div class="chat-composer" id="chat-composer" style="display: none;">
+                                <input type="file" id="media-file-input" accept="image/*,video/mp4,video/3gpp,audio/ogg,audio/mpeg,audio/mp4,application/pdf,.doc,.docx,.xls,.xlsx" style="display:none">
+                                <button class="btn-attach" id="btn-attach-media" title="Anexar arquivo" aria-label="Anexar arquivo">
+                                    <i class="fa-solid fa-paperclip"></i>
+                                </button>
                                 <textarea id="chat-input" rows="1" placeholder="Escreva para assumir o atendimento... (Enter envia, Shift+Enter quebra linha)"></textarea>
                                 <button class="btn-send" id="btn-send-message" title="Enviar mensagem" aria-label="Enviar">
                                     <i class="fa-solid fa-paper-plane"></i>

@@ -166,6 +166,49 @@ export class WhatsAppClient {
     }
   }
 
+  async sendVideo(
+    to: string,
+    videoUrl: string,
+    caption?: string
+  ): Promise<{ messageId: string }> {
+    try {
+      const payload: any = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizeBrazilMobile(to),
+        type: "video",
+        video: { link: videoUrl, ...(caption ? { caption } : {}) },
+      };
+      const response = await this.client.post(`/messages`, payload);
+      logger.info({ to, videoUrl }, "WhatsApp video sent");
+      return { messageId: response.data.messages?.[0]?.id || "unknown" };
+    } catch (error) {
+      logger.error({ error, to }, "Error sending WhatsApp video");
+      throw error;
+    }
+  }
+
+  async sendAudio(
+    to: string,
+    audioUrl: string
+  ): Promise<{ messageId: string }> {
+    try {
+      const payload: any = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizeBrazilMobile(to),
+        type: "audio",
+        audio: { link: audioUrl },
+      };
+      const response = await this.client.post(`/messages`, payload);
+      logger.info({ to, audioUrl }, "WhatsApp audio sent");
+      return { messageId: response.data.messages?.[0]?.id || "unknown" };
+    } catch (error) {
+      logger.error({ error, to }, "Error sending WhatsApp audio");
+      throw error;
+    }
+  }
+
   async markAsRead(messageId: string): Promise<void> {
     try {
       await this.client.post(`/messages`, {

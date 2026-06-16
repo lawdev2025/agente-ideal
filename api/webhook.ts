@@ -14,6 +14,7 @@ import { EscalationHandler } from "../src/handoff/telegram";
 import { MessageOrchestrator } from "../src/worker/orchestrator";
 import { LearningRepository } from "../src/learning/repository";
 import { sendPushToAll } from "../src/push/web-push";
+import { downloadWaMediaToStorage } from "../src/whatsapp/media";
 
 // Vercel exige `export const config` no top-level pra disable bodyParser
 // (precisamos do raw body pra validar a assinatura HMAC do webhook Meta).
@@ -132,39 +133,73 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const nameByWaId = buildProfileNameMap(change.value);
           const messages = change.value?.messages || [];
           for (const msg of messages) {
-            if (msg.type !== "text" || !msg.text?.body) continue;
             const messageId = msg.id as string;
             const senderId = msg.from as string;
-            const text = msg.text.body as string;
             const tsSec = Number(msg.timestamp);
 
             const guard = await shouldProcessMessage(tsSec, messageId);
             if (!guard.ok) {
-              logger.warn(
-                { messageId, senderId, reason: guard.reason },
-                "Mensagem descartada"
-              );
+              logger.warn({ messageId, senderId, reason: guard.reason }, "Mensagem descartada");
               continue;
             }
 
-            logger.info({ messageId, senderId }, "Received message");
+            const msgType: string = msg.type;
+            const isMedia = ['image', 'video', 'audio', 'document', 'sticker'].includes(msgType);
 
-            try {
-              await stateRepo.getOrCreateContact(senderId, nameByWaId[senderId]);
-              await stateRepo.updateLastSeen(senderId);
-              await stateRepo.appendMessage(senderId, "user", text);
-              const tag = classifyContactTag(text);
-              if (tag) await stateRepo.setContactTag(senderId, tag);
-              const unitTag = unitAbbrev(detectUnit(text));
-              if (unitTag) await stateRepo.setContactUnitTag(senderId, unitTag);
-              await orchestrator.processMessage(senderId, text, senderId);
-              await notifyIncoming(senderId, text, nameByWaId[senderId]);
-            } catch (procErr) {
-              logger.error(
-                { error: procErr, messageId },
-                "Erro ao processar msg"
-              );
+            if (msgType === 'text' && msg.text?.body) {
+              const text = msg.text.body as string;
+              logger.info({ messageId, senderId }, "Received text message");
+              try {
+                await stateRepo.getOrCreateContact(senderId, nameByWaId[senderId]);
+                await stateRepo.updateLastSeen(senderId);
+                await stateRepo.appendMessage(senderId, "user", text);
+                const tag = classifyContactTag(text);
+                if (tag) await stateRepo.setContactTag(senderId, tag);
+                const unitTag = unitAbbrev(detectUnit(text));
+                if (unitTag) await stateRepo.setContactUnitTag(senderId, unitTag);
+                await orchestrator.processMessage(senderId, text, senderId);
+                await notifyIncoming(senderId, text, nameByWaId[senderId]);
+              } catch (procErr) {
+                logger.error({ error: procErr, messageId }, "Erro ao processar msg de texto");
+              }
+            } else if (isMedia) {
+              const mediaInfo = msg[msgType] as any;
+              const mimeType: string = mediaInfo?.mime_type ?? 'application/octet-stream';
+              const caption: string = mediaInfo?.caption ?? '';
+              const filename: string = mediaInfo?.filename ?? '';
+              const mediaId: string = mediaInfo?.id ?? '';
+
+              // Placeholder exibido se o download falhar
+              const typeLabel: Record<string, string> = {
+                image: '[imagem]', video: '[vídeo]', audio: '[áudio]',
+                document: `[documento${filename ? ': ' + filename : ''}]`, sticker: '[sticker]',
+              };
+              const content = caption || typeLabel[msgType] || `[${msgType}]`;
+
+              logger.info({ messageId, senderId, msgType }, "Received media message");
+              try {
+                await stateRepo.getOrCreateContact(senderId, nameByWaId[senderId]);
+                await stateRepo.updateLastSeen(senderId);
+
+                // Best-effort: baixa e armazena no Supabase Storage
+                let mediaUrl: string | null = null;
+                if (mediaId) {
+                  mediaUrl = await downloadWaMediaToStorage(mediaId, mimeType);
+                }
+
+                await stateRepo.appendMessage(senderId, "user", content, {
+                  media_type: msgType,
+                  media_url: mediaUrl ?? undefined,
+                  media_mime: mimeType,
+                  media_filename: filename || undefined,
+                });
+
+                await notifyIncoming(senderId, content, nameByWaId[senderId]);
+              } catch (procErr) {
+                logger.error({ error: procErr, messageId }, "Erro ao processar msg de mídia");
+              }
             }
+            // outros tipos (reaction, location, contacts, etc.) são silenciosamente ignorados
           }
         }
         // Compat com formato antigo (Messenger-style entry.messaging)

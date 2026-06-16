@@ -115,6 +115,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', () => loadDonutView(btn.dataset.view));
     });
 
+    // Attach de mídia no composer
+    const btnAttach = document.getElementById('btn-attach-media');
+    const mediaInput = document.getElementById('media-file-input');
+    if (btnAttach && mediaInput) {
+        btnAttach.addEventListener('click', () => mediaInput.click());
+        mediaInput.addEventListener('change', handleMediaAttachment);
+    }
+
     document.getElementById('btn-add-row').addEventListener('click', openAddModal);
     document.getElementById('btn-close-modal').addEventListener('click', closeModal);
     document.getElementById('btn-cancel-modal').addEventListener('click', closeModal);
@@ -1070,7 +1078,7 @@ async function fetchMessagesPage(waId, before = null) {
         try {
             // Fallback direto no Supabase: traz tudo de uma vez (sem paginação).
             const { data, error } = await _sb
-                .from('messages').select('*').eq('wa_id', waId).order('created_at', { ascending: true });
+                .from('messages').select('id, wa_id, role, content, created_at, media_type, media_url, media_mime, media_filename').eq('wa_id', waId).order('created_at', { ascending: true });
             if (!error) return { messages: data || [], hasMore: false };
         } catch (e) { console.error('Erro ao carregar mensagens do Supabase:', e); }
     }
@@ -1118,11 +1126,36 @@ async function loadOlderMessages() {
     }
 }
 
+function buildBubbleMedia(msg) {
+    if (!msg.media_type || !msg.media_url) return '';
+    const url = escapeHtml(msg.media_url);
+    const t = msg.media_type;
+    if (t === 'image' || t === 'sticker') {
+        return `<a href="${url}" target="_blank" rel="noopener"><img class="bubble-media-img" src="${url}" alt="Imagem" loading="lazy"></a>`;
+    }
+    if (t === 'video') {
+        return `<video class="bubble-media-video" controls preload="none"><source src="${url}" type="${escapeHtml(msg.media_mime || 'video/mp4')}"></video>`;
+    }
+    if (t === 'audio') {
+        return `<audio class="bubble-media-audio" controls preload="none"><source src="${url}" type="${escapeHtml(msg.media_mime || 'audio/ogg')}"></audio>`;
+    }
+    if (t === 'document') {
+        const name = escapeHtml(msg.media_filename || 'Arquivo');
+        return `<a class="bubble-doc-link" href="${url}" target="_blank" rel="noopener" download><i class="fa-solid fa-file-arrow-down"></i><span>${name}</span></a>`;
+    }
+    return '';
+}
+
 function appendBubble(box, msg) {
     const el = document.createElement('div');
     el.className = `chat-bubble-container ${msg.role === 'user' ? 'user' : 'bot'}`;
     if (msg.id != null) el.setAttribute('data-mid', String(msg.id));
-    el.innerHTML = `<div class="chat-bubble"><p class="bubble-text">${escapeHtml(msg.content || '')}</p><span class="bubble-time">${fmtTime(msg.created_at)}</span></div>`;
+    const mediaHtml = buildBubbleMedia(msg);
+    // Mostrar caption/texto só se for diferente do placeholder automático gerado pelo webhook
+    const autoPlaceholders = /^\[(imagem|vídeo|áudio|sticker|documento|arquivo)/i;
+    const showText = msg.content && (!mediaHtml || !autoPlaceholders.test(msg.content));
+    const textHtml = showText ? `<p class="bubble-text">${escapeHtml(msg.content)}</p>` : '';
+    el.innerHTML = `<div class="chat-bubble">${mediaHtml}${textHtml}<span class="bubble-time">${fmtTime(msg.created_at)}</span></div>`;
     box.appendChild(el);
 }
 
@@ -1171,6 +1204,63 @@ async function loadActiveChat(contact) {
 
 // Envia uma mensagem como ATENDENTE HUMANO (assume o contato). O backend já
 // pausa o bot; aqui refletimos isso na UI e anexamos a mensagem enviada.
+async function handleMediaAttachment() {
+    const fileInput = document.getElementById('media-file-input');
+    const file = fileInput?.files?.[0];
+    if (!file || !activeContactId) return;
+    if (!_sb) { showToast('Supabase não conectado — não é possível enviar arquivos.'); return; }
+
+    const mime = file.type;
+    let mediaType = 'document';
+    if (mime.startsWith('image/')) mediaType = 'image';
+    else if (mime.startsWith('video/')) mediaType = 'video';
+    else if (mime.startsWith('audio/')) mediaType = 'audio';
+
+    const btnAttach = document.getElementById('btn-attach-media');
+    const btnSend = document.getElementById('btn-send-message');
+    if (btnAttach) { btnAttach.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; btnAttach.disabled = true; }
+    if (btnSend) btnSend.disabled = true;
+
+    try {
+        const ext = file.name.split('.').pop() || 'bin';
+        const path = `crm/${Date.now()}-${(activeContactId || '').slice(-8)}.${ext}`;
+        const { error: upErr } = await _sb.storage.from('whatsapp-media').upload(path, file, { contentType: mime, upsert: false });
+        if (upErr) throw new Error('Upload falhou: ' + upErr.message);
+
+        const { data: { publicUrl } } = _sb.storage.from('whatsapp-media').getPublicUrl(path);
+
+        const caption = document.getElementById('chat-input')?.value?.trim() || '';
+        const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(activeContactId)}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+            body: JSON.stringify({
+                mediaUrl: publicUrl,
+                mediaType,
+                caption: caption || undefined,
+                filename: mediaType === 'document' ? file.name : undefined,
+            })
+        });
+        if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            throw new Error(j.error || 'Falha ao enviar');
+        }
+        const inputEl = document.getElementById('chat-input');
+        if (inputEl) { inputEl.value = ''; autoGrow(inputEl); }
+        if (activeContact) activeContact.bot_paused = true;
+        const c = allContacts.find(x => x.wa_id === activeContactId);
+        if (c) c.bot_paused = true;
+        updateBotButtonUI(true);
+        if (activeContact) await refreshActiveChat(activeContact);
+        refreshContactsList();
+    } catch (err) {
+        showToast(err.message || 'Falha ao enviar arquivo.');
+    } finally {
+        if (btnAttach) { btnAttach.innerHTML = '<i class="fa-solid fa-paperclip"></i>'; btnAttach.disabled = false; }
+        if (btnSend) btnSend.disabled = false;
+        if (fileInput) fileInput.value = '';
+    }
+}
+
 async function sendHumanMessage() {
     const input = document.getElementById('chat-input');
     const btn = document.getElementById('btn-send-message');

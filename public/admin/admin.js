@@ -576,7 +576,7 @@ function renderCharts(msgCounts, subjects, days) {
         chartConversations.options.scales.y.ticks.stepSize = Math.max(1, Math.round(ceil / 10));
         chartConversations.update('none');
 
-        const subjectEntries = subjects ? Object.entries(subjects).filter(([k]) => !k.toLowerCase().includes('outras')) : [];
+        const subjectEntries = subjects ? Object.entries(subjects) : [];
         const subjectLabels  = subjectEntries.map(([k]) => k);
         const subjectData    = subjectEntries.map(([, v]) => v);
         chartSubjects.data.labels = subjectLabels;
@@ -636,12 +636,11 @@ function renderCharts(msgCounts, subjects, days) {
         }
     });
 
-    const subjectEntries = subjects ? Object.entries(subjects).filter(([k]) => !k.toLowerCase().includes('outras')) : [];
+    const subjectEntries = subjects ? Object.entries(subjects) : [];
     const subjectLabels  = subjectEntries.map(([k]) => k);
     const subjectData    = subjectEntries.map(([, v]) => v);
     const isDark = document.documentElement.classList.contains('dark');
-    // Ordem segue as chaves de `subjects` (sem "Outras"): as 5 primeiras em tons
-    // do vermelho do tema; "Reclamações" em âmbar pra destacar; cinza sobra.
+    // 7 cores: 5 tons de vermelho do tema, âmbar pra Reclamações, cinza pra Outras dúvidas.
     const pieColors = ['#C8202E','#E03C49','#E86A73','#F09AA0','#F8CDD0','#F59E0B', isDark ? '#555555' : '#9CA3AF'];
 
     // Mobile: legenda à direita com rótulos longos espremia o donut até sumir.

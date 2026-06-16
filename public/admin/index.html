@@ -158,8 +158,15 @@
 
                         <div class="chart-card glass">
                             <div class="chart-header">
-                                <h3><i class="fa-solid fa-chart-pie"></i> Assuntos Mais Buscados</h3>
-                                <p>Distribuição de temas e dúvidas dos alunos e pais</p>
+                                <div class="chart-header-top">
+                                    <h3><i class="fa-solid fa-chart-pie"></i> Perfil dos Contatos</h3>
+                                    <div class="donut-view-pills">
+                                        <button class="donut-pill active" data-view="intencoes">Intenções</button>
+                                        <button class="donut-pill" data-view="unidades">Unidades</button>
+                                        <button class="donut-pill" data-view="segmento">Segmento</button>
+                                    </div>
+                                </div>
+                                <p id="donut-subtitle">Distribuição por intenção de matrícula</p>
                             </div>
                             <div class="chart-wrapper">
                                 <canvas id="chart-subjects"></canvas>

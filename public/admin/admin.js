@@ -9,6 +9,7 @@ let activeTable = 'school_products';
 let activeContactId = null;
 let chartConversations = null;
 let chartSubjects = null;
+let currentDonutView = 'intencoes';
 let editRecordId = null;
 let lastChartData = null;
 let selectedUnitFilter = null; // null = todas as unidades
@@ -108,6 +109,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             activeTable = e.currentTarget.getAttribute('data-table');
             loadDatabaseTable();
         });
+    });
+
+    document.querySelectorAll('.donut-pill').forEach(btn => {
+        btn.addEventListener('click', () => loadDonutView(btn.dataset.view));
     });
 
     document.getElementById('btn-add-row').addEventListener('click', openAddModal);
@@ -386,11 +391,9 @@ async function loadDashboardStats() {
                     learnTrendEl.innerHTML = `<i class="fa-solid fa-brain"></i> ${cacheHits} acertos · ${candidates} candidatas`;
                 }
 
-                // Donut: tenta conversation_topics → subjects do backend → Supabase messages
-                const topicSubjects = await fetchTopicsDistribution();
-                const backendSubjects = s.subjects && Object.keys(s.subjects).length > 0 ? s.subjects : null;
-                const chartSubjects = topicSubjects || backendSubjects || (_sb ? await fetchSubjectsFromSb() : null);
-                renderCharts(s.msgCounts || [0,0,0,0,0,0,0], chartSubjects || {}, s.days || []);
+                // Linha: usa dados do backend. Donut: sobrescrito por loadDonutView logo abaixo.
+                renderCharts(s.msgCounts || [0,0,0,0,0,0,0], null, s.days || []);
+                loadDonutView(currentDonutView); // async — não bloqueia o retorno
                 return;
             }
         } catch (e) {
@@ -447,8 +450,8 @@ async function loadDashboardStats() {
             msgCounts.push(uniq.size);
         }
 
-        const subjects = await fetchSubjectsFromSb();
-        renderCharts(msgCounts, subjects, days);
+        renderCharts(msgCounts, null, days);
+        loadDonutView(currentDonutView);
     } catch (e) {
         console.error('Erro ao buscar estatísticas:', e);
     }
@@ -546,6 +549,121 @@ function clearTopicFilter() {
     const banner = document.getElementById('topic-filter-banner');
     if (banner) banner.remove();
     renderContactsFiltered();
+}
+
+// =====================================================================
+// DONUT — 3 VISÕES ALTERNÁVEIS (Intenções | Unidades | Segmento)
+// =====================================================================
+const DONUT_CONFIGS = {
+    intencoes: {
+        subtitle: 'Distribuição por intenção de matrícula',
+        colors: {
+            matricula:        '#C8202E',
+            rematricula:      '#E86A73',
+            eixo:             '#3B82F6',
+            esporte:          '#10B981',
+            'Não identificado': '#9CA3AF',
+        },
+        labels: { matricula: 'Matrícula', rematricula: 'Rematrícula', eixo: 'Eixo', esporte: 'Esporte', 'Não identificado': 'Não identificado' },
+        fetch: async () => {
+            if (!_sb) return {};
+            const { data } = await _sb.from('contacts').select('tag');
+            const counts = { matricula: 0, rematricula: 0, eixo: 0, esporte: 0, 'Não identificado': 0 };
+            (data || []).forEach(r => { const k = r.tag || 'Não identificado'; if (k in counts) counts[k]++; else counts['Não identificado']++; });
+            return counts;
+        },
+        drilldown: async (label) => {
+            if (!_sb || label === 'Não identificado') return null;
+            const rawKey = Object.entries(DONUT_CONFIGS.intencoes.labels).find(([, v]) => v === label)?.[0] || label;
+            const { data } = await _sb.from('contacts').select('wa_id').eq('tag', rawKey);
+            return (data || []).map(r => r.wa_id).filter(Boolean);
+        }
+    },
+    unidades: {
+        subtitle: 'Distribuição por unidade de interesse',
+        colors: { AM: '#C8202E', BC: '#F59E0B', CN: '#3B82F6', 'Não identificado': '#9CA3AF' },
+        labels: { AM: 'Augusto Montenegro', BC: 'Batista Campos', CN: 'Cidade Nova', 'Não identificado': 'Não identificado' },
+        fetch: async () => {
+            if (!_sb) return {};
+            const { data } = await _sb.from('contacts').select('unit_tag');
+            const counts = { AM: 0, BC: 0, CN: 0, 'Não identificado': 0 };
+            (data || []).forEach(r => { const k = r.unit_tag || 'Não identificado'; if (k in counts) counts[k]++; else counts['Não identificado']++; });
+            return counts;
+        },
+        drilldown: async (label) => {
+            if (!_sb || label === 'Não identificado') return null;
+            const rawKey = Object.entries(DONUT_CONFIGS.unidades.labels).find(([, v]) => v === label)?.[0] || label;
+            const { data } = await _sb.from('contacts').select('wa_id').eq('unit_tag', rawKey);
+            return (data || []).map(r => r.wa_id).filter(Boolean);
+        }
+    },
+    segmento: {
+        subtitle: 'Nível escolar detectado nas conversas',
+        colors: {
+            Infantil:         '#EC4899',
+            'Fundamental I':  '#F59E0B',
+            'Fundamental II': '#EF4444',
+            'Médio':          '#8B5CF6',
+            'Militar':        '#6B7280',
+            'Eixo':           '#3B82F6',
+            'Não identificado': '#9CA3AF',
+        },
+        labels: null,
+        fetch: async () => {
+            if (!_sb) return {};
+            const { data: msgs } = await _sb.from('messages').select('content').eq('role', 'user');
+            const counts = { Infantil: 0, 'Fundamental I': 0, 'Fundamental II': 0, Médio: 0, Militar: 0, Eixo: 0, 'Não identificado': 0 };
+            (msgs || []).forEach(m => {
+                const t = (m.content || '').toLowerCase();
+                if (/militar|c[íi]vico|civico.milit/.test(t))                                    counts['Militar']++;
+                else if (/\beixo\b|vestibular|pre.?enem|\benem\b|cursinho|preparat/.test(t))      counts['Eixo']++;
+                else if (/fundamental\s*2|fundamental\s*ii|anos finais|6[º°o]\s*(ao|-)?\s*9/.test(t)) counts['Fundamental II']++;
+                else if (/fundamental\s*1|fundamental\s*i(?!i)|anos iniciais|1[º°o]\s*(ao|-)?\s*5/.test(t)) counts['Fundamental I']++;
+                else if (/ensino m[eé]dio|\bm[eé]dio\b|colegial|2[º°o]\s*grau/.test(t))          counts['Médio']++;
+                else if (/infantil|maternal|ber[cç][aá]rio|jardim/.test(t))                       counts['Infantil']++;
+                else counts['Não identificado']++;
+            });
+            return counts;
+        },
+        drilldown: null
+    }
+};
+
+async function loadDonutView(view) {
+    currentDonutView = view;
+    document.querySelectorAll('.donut-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
+    const cfg = DONUT_CONFIGS[view];
+    const subtitleEl = document.getElementById('donut-subtitle');
+    if (subtitleEl) subtitleEl.textContent = cfg.subtitle;
+    if (!chartSubjects) return;
+    try {
+        const raw = await cfg.fetch();
+        const entries = Object.entries(raw).filter(([, v]) => v > 0);
+        if (!entries.length) return;
+        const displayLabel = (key) => cfg.labels ? (cfg.labels[key] || key) : key;
+        const labels = entries.map(([k]) => displayLabel(k));
+        const data   = entries.map(([, v]) => v);
+        const colors = entries.map(([k]) => cfg.colors[k] || '#9CA3AF');
+        chartSubjects.data.labels = labels;
+        chartSubjects.data.datasets[0].data = data;
+        chartSubjects.data.datasets[0].backgroundColor = colors;
+        chartSubjects.update('none');
+    } catch (e) { /* sem dados, mantém o estado atual */ }
+}
+
+async function drilldownByView(rawLabel) {
+    if (!rawLabel) return;
+    const cfg = DONUT_CONFIGS[currentDonutView];
+    if (cfg && cfg.drilldown) {
+        const ids = await cfg.drilldown(rawLabel);
+        if (ids === null) return; // Não identificado — sem filtro
+        topicFilterIds = new Set(ids);
+        topicFilterLabel = rawLabel;
+        await activateTab('conversas');
+        showTopicFilterBanner(rawLabel, ids.length);
+        renderContactsFiltered();
+    }
+    // segmento: sem drilldown por ora (dados de msg, não por contato)
 }
 
 function renderCharts(msgCounts, subjects, days) {
@@ -655,11 +773,11 @@ function renderCharts(msgCounts, subjects, days) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            // Clique numa fatia → abre as conversas daquele assunto.
+            // Clique numa fatia → filtra conversas por tag/unidade/segmento.
             onClick: (evt, elements) => {
                 if (!elements || elements.length === 0) return;
                 const label = chartSubjects.data.labels[elements[0].index];
-                if (label) drilldownByTopic(label);
+                if (label) drilldownByView(label);
             },
             onHover: (evt, elements) => {
                 evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';

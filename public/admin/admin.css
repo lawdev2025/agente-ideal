@@ -532,6 +532,44 @@ html.dark .glass {
     height: 260px;
 }
 
+/* Toggle de visão do donut */
+.chart-header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.donut-view-pills {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+.donut-pill {
+    font-family: 'Quicksand', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 99px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+.donut-pill:hover {
+    border-color: var(--brand-color);
+    color: var(--brand-color);
+}
+.donut-pill.active {
+    background: var(--brand-color);
+    border-color: var(--brand-color);
+    color: #fff;
+}
+
 /* ==========================================================================
    2. ABA CONVERSAS
    ========================================================================== */

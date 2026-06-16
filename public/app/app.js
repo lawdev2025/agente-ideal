@@ -475,18 +475,42 @@
 
   // ---------------- CONTROLE BOT vs MANUAL ----------------
   // bot_active = !bot_paused. Caixa habilitada SO em atendimento manual.
+  const MS_24H = 24 * 60 * 60 * 1000;
+  function windowClosed(c) {
+    const ts = c?.last_seen_at ?? c?.last_message_at;
+    return ts ? (Date.now() - parseTs(ts)) > MS_24H : false;
+  }
+
   function updateBotControls(c) {
     const manual = !!c.bot_paused;
+    const closed = manual && windowClosed(c);
     const input = $("composer-input");
     const sendBtn = $("send-btn");
     const toggle = $("bot-toggle");
     const attachBtn = $("app-attach-btn");
 
-    input.disabled = !manual;
-    sendBtn.disabled = !manual;
-    if (attachBtn) attachBtn.disabled = !manual;
-    sendBtn.classList.toggle("off", !manual || !input.value.trim());
-    input.placeholder = manual ? "Mensagem" : "Bot operando — pause para responder";
+    // Banner de janela fechada
+    let banner = $("win24h-banner");
+    if (closed) {
+      if (!banner) {
+        banner = document.createElement("div");
+        banner.id = "win24h-banner";
+        banner.className = "win24h-banner";
+        banner.textContent = "⏰ Janela de 24h encerrada — aguarde o cliente escrever para responder";
+        const composer = document.querySelector(".composer");
+        if (composer) composer.parentNode.insertBefore(banner, composer);
+      }
+    } else {
+      if (banner) banner.remove();
+    }
+
+    input.disabled = !manual || closed;
+    sendBtn.disabled = !manual || closed;
+    if (attachBtn) attachBtn.disabled = !manual || closed;
+    sendBtn.classList.toggle("off", !manual || closed || !input.value.trim());
+    input.placeholder = closed
+      ? "Janela de 24h encerrada — aguarde o cliente escrever"
+      : (manual ? "Mensagem" : "Bot operando — pause para responder");
 
     if (manual) {
       toggle.className = "pill-toggle resume";

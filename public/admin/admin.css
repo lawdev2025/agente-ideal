@@ -2132,6 +2132,25 @@ html.dark .utag-cn { color: #E0A23C; }
     gap: 10px;
 }
 
+/* Banner de janela de 24h encerrada */
+.window-24h-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 20px;
+    background: rgba(245, 158, 11, 0.1);
+    border-top: 1px solid rgba(245, 158, 11, 0.25);
+    color: #92400e;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.dark .window-24h-banner {
+    color: #fbbf24;
+    background: rgba(245, 158, 11, 0.07);
+    border-color: rgba(245, 158, 11, 0.18);
+}
+
 /* Composer — atendente humano responde */
 .chat-composer {
     display: flex;

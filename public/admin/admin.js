@@ -1185,6 +1185,7 @@ async function loadActiveChat(contact) {
     document.getElementById('chat-user-phone').textContent = contact.phone || contact.wa_id;
     document.getElementById('chat-user-avatar').textContent = contactInitials(displayName);
     updateBotButtonUI(contact.bot_paused);
+    apply24hWarning(contact);
 
     messagesBox.innerHTML = '<div class="loading-spinner">Carregando histórico...</div>';
     renderedMsgIds = new Set();
@@ -1208,6 +1209,7 @@ async function handleMediaAttachment() {
     const fileInput = document.getElementById('media-file-input');
     const file = fileInput?.files?.[0];
     if (!file || !activeContactId) return;
+    if (is24hClosed(activeContact)) { showToast('Janela de 24h encerrada — aguarde o cliente escrever.'); if (fileInput) fileInput.value = ''; return; }
     if (!_sb) { showToast('Supabase não conectado — não é possível enviar arquivos.'); return; }
 
     const mime = file.type;
@@ -1265,6 +1267,7 @@ async function sendHumanMessage() {
     const input = document.getElementById('chat-input');
     const btn = document.getElementById('btn-send-message');
     if (!input || !activeContactId) return;
+    if (is24hClosed(activeContact)) { showToast('Janela de 24h encerrada — aguarde o cliente escrever.'); return; }
     const text = input.value.trim();
     if (!text) return;
 
@@ -1338,6 +1341,7 @@ async function refreshContactsList() {
         if (active) {
             activeContact = active;
             updateBotButtonUI(active.bot_paused);
+            apply24hWarning(active);
         }
 
         // Renderiza (incremental, sem flicker) respeitando busca + filtro de assunto.
@@ -1371,6 +1375,31 @@ async function refreshActiveChat(contact) {
         added = true;
     });
     if (added && nearBottom) messagesBox.scrollTop = messagesBox.scrollHeight;
+}
+
+const _MS_24H = 24 * 60 * 60 * 1000;
+function is24hClosed(contact) {
+    const ts = contact?.last_seen_at ?? contact?.last_message_at;
+    return ts ? (Date.now() - Number(ts)) > _MS_24H : false;
+}
+
+function apply24hWarning(contact) {
+    const prev = document.getElementById('window-24h-banner');
+    if (prev) prev.remove();
+    if (!contact || !is24hClosed(contact)) return;
+    const input    = document.getElementById('chat-input');
+    const btnSend  = document.getElementById('btn-send-message');
+    const btnAttach = document.getElementById('btn-attach-media');
+    if (input)    input.disabled    = true;
+    if (btnSend)  btnSend.disabled  = true;
+    if (btnAttach) btnAttach.disabled = true;
+    const composer = document.getElementById('chat-composer');
+    if (!composer) return;
+    const banner = document.createElement('div');
+    banner.id = 'window-24h-banner';
+    banner.className = 'window-24h-banner';
+    banner.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i> Janela de 24h encerrada — aguarde o cliente escrever para responder';
+    composer.parentNode.insertBefore(banner, composer);
 }
 
 function updateBotButtonUI(botPaused) {

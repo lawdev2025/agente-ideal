@@ -153,6 +153,14 @@ body {
 }
 .app-attach:not(:disabled):hover { color: var(--brand); background: rgba(200,32,46,.08); }
 .app-attach:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Banner de janela de 24h fechada */
+.win24h-banner {
+  padding: 9px 16px; flex-shrink: 0;
+  background: rgba(245,158,11,.12); border-top: 1px solid rgba(245,158,11,.3);
+  color: #92400e; font: 600 12px 'Lato',sans-serif; text-align: center;
+}
+.ideal.dark .win24h-banner { color: #fbbf24; background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.2); }
 .app-attach.loading { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

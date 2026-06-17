@@ -1217,10 +1217,19 @@ async function loadActiveChat(contact) {
 // ---- Gravação de áudio ----
 
 function _audioMimeType() {
-    for (const t of ['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm','audio/ogg']) {
+    // Ordem de preferência: formatos que o WhatsApp aceita via link primeiro.
+    // audio/mp4 funciona no Chrome; audio/ogg no Firefox; webm é fallback
+    // (WhatsApp não suporta webm por link, mas tentamos com aviso).
+    for (const t of ['audio/ogg;codecs=opus','audio/mp4','audio/ogg','audio/webm;codecs=opus','audio/webm']) {
         if (MediaRecorder.isTypeSupported(t)) return t;
     }
     return '';
+}
+
+function _audioExt(mimeType) {
+    if (mimeType.includes('mp4')) return 'mp4';
+    if (mimeType.includes('ogg')) return 'ogg';
+    return 'webm';
 }
 
 function toggleAudioRecording() {
@@ -1347,9 +1356,10 @@ async function _sendAudioBlob(blob) {
     const btnMic = document.getElementById('btn-mic-record');
     if (btnMic) { btnMic.disabled = true; }
     try {
-        const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
+        const baseMime = blob.type.split(';')[0];
+        const ext = _audioExt(baseMime);
         const path = `crm/audio-${Date.now()}-${(activeContactId || '').slice(-8)}.${ext}`;
-        const { error: upErr } = await _sb.storage.from('whatsapp-media').upload(path, blob, { contentType: blob.type.split(';')[0], upsert: false });
+        const { error: upErr } = await _sb.storage.from('whatsapp-media').upload(path, blob, { contentType: baseMime, upsert: false });
         if (upErr) throw new Error('Upload falhou: ' + upErr.message);
         const { data: { publicUrl } } = _sb.storage.from('whatsapp-media').getPublicUrl(path);
         const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(activeContactId)}/messages`, {

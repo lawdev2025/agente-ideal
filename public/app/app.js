@@ -568,10 +568,16 @@
   let _appRecSeconds = 0;
 
   function _appAudioMime() {
-    for (const t of ["audio/webm;codecs=opus","audio/ogg;codecs=opus","audio/webm","audio/ogg"]) {
+    for (const t of ["audio/ogg;codecs=opus","audio/mp4","audio/ogg","audio/webm;codecs=opus","audio/webm"]) {
       if (MediaRecorder.isTypeSupported(t)) return t;
     }
     return "";
+  }
+
+  function _appAudioExt(mime) {
+    if (mime.includes("mp4")) return "mp4";
+    if (mime.includes("ogg")) return "ogg";
+    return "webm";
   }
 
   function toggleAppAudioRecording() {
@@ -671,9 +677,10 @@
     const micBtn = $("app-mic-btn");
     if (micBtn) micBtn.disabled = true;
     try {
-      const ext = blob.type.includes("ogg") ? "ogg" : "webm";
+      const baseMime = blob.type.split(";")[0];
+      const ext = _appAudioExt(baseMime);
       const path = `crm/audio-${Date.now()}-${(currentChat||"").slice(-8)}.${ext}`;
-      const { error: upErr } = await sb.storage.from("whatsapp-media").upload(path, blob, { contentType: blob.type.split(";")[0], upsert: false });
+      const { error: upErr } = await sb.storage.from("whatsapp-media").upload(path, blob, { contentType: baseMime, upsert: false });
       if (upErr) throw new Error("Upload falhou: " + upErr.message);
       const { data: { publicUrl } } = sb.storage.from("whatsapp-media").getPublicUrl(path);
       const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(currentChat)}/messages`, {

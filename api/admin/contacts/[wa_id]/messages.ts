@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       let q = sb
         .from("messages")
-        .select("id, wa_id, role, content, created_at")
+        .select("id, wa_id, role, content, created_at, media_type, media_url, media_mime, media_filename")
         .eq("wa_id", wa_id)
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })

@@ -806,9 +806,9 @@ function renderCharts(msgCounts, subjects, days) {
                     position: 'bottom',
                     labels: {
                         color: legendColor,
-                        font: { family: 'Quicksand', size: 11 },
-                        padding: 10,
-                        boxWidth: 14,
+                        font: { family: 'Quicksand', size: 12, weight: '600' },
+                        padding: 12,
+                        boxWidth: 12,
                         usePointStyle: true
                     }
                 }

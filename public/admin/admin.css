@@ -20,13 +20,20 @@
     --brand-subtle: rgba(200, 32, 46, 0.06);
 
     --text-primary: #221C1C;     /* ink */
-    --text-secondary: #6B5E5E;
-    --text-muted: #8A7E7E;       /* dim */
+    --text-secondary: #4A3E3F;   /* era #6B5E5E — contraste ≈7.5:1 */
+    --text-muted: #6B5C5C;       /* era #8A7E7E — contraste ≈5.2:1 */
 
     --accent-gold: #C77B14;      /* warn */
     --accent-green: #1F9D55;     /* ok */
     --accent-error: #C8202E;
     --accent-info: #2563EB;
+
+    /* Texto sobre fundo colorido tênue (badges, trends) em modo claro.
+       Versões escuras que passam WCAG AA em superfícies quasi-brancas. */
+    --badge-ok-text:   #14532D;
+    --badge-warn-text: #78350F;
+    --badge-info-text: #1E40AF;
+    --badge-err-text:  #991B1B;
 
     /* ── Sidebar (warm near-black do Ideal) ── */
     --sidebar-bg: #221518;
@@ -68,6 +75,12 @@ html.dark {
     --accent-green: #3DBF77;     /* ok */
     --accent-error: #F2666B;
     --accent-info: #3B82F6;
+
+    /* Badge text em dark: cores vibrantes passam no fundo escuro */
+    --badge-ok-text:   #3DBF77;
+    --badge-warn-text: #E0A23C;
+    --badge-info-text: #3B82F6;
+    --badge-err-text:  #F2666B;
 
     /* ── Sidebar Escuro (Ideal) ── */
     --sidebar-bg: #1B1314;
@@ -365,7 +378,7 @@ html.dark .glass {
 }
 
 .status-indicator.online {
-    color: var(--accent-green);
+    color: var(--badge-ok-text);
 }
 
 .status-indicator.offline {
@@ -448,18 +461,18 @@ html.dark .glass {
 }
 
 .metric-info .trend.positive {
-    background-color: rgba(16, 185, 129, 0.08);
-    color: var(--accent-green);
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--badge-ok-text);
 }
 
 .metric-info .trend.negative {
-    background-color: rgba(239, 68, 68, 0.08);
-    color: var(--accent-error);
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--badge-err-text);
 }
 
 .metric-info .trend.info {
-    background-color: rgba(59, 130, 246, 0.08);
-    color: var(--accent-info);
+    background-color: rgba(59, 130, 246, 0.1);
+    color: var(--badge-info-text);
 }
 
 .metric-icon {
@@ -827,7 +840,7 @@ html.dark .glass {
 
 .btn-pause {
     border-color: var(--accent-gold);
-    color: var(--accent-gold);
+    color: var(--badge-warn-text);
     background-color: rgba(245, 166, 35, 0.05);
 }
 
@@ -1281,12 +1294,12 @@ html.dark .glass {
     border-radius: 10px;
 }
 .bot-badge-active {
-    background-color: rgba(16, 185, 129, 0.1);
-    color: var(--accent-green);
+    background-color: rgba(16, 185, 129, 0.12);
+    color: var(--badge-ok-text);
 }
 .bot-badge-paused {
-    background-color: rgba(245, 166, 35, 0.12);
-    color: var(--accent-gold);
+    background-color: rgba(245, 166, 35, 0.14);
+    color: var(--badge-warn-text);
     /* Pulsa pra chamar atenção: conversa em atendimento humano (escalada). */
     animation: badgeAttnPulse 1.5s ease-in-out infinite;
 }
@@ -1324,7 +1337,7 @@ html.dark .glass {
 /* Botão retomar bot */
 .btn-resume {
     border-color: var(--accent-green);
-    color: var(--accent-green);
+    color: var(--badge-ok-text);
     background-color: rgba(16, 185, 129, 0.05);
 }
 .btn-resume:hover {
@@ -1569,13 +1582,13 @@ html.dark .glass {
 }
 
 .intent-badge.active {
-    background: rgba(31, 157, 85, 0.12);
-    color: var(--accent-green);
+    background: rgba(31, 157, 85, 0.13);
+    color: var(--badge-ok-text);
 }
 
 .intent-badge.candidate {
-    background: rgba(199, 123, 20, 0.12);
-    color: var(--accent-gold);
+    background: rgba(199, 123, 20, 0.13);
+    color: var(--badge-warn-text);
 }
 
 /* Taxa de sucesso como barra inline */
@@ -1889,11 +1902,11 @@ html.dark .glass {
 }
 
 .csv-drop-zone.has-file i {
-    color: var(--accent-green);
+    color: var(--badge-ok-text);
 }
 
 .csv-drop-zone.has-file span {
-    color: var(--accent-green);
+    color: var(--badge-ok-text);
 }
 
 .csv-preview-header {
@@ -1916,7 +1929,7 @@ html.dark .glass {
 .csv-row-count {
     font-size: 12px;
     font-weight: 600;
-    color: var(--accent-green);
+    color: var(--badge-ok-text);
     background: rgba(5, 150, 105, 0.1);
     padding: 3px 10px;
     border-radius: 20px;
@@ -2084,12 +2097,15 @@ html.dark .glass {
     font-size: 9px; padding: 1px 6px; border-radius: 6px; line-height: 1.7;
     text-transform: uppercase; letter-spacing: .3px; white-space: nowrap;
 }
-.itag-matricula { background: var(--brand-subtle); color: var(--brand-color); }
-.itag-rematricula { background: rgba(31,157,85,.12); color: var(--accent-green); }
-.itag-eixo { background: rgba(108,92,231,.14); color: #6C5CE7; }
-.itag-esporte { background: rgba(37,99,235,.12); color: var(--accent-info); }
-html.dark .itag-eixo { color: #9D8CFF; }
-html.dark .itag-esporte { color: #6FA8F5; }
+/* Itags: texto escuro no modo claro (WCAG AA), texto vibrante no escuro */
+.itag-matricula   { background: var(--brand-subtle); color: var(--badge-err-text); }
+.itag-rematricula { background: rgba(31,157,85,.13);  color: var(--badge-ok-text); }
+.itag-eixo        { background: rgba(108,92,231,.14); color: #3B2BAF; }
+.itag-esporte     { background: rgba(37,99,235,.13);  color: var(--badge-info-text); }
+html.dark .itag-matricula   { color: var(--brand-light); }
+html.dark .itag-rematricula { color: var(--accent-green); }
+html.dark .itag-eixo        { color: #9D8CFF; }
+html.dark .itag-esporte     { color: #6FA8F5; }
 /* Selo de UNIDADE (AM/BC/CN) — discreto, ao lado da tag de intenção */
 .utag {
     flex-shrink: 0; font-family: 'Quicksand', sans-serif; font-weight: 700;
@@ -2097,10 +2113,12 @@ html.dark .itag-esporte { color: #6FA8F5; }
     letter-spacing: .4px; white-space: nowrap;
     background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border-color);
 }
-.utag-am { color: #0E8E9E; border-color: rgba(14,142,158,.35); }
-.utag-bc { color: var(--brand-color); border-color: rgba(200,32,46,.30); }
-.utag-cn { color: #B07d14; border-color: rgba(199,123,20,.35); }
+/* Utags: cores que passam em fundo claro; dark mode sobrescreve com vibrante */
+.utag-am { color: #0A6E7A; border-color: rgba(14,142,158,.35); }
+.utag-bc { color: var(--badge-err-text); border-color: rgba(200,32,46,.30); }
+.utag-cn { color: var(--badge-warn-text); border-color: rgba(199,123,20,.35); }
 html.dark .utag-am { color: #57C7D6; }
+html.dark .utag-bc { color: var(--brand-light); }
 html.dark .utag-cn { color: #E0A23C; }
 .contact-time {
     font-size: 10px;

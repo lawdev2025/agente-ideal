@@ -15,6 +15,13 @@ let lastChartData = null;
 let selectedUnitFilter = null; // null = todas as unidades
 let cachedUnits = [];          // [{id, name}, ...] carregado do Supabase
 
+// Gravação de áudio
+let _mediaRecorder = null;
+let _audioChunks = [];
+let _recordingTimer = null;
+let _recordingSeconds = 0;
+let _audioBlob = null;
+
 const _injected = window.__ADMIN_CONFIG__ || {};
 let adminToken = _injected.ADMIN_TOKEN || '';
 const BACKEND_URL = _injected.BACKEND_URL !== undefined 
@@ -122,6 +129,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnAttach.addEventListener('click', () => mediaInput.click());
         mediaInput.addEventListener('change', handleMediaAttachment);
     }
+
+    // Gravação de áudio
+    const btnMic = document.getElementById('btn-mic-record');
+    if (btnMic) btnMic.addEventListener('click', toggleAudioRecording);
 
     document.getElementById('btn-add-row').addEventListener('click', openAddModal);
     document.getElementById('btn-close-modal').addEventListener('click', closeModal);
@@ -1203,6 +1214,167 @@ async function loadActiveChat(contact) {
     renderMessagesFull(messagesBox, messages);
 }
 
+// ---- Gravação de áudio ----
+
+function _audioMimeType() {
+    for (const t of ['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm','audio/ogg']) {
+        if (MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return '';
+}
+
+function toggleAudioRecording() {
+    if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+        _stopAudioRecording();
+    } else {
+        _startAudioRecording();
+    }
+}
+
+function _startAudioRecording() {
+    if (!activeContactId) return;
+    if (is24hClosed(activeContact)) { showToast('Janela de 24h encerrada — aguarde o cliente escrever.'); return; }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        _audioChunks = [];
+        const mime = _audioMimeType();
+        _mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+        _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
+        _mediaRecorder.onstop = () => {
+            stream.getTracks().forEach(t => t.stop());
+            const finalMime = _mediaRecorder.mimeType || 'audio/webm';
+            _audioBlob = new Blob(_audioChunks, { type: finalMime.split(';')[0] });
+            _showAudioPreview(_audioBlob);
+        };
+        _mediaRecorder.start();
+        _recordingSeconds = 0;
+        _showRecordingBar();
+        _recordingTimer = setInterval(() => {
+            _recordingSeconds++;
+            const t = document.getElementById('audio-rec-timer');
+            if (t) t.textContent = _fmtTime(_recordingSeconds);
+            if (_recordingSeconds >= 120) _stopAudioRecording(); // max 2 min
+        }, 1000);
+    }).catch(err => {
+        showToast('Microfone não disponível: ' + (err.message || err));
+    });
+}
+
+function _stopAudioRecording() {
+    if (_mediaRecorder && _mediaRecorder.state !== 'inactive') _mediaRecorder.stop();
+    clearInterval(_recordingTimer);
+    _recordingTimer = null;
+    _hideRecordingBar();
+}
+
+function _fmtTime(s) {
+    const m = Math.floor(s / 60);
+    return m + ':' + String(s % 60).padStart(2, '0');
+}
+
+function _showRecordingBar() {
+    _removeAudioBars();
+    const btnMic = document.getElementById('btn-mic-record');
+    if (btnMic) btnMic.classList.add('recording');
+    const composer = document.getElementById('chat-composer');
+    if (!composer) return;
+    const bar = document.createElement('div');
+    bar.id = 'audio-rec-bar';
+    bar.className = 'audio-rec-bar';
+    bar.innerHTML = `
+        <span class="audio-rec-dot"></span>
+        <span class="audio-rec-timer" id="audio-rec-timer">0:00</span>
+        <span style="font-size:12px;color:var(--text-secondary);flex:1">Gravando...</span>
+        <button class="audio-rec-stop" onclick="toggleAudioRecording()">
+            <i class="fa-solid fa-stop"></i> Parar
+        </button>`;
+    composer.parentNode.insertBefore(bar, composer);
+    // disable other composer inputs while recording
+    ['btn-attach-media','btn-send-message','chat-input'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = true;
+    });
+}
+
+function _hideRecordingBar() {
+    const btnMic = document.getElementById('btn-mic-record');
+    if (btnMic) btnMic.classList.remove('recording');
+    const bar = document.getElementById('audio-rec-bar');
+    if (bar) bar.remove();
+}
+
+function _showAudioPreview(blob) {
+    _removeAudioBars();
+    const url = URL.createObjectURL(blob);
+    const composer = document.getElementById('chat-composer');
+    if (!composer) return;
+    const bar = document.createElement('div');
+    bar.id = 'audio-preview-bar';
+    bar.className = 'audio-preview-bar';
+    bar.innerHTML = `
+        <audio controls src="${url}" class="audio-preview-bar audio" style="flex:1;height:36px;min-width:0"></audio>
+        <button class="audio-preview-cancel" id="audio-preview-cancel">Cancelar</button>
+        <button class="audio-preview-send" id="audio-preview-send"><i class="fa-solid fa-paper-plane"></i> Enviar</button>`;
+    composer.parentNode.insertBefore(bar, composer);
+    bar.querySelector('#audio-preview-cancel').addEventListener('click', () => {
+        URL.revokeObjectURL(url);
+        _removeAudioBars();
+        _reenableComposer();
+    });
+    bar.querySelector('#audio-preview-send').addEventListener('click', async () => {
+        URL.revokeObjectURL(url);
+        _removeAudioBars();
+        await _sendAudioBlob(blob);
+        _reenableComposer();
+    });
+}
+
+function _removeAudioBars() {
+    document.getElementById('audio-rec-bar')?.remove();
+    document.getElementById('audio-preview-bar')?.remove();
+}
+
+function _reenableComposer() {
+    if (!is24hClosed(activeContact)) {
+        ['btn-attach-media','btn-send-message','chat-input','btn-mic-record'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = false;
+        });
+    }
+}
+
+async function _sendAudioBlob(blob) {
+    if (!_sb || !activeContactId) return;
+    const btnMic = document.getElementById('btn-mic-record');
+    if (btnMic) { btnMic.disabled = true; }
+    try {
+        const ext = blob.type.includes('ogg') ? 'ogg' : 'webm';
+        const path = `crm/audio-${Date.now()}-${(activeContactId || '').slice(-8)}.${ext}`;
+        const { error: upErr } = await _sb.storage.from('whatsapp-media').upload(path, blob, { contentType: blob.type.split(';')[0], upsert: false });
+        if (upErr) throw new Error('Upload falhou: ' + upErr.message);
+        const { data: { publicUrl } } = _sb.storage.from('whatsapp-media').getPublicUrl(path);
+        const res = await fetch(`${BACKEND_URL}/api/admin/contacts/${encodeURIComponent(activeContactId)}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+            body: JSON.stringify({ mediaUrl: publicUrl, mediaType: 'audio' })
+        });
+        if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            throw new Error(j.error || 'Falha ao enviar áudio');
+        }
+        if (activeContact) activeContact.bot_paused = true;
+        const c = allContacts.find(x => x.wa_id === activeContactId);
+        if (c) c.bot_paused = true;
+        updateBotButtonUI(true);
+        if (activeContact) await refreshActiveChat(activeContact);
+        refreshContactsList();
+    } catch (err) {
+        showToast(err.message || 'Falha ao enviar áudio.');
+    } finally {
+        if (btnMic) { btnMic.disabled = false; }
+        _audioBlob = null;
+    }
+}
+
 // Envia uma mensagem como ATENDENTE HUMANO (assume o contato). O backend já
 // pausa o bot; aqui refletimos isso na UI e anexamos a mensagem enviada.
 async function handleMediaAttachment() {
@@ -1390,9 +1562,11 @@ function apply24hWarning(contact) {
     const input    = document.getElementById('chat-input');
     const btnSend  = document.getElementById('btn-send-message');
     const btnAttach = document.getElementById('btn-attach-media');
+    const btnMicEl  = document.getElementById('btn-mic-record');
     if (input)    input.disabled    = true;
     if (btnSend)  btnSend.disabled  = true;
     if (btnAttach) btnAttach.disabled = true;
+    if (btnMicEl)  btnMicEl.disabled  = true;
     const composer = document.getElementById('chat-composer');
     if (!composer) return;
     const banner = document.createElement('div');

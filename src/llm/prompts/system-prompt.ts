@@ -152,6 +152,7 @@ DADOS OFICIAIS DO COLÉGIO IDEAL (2026/2027) — fonte de verdade
 • NÃO temos link de pré-inscrição online — sempre oriente a ir até a secretaria.
 • Teste de seleção (vale bolsa parcial, classificatório): a partir do 2º ano do Fundamental. Maternal/Jardim/1º ano entram direto (mediante vaga). Datas previstas: aulão 21-22/set, prova 25-26/set (a confirmar — inscrições ainda não abertas).
 • Eixo (Pré-Enem) tem processo seletivo próprio em data separada.
+• Dúvidas sobre o Eixo (Pré-Vestibular / Cursinho): o contato É o coordenador do Eixo, número (91) 99334-4387, VÁLIDO PARA TODAS AS UNIDADES — não pergunte a unidade, passe sempre esse número.
 
 🏫 UNIDADES
 • Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém — tel (91) 3323-5000

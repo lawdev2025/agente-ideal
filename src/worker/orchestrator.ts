@@ -356,9 +356,17 @@ export class MessageOrchestrator {
       return;
     }
 
-    // Pedido de telefone/secretaria sem unidade: pergunta determinística qual
-    // unidade — não dispara LLM nem escalação.
+    // Pedido de telefone/secretaria sem unidade: se for sobre Eixo/Pré-Enem/
+    // cursinho, responde com o número do coordenador do Eixo (unidade-agnóstico).
+    // Caso contrário, pergunta qual unidade.
     if (intent.kind === "enrollment_contact" && !intent.unit) {
+      if (EIXO_CONTACT_PATTERN.test(userMessage)) {
+        const reply = await getEixoCoordinatorContact();
+        await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+        await this.whatsappClient.sendMessage(studentId, reply);
+        await this.recordTurnOutcome(userMessage, true);
+        return;
+      }
       const ask =
         "Claro! Temos 3 unidades — me diz qual você prefere que eu te passe o número:\n\n" +
         "🏫 *Batista Campos*\n" +
@@ -938,6 +946,35 @@ const VISIT_ASK_UNIT_REPLY =
   `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
   `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
   `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}`;
+
+// Número do coordenador do Eixo/Pré-Enem — único para todas as unidades.
+const EIXO_CONTACT_PATTERN =
+  /\b(eixo|pr[ée][-\s]?vestibular|pr[ée][-\s]?enem|cursinho|terceir[ãa]o)\b/i;
+
+async function getEixoCoordinatorContact(): Promise<string> {
+  // Tenta buscar no Supabase; cai no número fixo se não achar.
+  try {
+    const { isSupabaseEnabled, getSupabase } = await import("../db/supabase-client");
+    if (isSupabaseEnabled()) {
+      const supabase = getSupabase();
+      const { data } = await supabase
+        .from("school_contacts")
+        .select("name, role_title, phone_number")
+        .ilike("role_title", "%eixo%")
+        .limit(1)
+        .single();
+      if (data) {
+        return `Para dúvidas sobre o *Eixo (Pré-Vestibular/Cursinho)*, fala diretamente com o coordenador — o número é o mesmo pra todas as unidades:\n\n📞 ${data.phone_number}`;
+      }
+    }
+  } catch {
+    // fallback abaixo
+  }
+  return (
+    "Para dúvidas sobre o *Eixo (Pré-Vestibular/Cursinho)*, fala diretamente com o coordenador — o número é o mesmo pra todas as unidades:\n\n" +
+    "📞 *(91) 99334-4387*"
+  );
+}
 
 // Resposta canônica para qualquer pergunta de valor. Centralizada aqui pra
 // nunca divergir entre paths (top-level, sanitizer, fallback).

@@ -2433,3 +2433,51 @@ html.dark .utag-cn { color: #E0A23C; }
     /* Modais quase full-width */
     .modal-card { width: calc(100vw - 24px); max-width: none; }
 }
+
+/* ---- Gravação de áudio ---- */
+.btn-mic { color: var(--text-muted); }
+.btn-mic.recording {
+    color: #DC2626;
+    animation: micPulse 1s ease-in-out infinite;
+}
+@keyframes micPulse { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+
+.audio-rec-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; border-top: 1px solid var(--border-color);
+    background: var(--bg-card); flex-shrink: 0;
+}
+.audio-rec-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #DC2626; flex-shrink: 0;
+    animation: micPulse .9s ease-in-out infinite;
+}
+.audio-rec-timer {
+    font: 700 13px 'Quicksand', sans-serif; color: #DC2626;
+    min-width: 42px;
+}
+.audio-rec-stop {
+    margin-left: auto; padding: 6px 14px; border: none; border-radius: 20px;
+    background: #DC2626; color: #fff; font: 700 12px 'Quicksand', sans-serif;
+    cursor: pointer; transition: background .15s;
+}
+.audio-rec-stop:hover { background: #B91C1C; }
+
+.audio-preview-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px; border-top: 1px solid var(--border-color);
+    background: var(--bg-card); flex-shrink: 0;
+}
+.audio-preview-bar audio { flex: 1; height: 36px; min-width: 0; }
+.audio-preview-send {
+    padding: 6px 14px; border: none; border-radius: 20px;
+    background: var(--brand-color); color: #fff;
+    font: 700 12px 'Quicksand', sans-serif; cursor: pointer; transition: background .15s;
+}
+.audio-preview-send:hover { background: var(--brand-dark); }
+.audio-preview-cancel {
+    padding: 6px 10px; border: none; border-radius: 20px;
+    background: var(--bg-secondary); color: var(--text-secondary);
+    font: 700 12px 'Quicksand', sans-serif; cursor: pointer;
+}
+.audio-preview-cancel:hover { background: var(--border-color); }

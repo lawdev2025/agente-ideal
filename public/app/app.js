@@ -504,9 +504,11 @@
       if (banner) banner.remove();
     }
 
+    const micBtn = $("app-mic-btn");
     input.disabled = !manual || closed;
     sendBtn.disabled = !manual || closed;
     if (attachBtn) attachBtn.disabled = !manual || closed;
+    if (micBtn) micBtn.disabled = !manual || closed;
     sendBtn.classList.toggle("off", !manual || closed || !input.value.trim());
     input.placeholder = closed
       ? "Janela de 24h encerrada — aguarde o cliente escrever"
@@ -556,6 +558,136 @@
       toast("Não consegui alterar o estado do bot.");
     } finally {
       toggle.disabled = false;
+    }
+  }
+
+  // ---------------- GRAVAÇÃO DE ÁUDIO ----------------
+  let _appMediaRec = null;
+  let _appAudioChunks = [];
+  let _appRecTimer = null;
+  let _appRecSeconds = 0;
+
+  function _appAudioMime() {
+    for (const t of ["audio/webm;codecs=opus","audio/ogg;codecs=opus","audio/webm","audio/ogg"]) {
+      if (MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return "";
+  }
+
+  function toggleAppAudioRecording() {
+    if (_appMediaRec && _appMediaRec.state === "recording") {
+      _appStopRecording();
+    } else {
+      _appStartRecording();
+    }
+  }
+
+  function _appStartRecording() {
+    if (!currentChat) return;
+    const c = byId[currentChat];
+    if (windowClosed(c)) { toast("Janela de 24h encerrada."); return; }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      _appAudioChunks = [];
+      const mime = _appAudioMime();
+      _appMediaRec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+      _appMediaRec.ondataavailable = e => { if (e.data.size > 0) _appAudioChunks.push(e.data); };
+      _appMediaRec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const finalMime = _appMediaRec.mimeType || "audio/webm";
+        const blob = new Blob(_appAudioChunks, { type: finalMime.split(";")[0] });
+        _appShowPreview(blob);
+      };
+      _appMediaRec.start();
+      _appRecSeconds = 0;
+      _appShowRecBar();
+      _appRecTimer = setInterval(() => {
+        _appRecSeconds++;
+        const el = document.getElementById("app-rec-timer");
+        if (el) el.textContent = Math.floor(_appRecSeconds/60) + ":" + String(_appRecSeconds%60).padStart(2,"0");
+        if (_appRecSeconds >= 120) _appStopRecording();
+      }, 1000);
+    }).catch(err => toast("Microfone não disponível: " + (err.message || err)));
+  }
+
+  function _appStopRecording() {
+    if (_appMediaRec && _appMediaRec.state !== "inactive") _appMediaRec.stop();
+    clearInterval(_appRecTimer); _appRecTimer = null;
+    _appRemoveBars();
+    const micBtn = $("app-mic-btn");
+    if (micBtn) micBtn.classList.remove("recording");
+  }
+
+  function _appShowRecBar() {
+    _appRemoveBars();
+    const micBtn = $("app-mic-btn");
+    if (micBtn) micBtn.classList.add("recording");
+    const composer = document.querySelector(".composer");
+    if (!composer) return;
+    const bar = document.createElement("div");
+    bar.id = "app-audio-rec-bar";
+    bar.className = "app-audio-rec-bar";
+    bar.innerHTML = `<span class="app-audio-rec-dot"></span><span class="app-audio-rec-timer" id="app-rec-timer">0:00</span><span style="flex:1;font-size:12px;color:var(--dim)">Gravando...</span><button class="app-audio-rec-stop">Parar</button>`;
+    bar.querySelector("button").addEventListener("click", _appStopRecording);
+    composer.parentNode.insertBefore(bar, composer);
+    [$("composer-input"),$("send-btn"),$("app-attach-btn")].forEach(el => { if (el) el.disabled = true; });
+  }
+
+  function _appShowPreview(blob) {
+    _appRemoveBars();
+    const url = URL.createObjectURL(blob);
+    const composer = document.querySelector(".composer");
+    if (!composer) return;
+    const bar = document.createElement("div");
+    bar.id = "app-audio-preview-bar";
+    bar.className = "app-audio-preview-bar";
+    bar.innerHTML = `<audio controls src="${url}" style="flex:1;height:34px;min-width:0"></audio><button class="app-audio-preview-cancel">Cancelar</button><button class="app-audio-preview-send">Enviar</button>`;
+    bar.querySelector(".app-audio-preview-cancel").addEventListener("click", () => {
+      URL.revokeObjectURL(url); _appRemoveBars(); _appReenableComposer();
+    });
+    bar.querySelector(".app-audio-preview-send").addEventListener("click", async () => {
+      URL.revokeObjectURL(url); _appRemoveBars();
+      await _appSendBlob(blob);
+      _appReenableComposer();
+    });
+    composer.parentNode.insertBefore(bar, composer);
+  }
+
+  function _appRemoveBars() {
+    document.getElementById("app-audio-rec-bar")?.remove();
+    document.getElementById("app-audio-preview-bar")?.remove();
+  }
+
+  function _appReenableComposer() {
+    const c = byId[currentChat];
+    const manual = c?.bot_paused;
+    const closed = manual && windowClosed(c);
+    [$("composer-input"),$("send-btn"),$("app-attach-btn"),$("app-mic-btn")].forEach(el => {
+      if (el) el.disabled = !manual || closed;
+    });
+  }
+
+  async function _appSendBlob(blob) {
+    if (!sb || !currentChat) return;
+    const micBtn = $("app-mic-btn");
+    if (micBtn) micBtn.disabled = true;
+    try {
+      const ext = blob.type.includes("ogg") ? "ogg" : "webm";
+      const path = `crm/audio-${Date.now()}-${(currentChat||"").slice(-8)}.${ext}`;
+      const { error: upErr } = await sb.storage.from("whatsapp-media").upload(path, blob, { contentType: blob.type.split(";")[0], upsert: false });
+      if (upErr) throw new Error("Upload falhou: " + upErr.message);
+      const { data: { publicUrl } } = sb.storage.from("whatsapp-media").getPublicUrl(path);
+      const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(currentChat)}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ mediaUrl: publicUrl, mediaType: "audio" }),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const c = byId[currentChat];
+      if (c) { c.bot_paused = true; updateChatHeader(c); updateBotControls(c); renderContacts(); }
+      await loadMessages(currentChat, true);
+    } catch (e) {
+      toast(e.message || "Falha ao enviar áudio.");
+    } finally {
+      if (micBtn) micBtn.disabled = false;
     }
   }
 
@@ -908,6 +1040,8 @@
     attachBtn.addEventListener("click", () => mediaInput.click());
     mediaInput.addEventListener("change", () => { if (mediaInput.files?.[0]) sendMedia(mediaInput.files[0]); });
   }
+  const micBtn = $("app-mic-btn");
+  if (micBtn) micBtn.addEventListener("click", toggleAppAudioRecording);
   $("composer-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();

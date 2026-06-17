@@ -164,6 +164,42 @@ body {
 .app-attach.loading { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Gravação de áudio */
+.app-attach.recording { color: #DC2626; animation: appMicPulse 1s ease-in-out infinite; }
+@keyframes appMicPulse { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
+
+.app-audio-rec-bar {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 7px 14px; border-top: 1px solid var(--divider);
+  background: var(--surface);
+}
+.app-audio-rec-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: #DC2626; flex-shrink: 0;
+  animation: appMicPulse .9s ease-in-out infinite;
+}
+.app-audio-rec-timer { font: 700 13px 'Quicksand',sans-serif; color: #DC2626; min-width: 36px; }
+.app-audio-rec-stop {
+  margin-left: auto; padding: 5px 12px; border: none; border-radius: 18px;
+  background: #DC2626; color: #fff; font: 700 12px 'Quicksand',sans-serif; cursor: pointer;
+}
+
+.app-audio-preview-bar {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 7px 14px; border-top: 1px solid var(--divider);
+  background: var(--surface);
+}
+.app-audio-preview-bar audio { flex: 1; height: 34px; min-width: 0; }
+.app-audio-preview-send {
+  padding: 5px 12px; border: none; border-radius: 18px;
+  background: var(--brand); color: #fff;
+  font: 700 12px 'Quicksand',sans-serif; cursor: pointer;
+}
+.app-audio-preview-cancel {
+  padding: 5px 8px; border: none; border-radius: 18px;
+  background: var(--surface-2); color: var(--dim);
+  font: 700 12px 'Quicksand',sans-serif; cursor: pointer;
+}
+
 /* Mídias dentro das bolhas */
 .msg-media-img {
   display: block; max-width: 100%; max-height: 260px;

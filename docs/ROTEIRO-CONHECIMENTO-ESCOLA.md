@@ -135,8 +135,8 @@ Detalhes específicos de modalidades → coordenação.
 |---|---|---|---|
 | Atendimento Sede | Telefone fixo | (91) 3323-5000 | Sede Batista Campos |
 | Atendimento WhatsApp | WhatsApp central | (91) 99389-8000 | Escola toda |
-| Atendimento Augusto Montenegro | Telefone fixo | (91) 3273-0667 | Augusto Montenegro |
-| Atendimento Cidade Nova | Telefone fixo | (91) 3273-0222 | Cidade Nova |
+| Atendimento Augusto Montenegro | Telefone fixo | (91) 3120-3188 | Augusto Montenegro |
+| Atendimento Cidade Nova | Telefone fixo | (91) 3346-0011 | Cidade Nova |
 
 > ⚠️ O bot **não envia** link `wa.me/...` porque ele já opera dentro do WhatsApp. Apenas informa os números quando perguntado.
 
@@ -153,13 +153,13 @@ Detalhes específicos de modalidades → coordenação.
 
 ### 5.2 Augusto Montenegro
 - **Endereço:** Rod. Augusto Montenegro, nº 130 — Parque Verde, Belém — PA
-- **Telefone:** (91) 3273-0667
+- **Telefone:** (91) 3120-3188
 - **Horário:** seg–sex, início 07:30
 - **Níveis:** Maternal → Eixo (Pré-Enem)
 
 ### 5.3 Cidade Nova (Ananindeua)
 - **Endereço:** Conj. Cidade Nova II, Av. SN-3 esq. WE-21, nº 3277 — Ananindeua — PA
-- **Telefone:** (91) 3273-0222
+- **Telefone:** (91) 3346-0011
 - **Horário:** seg–sex, início 07:30
 - **Níveis:** Maternal → Eixo (Pré-Enem)
 

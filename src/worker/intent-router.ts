@@ -45,6 +45,15 @@ export type RoutedIntent =
    */
   | { kind: "escalate"; reason: string }
   /**
+   * O cliente pediu explicitamente para falar com um ATENDENTE/pessoa humana.
+   * Desativa o bot (pausa), avisa o time e manda uma mensagem dizendo que o
+   * atendente já será chamado — com a observação de que o atendimento humano
+   * acontece de segunda a sexta, das 8h às 17h. Separado de `escalate` porque a
+   * mensagem ao cliente é diferente (não fala em "coordenação", fala em
+   * atendente + horário).
+   */
+  | { kind: "human_request" }
+  /**
    * SOFT redirect: a school-related topic the bot has no data for (bolsa,
    * desconto, documento, transporte, evento). We DON'T hand off or pause —
    * we point the client to the secretaria and notify the team quietly.
@@ -54,9 +63,11 @@ export type RoutedIntent =
 
 const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
   // Educação Infantil (must come FIRST so maternal/jardim never reaches escalation)
+  // "Ideal Júnior" (e a abreviação "jr") é a MARCA do nosso segmento INFANTIL —
+  // quem pergunta por "ideal junior"/"jr" está perguntando da Educação Infantil.
   {
     regex:
-      /\b(maternal|jardim\s*[iI1]?\b|jardim\s+de\s+inf[âa]ncia|educa[çc][ãa]o\s+infantil|ber[çc][áa]rio|pr[ée][-\s]?escola|cre+che|infantil)\b/i,
+      /\b(maternal|jardim\s*[iI1]?\b|jardim\s+de\s+inf[âa]ncia|educa[çc][ãa]o\s+infantil|ber[çc][áa]rio|pr[ée][-\s]?escola|cre+che|infantil|ideal\s*j[úu]nior|j[úu]nior|jr)\b/i,
     nivel: "Educação Infantil",
   },
   // Fundamental 1
@@ -85,15 +96,18 @@ const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
   },
 ];
 
-// HARD off-scope → handoff humano de verdade (pausa o bot). Apenas dois casos
-// merecem isso: o cliente pediu um humano em palavras claras, ou o assunto não
-// tem NADA a ver com o colégio.
+// Pedido EXPLÍCITO de atendente/pessoa humana. Vira `human_request`: desativa o
+// bot e responde com a mensagem de "já vou chamar um atendente" + horário de
+// atendimento. Cobre "falar com atendente", "falar com um humano/pessoa/
+// alguém", "me transfere", "chama um atendente", etc. Avaliado com prioridade
+// alta no roteador (antes dos outros sinais) — o pedido de humano vence.
+const HUMAN_REQUEST_PATTERN =
+  /(\batendente\b|\bfalar\s+com\s+(?:um\s+|uma\s+|o\s+|a\s+)?(?:atendente|humano|pessoa|algu[ée]m|respons[áa]vel|secret[áa]ri[oa])|\bquero\s+(?:um\s+|uma\s+)?(?:atendente|humano|pessoa)|\bpessoa\s+de\s+verdade\b|\bme\s+transfere\b|\bchama(?:r)?\s+(?:um\s+|uma\s+)?(?:atendente|humano|algu[ée]m)|\batendimento\s+humano\b|\bfala\s+s[ée]rio\b)/i;
+
+// HARD off-scope → handoff humano de verdade (pausa o bot). Assunto que não tem
+// NADA a ver com o colégio (futebol, política, piada). O pedido explícito de
+// atendente saiu daqui de propósito — agora é tratado como `human_request`.
 const HARD_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
-  {
-    regex:
-      /\b(falar\s+com\s+(?:um\s+)?humano|atendente\s+humano|pessoa\s+de\s+verdade|fala\s+s[ée]rio|quero\s+(?:um\s+)?humano|me\s+transfere|chama\s+(?:um\s+)?humano)\b/i,
-    reason: "Cliente pediu humano explicitamente",
-  },
   {
     regex:
       /\b(flamengo|corinthians|palmeiras|fluminense|s[ãa]o\s+paulo|jogo|futebol|pol[íi]tica|eleic[ãa]o|piada)\b/i,
@@ -162,8 +176,15 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
 
   if (GREETING_ONLY.test(text)) return { kind: "ask_llm" };
 
-  // HARD off-scope (humano explícito, assunto totalmente fora do colégio)
-  // vence qualquer outro sinal — vai direto pro handoff humano.
+  // Pedido explícito de atendente/pessoa humana vence qualquer outro sinal:
+  // desativa o bot e manda a mensagem de atendente + horário. Mesmo que o
+  // cliente cite "atendente sobre matrícula", o pedido de humano tem prioridade.
+  if (HUMAN_REQUEST_PATTERN.test(text)) {
+    return { kind: "human_request" };
+  }
+
+  // HARD off-scope (assunto totalmente fora do colégio: futebol, política)
+  // vence os demais sinais — vai direto pro handoff humano.
   for (const { regex, reason } of HARD_OFF_SCOPE_PATTERNS) {
     if (regex.test(text)) {
       return { kind: "escalate", reason: `${reason}. Mensagem: "${text}"` };

@@ -142,8 +142,8 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO school_contacts (name, role_title, phone_number) VALUES
 ('Atendimento Batista Campos',                'Telefone fixo Batista Campos',           '559133235000'),
-('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559132730667'),
-('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222')
+('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559131203188'),
+('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559133460011')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO school_materials (nivel, subject, title, download_url, image_url) VALUES

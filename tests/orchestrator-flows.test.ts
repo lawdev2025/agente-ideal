@@ -4,7 +4,7 @@ import { LLMProvider } from "../src/llm/provider";
 import { StateRepository } from "../src/state/repository";
 import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
-import { routeIntent } from "../src/worker/intent-router";
+import { routeIntent, detectNivel } from "../src/worker/intent-router";
 
 function buildMocks(opts: {
   history?: Array<{ role: string; content: string }>;
@@ -79,7 +79,11 @@ describe("extractName: extrai nome da resposta à saudação", () => {
     });
   }
 
-  const rejected = ["oi", "bom dia", "quero saber o valor", "quanto custa?", "sim", "tem ensino médio?", ""];
+  const rejected = [
+    "oi", "bom dia", "quero saber o valor", "quanto custa?", "sim", "tem ensino médio?", "",
+    "estou interessada em uma vaga", "estou interessado", "to vendo sobre o curso",
+    "tô procurando escola", "vim saber das matrículas", "procurando informações",
+  ];
   for (const input of rejected) {
     it(`'${input}' → null (não é nome)`, () => {
       expect(extractName(input)).toBeNull();
@@ -112,6 +116,34 @@ describe("Orchestrator: captura do nome e salva no contato (painel)", () => {
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "João", "u1");
     expect(m.stateRepo.setName).not.toHaveBeenCalled();
+  });
+
+  it("BUG: mensagem aleatória turnos depois da saudação NÃO vira nome", async () => {
+    // Reproduz o print: o bot pediu o nome lá no começo, o cliente nunca
+    // respondeu com o nome (foi direto perguntar outra coisa) e, turnos depois,
+    // manda "Oi, estou interessada...". Antes, como a saudação ficava no
+    // histórico pra sempre, essa frase virava o "nome" do contato.
+    const m = buildMocks({
+      displayName: null,
+      history: [
+        { role: "assistant", content: "Olá! Aqui é o atendimento oficial do Grupo Ideal. Pra começar, como posso te chamar? 😊" },
+        { role: "user", content: "quero saber sobre matrícula" },
+        { role: "assistant", content: "Claro! Temos 3 unidades — me diz qual você prefere..." },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Oi, estou interessada em uma vaga", "u1");
+    expect(m.stateRepo.setName).not.toHaveBeenCalled();
+  });
+
+  it("ainda captura o nome quando é a resposta IMEDIATA à saudação", async () => {
+    const m = buildMocks({
+      displayName: null,
+      history: [{ role: "assistant", content: "Pra começar, como posso te chamar? 😊" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "sou a Fernanda", "u1");
+    expect(m.stateRepo.setName).toHaveBeenCalledWith("u1", "Fernanda");
   });
 
   it("não sobrescreve nome já salvo", async () => {
@@ -216,7 +248,7 @@ describe("Orchestrator: enrollment_info determinístico (sem LLM) quando há ní
     expect(sent).toMatch(/João/); // nome interpolado
     expect(sent).toMatch(/presencialmente/i);
     expect(sent).toMatch(/quillbooking_calendar=agendamento-ideal-cidade-nova/); // link da unidade
-    expect(sent).toMatch(/3273-0222/); // telefone da Cidade Nova
+    expect(sent).toMatch(/3346-0011/); // telefone da Cidade Nova
     expect(sent).not.toMatch(/R\$/);
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
     expect(m.escalation.escalateToGroup).not.toHaveBeenCalled();
@@ -386,7 +418,7 @@ describe("Orchestrator: redirect secretaria pergunta a unidade direto (sem sim/n
     await orch.processMessage("u1", "tem festa junina esse ano?", "u1");
     const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
     expect(sent).toMatch(/Cidade Nova/);
-    expect(sent).toMatch(/\(91\) 3273-0222/);
+    expect(sent).toMatch(/\(91\) 3346-0011/);
     expect(sent).not.toMatch(/de qual unidade/i);
   });
 });
@@ -396,7 +428,7 @@ describe("Orchestrator: follow-up determinístico de unidade (responde só o nom
     {
       ask: "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\nDe qual unidade você é? Aí te passo o telefone certinho:\n🏫 *Batista Campos*",
       reply: "Cidade Nova",
-      phone: "(91) 3273-0222",
+      phone: "(91) 3346-0011",
     },
     {
       ask: "Boletim, histórico escolar, declarações e qualquer outro documento são emitidos direto na *secretaria* da unidade. 📄\n\nDe qual unidade você precisa?",
@@ -406,7 +438,7 @@ describe("Orchestrator: follow-up determinístico de unidade (responde só o nom
     {
       ask: "Pagamento de taxas, mensalidade e prova de *segunda chamada* é resolvido direto na *secretaria* da unidade. 💳\n\nDe qual unidade você precisa?",
       reply: "Augusto Montenegro",
-      phone: "(91) 3273-0667",
+      phone: "(91) 3120-3188",
     },
   ];
   for (const { ask, reply, phone } of cases) {
@@ -429,23 +461,48 @@ describe("Orchestrator: follow-up determinístico de unidade (responde só o nom
   }
 });
 
-describe("Orchestrator: handoff humano de verdade só p/ humano explícito e fora de escopo", () => {
-  const hardMsgs = [
-    "quero falar com um atendente humano",
-    "quem ganha o jogo do Flamengo?",
+describe("Orchestrator: assunto fora de escopo → handoff genérico (coordenação)", () => {
+  it("'quem ganha o jogo do Flamengo?' → pausa o bot + handoff pro cliente + Telegram", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quem ganha o jogo do Flamengo?", "u1");
+
+    // Mensagem de handoff é registrada via appendMessage (robusto a DRY_RUN, que
+    // só pula o envio pelo WhatsApp, não o append).
+    const appended = (m.stateRepo.appendMessage as any).mock.calls.map((c: any) => c[2]).join("\n");
+    expect(appended).toMatch(/coordena[çc][ãa]o/i);
+    expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).toHaveBeenCalled();
+  });
+});
+
+describe("Orchestrator: cliente pede atendente → pausa + msg com horário de atendimento", () => {
+  const pedidos = [
+    "quero falar com um atendente",
+    "queria falar com uma pessoa de verdade",
+    "me passa pra um atendente humano",
+    "tem como falar com alguém?",
   ];
-  for (const msg of hardMsgs) {
-    it(`'${msg}' → pausa o bot + handoff pro cliente + Telegram`, async () => {
+  for (const msg of pedidos) {
+    it(`'${msg}' → pausa, avisa horário seg-sex 8h-17h e chama o time`, async () => {
       const m = buildMocks({
         history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
       });
       const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
       await orch.processMessage("u1", msg, "u1");
 
-      const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
-      expect(sent).toMatch(/coordena[çc][ãa]o/i);
-      expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+      const appended = (m.stateRepo.appendMessage as any).mock.calls.map((c: any) => c[2]).join("\n");
+      expect(appended).toMatch(/atendente/i);
+      expect(appended).toMatch(/segunda a sexta/i);
+      expect(appended).toMatch(/8h.*17h/i);
+      // Não promete coordenação — é o fluxo de atendente humano
+      expect(appended).not.toMatch(/coordena[çc][ãa]o do Col[ée]gio/i);
+      // Bot desativado + time avisado
       expect(m.stateRepo.pauseBot).toHaveBeenCalled();
+      expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+      expect(m.llm.generateMessage).not.toHaveBeenCalled();
     });
   }
 });
@@ -490,7 +547,7 @@ describe("Orchestrator: necessidade documental → secretaria da unidade (com te
     await orch.processMessage("u1", "como tiro o histórico escolar na Cidade Nova?", "u1");
     const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
     expect(sent).toMatch(/secretaria/i);
-    expect(sent).toMatch(/3273-0222/); // telefone da Cidade Nova
+    expect(sent).toMatch(/3346-0011/); // telefone da Cidade Nova
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
     expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
   });
@@ -519,7 +576,7 @@ describe("Orchestrator: pagamento de taxas / segunda chamada → secretaria da u
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "como pago a mensalidade na Cidade Nova?", "u1");
     const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
-    expect(sent).toMatch(/3273-0222/); // telefone da Cidade Nova
+    expect(sent).toMatch(/3346-0011/); // telefone da Cidade Nova
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
     expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
   });
@@ -651,6 +708,20 @@ describe("Orchestrator: pedido de visita → link determinístico (reproduz o pr
   });
 });
 
+describe("Intent router: Ideal Júnior / jr = segmento de Educação Infantil", () => {
+  it("'ideal junior' → enrollment_info nível Educação Infantil", () => {
+    const r = routeIntent("queria saber sobre o ideal junior", false);
+    expect(r.kind).toBe("enrollment_info");
+    if (r.kind === "enrollment_info") expect(r.nivel).toBe("Educação Infantil");
+  });
+  it("'ideal júnior' (com acento) → Educação Infantil", () => {
+    expect(detectNivel("tem vaga no ideal júnior?")).toBe("Educação Infantil");
+  });
+  it("'jr' → Educação Infantil", () => {
+    expect(detectNivel("meu filho é pro jr")).toBe("Educação Infantil");
+  });
+});
+
 describe("Intent router: detecta unit em pergunta de contato", () => {
   it("'numero da secretaria da Cidade Nova' → enrollment_contact com unit", () => {
     const r = routeIntent("numero da secretaria da Cidade Nova", false);
@@ -682,8 +753,14 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
   it("transporte escolar → soft_redirect", () => {
     expect(routeIntent("tem transporte escolar?", false).kind).toBe("soft_redirect");
   });
-  it("pedido explícito de humano → escalate (hard)", () => {
-    expect(routeIntent("quero falar com um humano", false).kind).toBe("escalate");
+  it("pedido explícito de humano → human_request (pausa + msg de horário)", () => {
+    expect(routeIntent("quero falar com um humano", false).kind).toBe("human_request");
+  });
+  it("'falar com um atendente' → human_request", () => {
+    expect(routeIntent("quero falar com um atendente", false).kind).toBe("human_request");
+  });
+  it("'tem como falar com alguém?' → human_request", () => {
+    expect(routeIntent("tem como falar com alguém?", false).kind).toBe("human_request");
   });
   it("assunto fora do colégio (futebol) → escalate (hard)", () => {
     expect(routeIntent("quem ganha o jogo do flamengo?", false).kind).toBe("escalate");

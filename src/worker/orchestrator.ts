@@ -176,9 +176,18 @@ export class MessageOrchestrator {
       // Salva no contato pra aparecer no painel. Best-effort — não atrapalha o
       // fluxo se não der pra extrair um nome plausível.
       if (!contact.name) {
-        const greetingAsked = history.some(
-          (m) => m.role === "assistant" && /como posso te chamar/i.test(m.content)
-        );
+        // RAIZ DE BUG (não reintroduzir): antes isto era `history.some(...)` no
+        // histórico INTEIRO. Como a saudação inicial ("como posso te chamar?")
+        // fica no histórico pra sempre, qualquer mensagem POSTERIOR era testada
+        // como nome — e uma frase solta tipo "Oi, estou interessada em uma vaga"
+        // virava o "nome" (o bot passava a chamar o cliente de "Estou
+        // Interessada"). Só tratamos a mensagem como resposta-ao-nome quando a
+        // ÚLTIMA fala do bot foi justamente o pedido do nome (turno imediato).
+        const lastAssistant = [...history]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        const greetingAsked =
+          !!lastAssistant && /como posso te chamar/i.test(lastAssistant.content);
         if (greetingAsked) {
           const name = extractName(userMessage);
           if (name) {
@@ -237,6 +246,15 @@ export class MessageOrchestrator {
 
       const intent: RoutedIntent = routeIntent(userMessage, false);
       logger.info({ intent: intent.kind }, "Routed intent");
+
+      // Cliente pediu explicitamente um ATENDENTE humano: desativa o bot, avisa o
+      // time e manda a mensagem de "já vou chamar um atendente" com a observação
+      // do horário de atendimento (seg–sex, 8h–17h). Vem antes do escalate
+      // genérico porque a mensagem ao cliente é diferente.
+      if (intent.kind === "human_request") {
+        await this.handleHumanRequest(conversationId, studentId);
+        return;
+      }
 
       // Deterministic path: clear escalation triggers go straight to handoff,
       // unless we already escalated in this conversation.
@@ -758,11 +776,32 @@ export class MessageOrchestrator {
     });
   }
 
+  // Cliente pediu pra falar com um atendente humano: desativa o bot (pausa),
+  // avisa o time no Telegram e manda UMA mensagem dizendo que o atendente já
+  // será chamado — com a observação de que o atendimento humano funciona de
+  // segunda a sexta, das 8h às 17h. A mensagem é diferente do handoff genérico
+  // (não fala em "coordenação"), então passa por handoffMessageOverride.
+  private async handleHumanRequest(
+    conversationId: string,
+    studentId: string
+  ): Promise<void> {
+    await this.escalateToSpecialist(
+      conversationId,
+      studentId,
+      "Cliente pediu para falar com um atendente humano",
+      { handoffMessageOverride: HUMAN_HANDOFF_REPLY }
+    );
+  }
+
   private async escalateToSpecialist(
     conversationId: string,
     studentId: string,
     reason: string,
-    opts: { skipHandoffMessage?: boolean; skipPause?: boolean } = {}
+    opts: {
+      skipHandoffMessage?: boolean;
+      skipPause?: boolean;
+      handoffMessageOverride?: string;
+    } = {}
   ): Promise<void> {
     const history = await this.stateRepository.getHistory(conversationId, 5);
     const context = history.map((m) => `${m.role}: ${m.content}`).join("\n");
@@ -792,6 +831,7 @@ export class MessageOrchestrator {
       );
       if (!opts.skipHandoffMessage) {
         const handoffMessage =
+          opts.handoffMessageOverride ??
           "Vou pedir para a coordenação do Colégio Ideal te responder por aqui mesmo — em instantes alguém do nosso time entra em contato com você. 😊\n\n" +
           "*Para retornar ao atendimento automático, escreva \"reiniciar\".*";
         await this.stateRepository.appendMessage(conversationId, "assistant", handoffMessage);
@@ -904,6 +944,12 @@ export function extractName(raw: string): string | null {
     "ajudar", "nada", "talvez", "ainda", "sei", "entao", "blz", "beleza",
     "certo", "claro", "aham", "uniforme", "horario", "telefone", "numero",
     "oi", "ola", "opa", "ei", "eai", "hey", "salve", "oie", "oii",
+    // Verbos/aberturas comuns de quem ainda NÃO disse o nome (frases soltas que
+    // chegavam turnos depois da saudação e vazavam pro campo de nome).
+    "estou", "esto", "to", "ta", "tava", "vim", "vou", "vendo", "procurando",
+    "buscando", "interessado", "interessada", "interesse", "falar", "atendente",
+    "atendimento", "humano", "pessoa", "alguem", "duvida", "duvidas", "sobre",
+    "vaga", "vagas", "curso", "cursos", "escola", "colegio", "agendar", "visita",
   ]);
   if (STOP.has(firstWord)) return null;
   if (name.replace(/[^\p{L}]/gu, "").length < 2) return null;
@@ -1105,8 +1151,8 @@ function detectPendingUnitAsk(history: ConversationMessage[]): PendingUnitAsk {
 // rótulos que o intent-router devolve em `unit` (UNIT_NAME_PATTERNS).
 const UNIT_SECRETARIA_PHONE: Record<string, string> = {
   "Batista Campos": "(91) 3323-5000",
-  "Augusto Montenegro": "(91) 3273-0667",
-  "Cidade Nova": "(91) 3273-0222",
+  "Augusto Montenegro": "(91) 3120-3188",
+  "Cidade Nova": "(91) 3346-0011",
 };
 
 // Resposta documental quando a unidade já é conhecida: aponta a secretaria e
@@ -1129,6 +1175,16 @@ const DOCUMENT_ASK_UNIT_REPLY =
   "🏫 *Batista Campos*\n" +
   "🏫 *Augusto Montenegro*\n" +
   "🏫 *Cidade Nova (Ananindeua)*";
+
+// Mensagem enviada quando o cliente pede um ATENDENTE humano: confirma que o
+// atendente já vai ser chamado e avisa o horário de atendimento (seg–sex,
+// 8h–17h), pra quem manda mensagem fora desse horário não ficar no vácuo. O bot
+// é desativado (pausado) nesse mesmo fluxo — "reiniciar" reativa.
+const HUMAN_HANDOFF_REPLY =
+  "Perfeito! 😊 Já estou chamando um *atendente* do Colégio Ideal pra falar com você por aqui mesmo.\n\n" +
+  "⏰ *Importante:* nosso atendimento humano funciona de *segunda a sexta, das 8h às 17h*. " +
+  "Se você enviar a mensagem fora desse horário, assim que abrirmos alguém do nosso time te responde por aqui. 🙏\n\n" +
+  "*Se quiser voltar ao atendimento automático, é só escrever \"reiniciar\".*";
 
 // Máximo de mensagens que o bot envia por sessão antes de passar pra atendimento
 // humano. Contém o custo de token do Claude — ordem do colégio.

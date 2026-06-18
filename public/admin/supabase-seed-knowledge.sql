@@ -115,8 +115,8 @@ DELETE FROM school_contacts;
 -- telefones fixos das unidades/secretaria.
 INSERT INTO school_contacts (name, role_title, phone_number) VALUES
   ('Atendimento Batista Campos',                'Telefone fixo Batista Campos',           '559133235000'),
-  ('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559132730667'),
-  ('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559132730222');
+  ('Atendimento Augusto Montenegro',  'Telefone fixo unidade Augusto Montenegro',      '559131203188'),
+  ('Atendimento Cidade Nova',         'Telefone fixo unidade Cidade Nova (Ananindeua)', '559133460011');
 
 
 -- ── 2. UNIDADES ───────────────────────────────────────────────
@@ -143,7 +143,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'augusto-montenegro',
     'Augusto Montenegro',
     'Rodovia Augusto Montenegro, 130 — Parque Verde, Belém — PA',
-    '(91) 3273-0667',
+    '(91) 3120-3188',
     NULL,
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
@@ -157,7 +157,7 @@ INSERT INTO school_units (id, name, address, phone, whatsapp, hours, levels, sys
     'cidade-nova',
     'Cidade Nova (Ananindeua)',
     'Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esquina com a WE-21) — Coqueiro, Ananindeua — PA',
-    '(91) 3273-0222',
+    '(91) 3346-0011',
     NULL,
     'Segunda a sexta, entrada 07:30 com 30 min de tolerância',
     'Maternal, Jardim I e II, Fundamental 1, Fundamental 2, Ensino Médio, Pré-Enem (Eixo)',
@@ -248,6 +248,16 @@ INSERT INTO school_faq (gatilhos, resposta, unit_id, ativo, prioridade) VALUES
   (
     'material didatico, material escolar, livros, livro, apostila, apostilas',
     'O material didático é do sistema *Poliedro* e comprado direto na escola — à vista, parcelado ou no Pix. 📚 Os valores o nosso time te passa presencialmente na secretaria.',
+    NULL, TRUE, -1
+  ),
+  (
+    'portal do aluno, portal do estudante, portal educacional, portal, area do aluno, área do aluno, boletim, ver boletim, acessar boletim, ver nota, ver notas',
+    '📲 *Portal do Aluno* — é por ele que você acessa o *boletim*, acompanha as notas e ainda paga *algumas taxas específicas do aluno*.
+
+👉 Acesse aqui:
+https://grupoeducacional136937.rm.cloudtotvs.com.br/FrameHTML/Web/App/Edu/PortalEducacional/login/
+
+É só entrar com seu login e senha. Qualquer dúvida no acesso, a secretaria te orienta! 😊',
     NULL, TRUE, -1
   );
 

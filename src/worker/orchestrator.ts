@@ -396,6 +396,20 @@ export class MessageOrchestrator {
       return;
     }
 
+    // Pedido de telefone/secretaria COM unidade conhecida → resposta
+    // DETERMINÍSTICA com o telefone do CÓDIGO (UNIT_SECRETARIA_PHONE), sem LLM
+    // e sem ler o banco. RAIZ DE BUG: antes isso caía no get_enrollment_contact
+    // (tabela school_contacts), então um número desatualizado no Supabase fazia
+    // o bot mandar telefone errado mesmo com o código já corrigido. A fonte da
+    // verdade do telefone da unidade é o código.
+    if (intent.kind === "enrollment_contact" && intent.unit) {
+      const reply = buildContactReplyWithUnit(intent.unit);
+      await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+      await this.whatsappClient.sendMessage(studentId, reply);
+      await this.recordTurnOutcome(userMessage, true);
+      return;
+    }
+
     // enrollment_info COM nível concreto → resposta determinística por template,
     // sem chamar o LLM (a tool já devolve texto fixo). Sinal vago segue no fluxo
     // de tool (runDeterministicToolFlow), que é a válvula pra palavra-chave que
@@ -1154,6 +1168,16 @@ const UNIT_SECRETARIA_PHONE: Record<string, string> = {
   "Augusto Montenegro": "(91) 3120-3188",
   "Cidade Nova": "(91) 3346-0011",
 };
+
+// Resposta de CONTATO quando a unidade é conhecida: passa o telefone fixo
+// daquela secretaria direto do CÓDIGO (fonte da verdade), sem LLM e sem banco.
+function buildContactReplyWithUnit(unit: string): string {
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  return (
+    `O telefone da secretaria da unidade *${unit}* é *${phone}*. 📞\n` +
+    `É só ligar que o nosso time te atende certinho! 😊`
+  );
+}
 
 // Resposta documental quando a unidade já é conhecida: aponta a secretaria e
 // passa o telefone DAQUELA unidade.

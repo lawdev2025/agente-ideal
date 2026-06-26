@@ -205,6 +205,35 @@ describe("Orchestrator: pedido de número/secretaria sem unidade", () => {
   });
 });
 
+describe("Orchestrator: telefone da unidade vem do CÓDIGO (não do banco)", () => {
+  it("'numero da secretaria da Cidade Nova' → telefone do código, sem LLM, sem tool de banco", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Olá! Aqui é o atendimento oficial do Grupo Ideal" },
+        { role: "user", content: "Ana" },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "qual o numero da secretaria da Cidade Nova?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/Cidade Nova/);
+    expect(sent).toMatch(/\(91\) 3346-0011/);
+    // Determinístico: não passa pelo LLM nem pelo get_enrollment_contact (banco)
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("'telefone da Augusto Montenegro' → (91) 3120-3188 do código", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "telefone da Augusto Montenegro", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/\(91\) 3120-3188/);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe("Orchestrator: valor/mensalidade/matrícula/material → resposta fixa presencial", () => {
   const perguntas = [
     "qual o valor da mensalidade?",

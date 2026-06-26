@@ -16,23 +16,27 @@
 
 -- ── 1. CONTATOS (tabela school_contacts — usada por get_enrollment_contact) ──
 -- phone_number fica no formato 55 + DDD + número (sem máscara).
+-- ILIKE (match parcial) em vez de '=' exato pra não falhar silenciosamente se o
+-- nome/descrição da linha estiver um pouco diferente no seu banco.
 UPDATE school_contacts
    SET phone_number = '559131203188'
- WHERE name = 'Atendimento Augusto Montenegro';
+ WHERE name ILIKE '%augusto%' OR name ILIKE '%montenegro%'
+    OR role_title ILIKE '%augusto%' OR role_title ILIKE '%montenegro%';
 
 UPDATE school_contacts
    SET phone_number = '559133460011'
- WHERE name = 'Atendimento Cidade Nova';
+ WHERE name ILIKE '%cidade nova%' OR name ILIKE '%ananindeua%'
+    OR role_title ILIKE '%cidade nova%' OR role_title ILIKE '%ananindeua%';
 
 -- ── 2. UNIDADES (tabela school_units — usada por get_unit_info) ──────────────
 -- phone fica com máscara "(91) XXXX-XXXX".
 UPDATE school_units
    SET phone = '(91) 3120-3188'
- WHERE id = 'augusto-montenegro';
+ WHERE id = 'augusto-montenegro' OR name ILIKE '%augusto%' OR name ILIKE '%montenegro%';
 
 UPDATE school_units
    SET phone = '(91) 3346-0011'
- WHERE id = 'cidade-nova';
+ WHERE id = 'cidade-nova' OR name ILIKE '%cidade nova%' OR name ILIKE '%ananindeua%';
 
 -- ── 3. PORTAL DO ALUNO (Resposta Direta school_faq, verbatim, sem LLM) ───────
 -- Remove primeiro qualquer versão anterior do portal (idempotência) e reinsere.

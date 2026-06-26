@@ -35,7 +35,16 @@ export function classifyContactTag(text: string): ContactTag | null {
   if (/(escolinha|\besporte|\besportiva|futebol|futsal|natacao|\bjudo\b|jiu.?jitsu|\bdanca\b|\bvolei|basquete|handebol|\btreino\b|modalidade|karate|ginastica|capoeira|muay)/.test(t))
     return "esporte";
 
+  // Matrícula EXPLÍCITA: o cliente fala em matricular / vaga / estudar.
   if (/(matricul|inscric|inscrev|novo aluno|nova aluna|quero estudar|quero matricular|ingressar|fazer matricula|interesse em estudar|colocar meu filho|colocar minha filha|estudar no colegio|estudar ai|tem vaga)/.test(t))
+    return "matricula";
+
+  // Matrícula IMPLÍCITA: pergunta de valor/mensalidade/série/nível/ano é
+  // interesse em matricular (aluno novo querendo preço/turma). Sem isto,
+  // "Qual o valor do sexto ano?" não recebia tag nenhuma. Eixo, esporte e
+  // rematrícula já foram tratados acima e têm prioridade. Texto normalizado
+  // (sem acento): "médio"→"medio", "série"→"serie", "preço"→"preco".
+  if (/(valor|valores|mensalidade|mensalidades|preco|precos|quanto custa|quanto fica|quanto sai|anuidade|semestralidade|maternal|jardim|infantil|ideal junior|\bjr\b|fundamental|ensino medio|\bmedio\b|colegial|\bserie\b|(primeiro|segundo|terceiro|quarto|quinto|sexto|setimo|oitavo|nono)\s+ano|[1-9]\s*[ºo°]?\s*ano)/.test(t))
     return "matricula";
 
   return null;

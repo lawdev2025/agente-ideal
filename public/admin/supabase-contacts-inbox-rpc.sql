@@ -36,11 +36,12 @@ begin
          'last_message',      lm.content,
          'last_message_role', lm.role,
          'last_message_at',   coalesce(lm.created_at, c.last_seen_at),
-         'needs_reply',       coalesce(lm.role = 'user', false)
+         'needs_reply',       coalesce(lm.role = 'user', false),
+         'last_message_agent', lm.agent_name
        )
   from contacts c
   left join lateral (
-    select m.role, m.content, m.created_at
+    select m.role, m.content, m.created_at, m.agent_name
     from messages m
     where m.wa_id = c.wa_id
       and m.role not in ('tool', 'system')

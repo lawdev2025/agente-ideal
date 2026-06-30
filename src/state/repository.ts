@@ -35,13 +35,14 @@ export class StateRepository {
     waId: string,
     role: "user" | "assistant" | "system" | "tool",
     content: string,
-    media?: MediaFields
+    media?: MediaFields,
+    agentName?: string
   ): Promise<number> {
     const supabase = getSupabase();
     const createdAt = Date.now();
     const { data, error } = await supabase
       .from("messages")
-      .insert({ wa_id: waId, role, content, created_at: createdAt, ...(media ?? {}) })
+      .insert({ wa_id: waId, role, content, created_at: createdAt, ...(media ?? {}), ...(agentName ? { agent_name: agentName } : {}) })
       .select("id")
       .single();
     if (error) {

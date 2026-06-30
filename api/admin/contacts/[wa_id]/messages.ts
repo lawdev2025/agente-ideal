@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "../../../_lib/cors";
-import { checkAdminAuth } from "../../../_lib/auth";
+import { requireUser } from "../../../_lib/auth";
 import { getSupabase } from "../../../../src/db/supabase-client";
 import { config as appConfig } from "../../../../src/config";
 import { StateRepository } from "../../../../src/state/repository";
@@ -17,12 +17,21 @@ const whatsapp = new WhatsAppClient(
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
-  if (!checkAdminAuth(req, res)) return;
+
+  const authUser = requireUser(req, res);
+  if (!authUser) return;
 
   const wa_id = (req.query.wa_id as string) || "";
-  if (!wa_id) {
-    res.status(400).json({ error: "wa_id required" });
-    return;
+  if (!wa_id) { res.status(400).json({ error: "wa_id required" }); return; }
+
+  // Escopo de unidade: atendente só acessa contato da própria unidade.
+  if (authUser.role === "unit") {
+    const sbAuth = getSupabase();
+    const { data: ct } = await sbAuth.from("contacts").select("unit_tag").eq("wa_id", wa_id).maybeSingle();
+    if (!ct || (ct as any).unit_tag !== authUser.unit) {
+      res.status(403).json({ error: "Sem acesso a este contato" });
+      return;
+    }
   }
 
   // GET — histórico da conversa (paginado).
@@ -40,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       let q = sb
         .from("messages")
-        .select("id, wa_id, role, content, created_at, media_type, media_url, media_mime, media_filename")
+        .select("id, wa_id, role, content, created_at, media_type, media_url, media_mime, media_filename, agent_name")
         .eq("wa_id", wa_id)
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
@@ -103,10 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           media_type: mediaType || "document",
           media_url: mediaUrl,
           media_filename: filename || undefined,
-        });
+        }, authUser.name);
       } else {
         await whatsapp.sendMessage(wa_id, text);
-        await repo.appendMessage(wa_id, "assistant", text);
+        await repo.appendMessage(wa_id, "assistant", text, undefined, authUser.name);
       }
 
       res.status(200).json({ ok: true, wa_id });

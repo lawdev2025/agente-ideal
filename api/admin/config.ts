@@ -1,13 +1,14 @@
 ﻿import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "../_lib/cors";
-import { checkAdminAuth } from "../_lib/auth";
+import { requireAdmin } from "../_lib/auth";
 import { logger } from "../../src/logger";
 import * as fs from "fs";
 import * as path from "path";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
-  if (!checkAdminAuth(req, res)) return;
+  // Config edita segredos (chaves de API, tokens) — restrito a admin.
+  if (!requireAdmin(req, res)) return;
 
   if (req.method === "GET") {
     try {

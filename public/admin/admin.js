@@ -109,7 +109,7 @@ async function bootAuth() {
         adminToken = '';
         currentUser = null;
         showAuthGate('login');
-        const errEl = document.getElementById('auth-login-error');
+        const errEl = document.getElementById('login-error');
         if (errEl) errEl.textContent = 'Sua senha precisa ser atualizada. Entre novamente para definir uma nova.';
         return false;
     }

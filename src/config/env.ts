@@ -41,6 +41,7 @@ const EnvSchema = z.object({
   SUPABASE_URL: z.string().default(''),
   SUPABASE_ANON_KEY: z.string().default(''),
   ADMIN_TOKEN: z.string().min(1),
+  AUTH_SECRET: z.string().optional().default(""),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

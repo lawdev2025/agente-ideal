@@ -824,18 +824,17 @@ const DONUT_CONFIGS = {
             rematricula:      '#E86A73',
             eixo:             '#3B82F6',
             esporte:          '#10B981',
-            'Não identificado': '#9CA3AF',
         },
-        labels: { matricula: 'Matrícula', rematricula: 'Rematrícula', eixo: 'Eixo', esporte: 'Esporte', 'Não identificado': 'Não identificado' },
+        labels: { matricula: 'Matrícula', rematricula: 'Rematrícula', eixo: 'Eixo', esporte: 'Esporte' },
         fetch: async () => {
             if (!_sb) return {};
             const { data } = await _sb.from('contacts').select('tag');
-            const counts = { matricula: 0, rematricula: 0, eixo: 0, esporte: 0, 'Não identificado': 0 };
-            (data || []).forEach(r => { const k = r.tag || 'Não identificado'; if (k in counts) counts[k]++; else counts['Não identificado']++; });
+            const counts = { matricula: 0, rematricula: 0, eixo: 0, esporte: 0 };
+            (data || []).forEach(r => { const k = r.tag; if (k && k in counts) counts[k]++; });
             return counts;
         },
         drilldown: async (label) => {
-            if (!_sb || label === 'Não identificado') return null;
+            if (!_sb) return null;
             const rawKey = Object.entries(DONUT_CONFIGS.intencoes.labels).find(([, v]) => v === label)?.[0] || label;
             const { data } = await _sb.from('contacts').select('wa_id').eq('tag', rawKey);
             return (data || []).map(r => r.wa_id).filter(Boolean);
@@ -843,17 +842,17 @@ const DONUT_CONFIGS = {
     },
     unidades: {
         subtitle: 'Distribuição por unidade de interesse',
-        colors: { AM: '#C8202E', BC: '#F59E0B', CN: '#3B82F6', 'Não identificado': '#9CA3AF' },
-        labels: { AM: 'Augusto Montenegro', BC: 'Batista Campos', CN: 'Cidade Nova', 'Não identificado': 'Não identificado' },
+        colors: { AM: '#C8202E', BC: '#F59E0B', CN: '#3B82F6' },
+        labels: { AM: 'Augusto Montenegro', BC: 'Batista Campos', CN: 'Cidade Nova' },
         fetch: async () => {
             if (!_sb) return {};
             const { data } = await _sb.from('contacts').select('unit_tag');
-            const counts = { AM: 0, BC: 0, CN: 0, 'Não identificado': 0 };
-            (data || []).forEach(r => { const k = r.unit_tag || 'Não identificado'; if (k in counts) counts[k]++; else counts['Não identificado']++; });
+            const counts = { AM: 0, BC: 0, CN: 0 };
+            (data || []).forEach(r => { const k = r.unit_tag; if (k && k in counts) counts[k]++; });
             return counts;
         },
         drilldown: async (label) => {
-            if (!_sb || label === 'Não identificado') return null;
+            if (!_sb) return null;
             const rawKey = Object.entries(DONUT_CONFIGS.unidades.labels).find(([, v]) => v === label)?.[0] || label;
             const { data } = await _sb.from('contacts').select('wa_id').eq('unit_tag', rawKey);
             return (data || []).map(r => r.wa_id).filter(Boolean);
@@ -868,13 +867,12 @@ const DONUT_CONFIGS = {
             'Médio':          '#8B5CF6',
             'Militar':        '#6B7280',
             'Eixo':           '#3B82F6',
-            'Não identificado': '#9CA3AF',
         },
         labels: null,
         fetch: async () => {
             if (!_sb) return {};
             const { data: msgs } = await _sb.from('messages').select('content').eq('role', 'user');
-            const counts = { Infantil: 0, 'Fundamental I': 0, 'Fundamental II': 0, Médio: 0, Militar: 0, Eixo: 0, 'Não identificado': 0 };
+            const counts = { Infantil: 0, 'Fundamental I': 0, 'Fundamental II': 0, Médio: 0, Militar: 0, Eixo: 0 };
             (msgs || []).forEach(m => {
                 const t = (m.content || '').toLowerCase();
                 if (/militar|c[íi]vico|civico.milit/.test(t))                                    counts['Militar']++;
@@ -883,7 +881,7 @@ const DONUT_CONFIGS = {
                 else if (/fundamental\s*1|fundamental\s*i(?!i)|anos iniciais|1[º°o]\s*(ao|-)?\s*5/.test(t)) counts['Fundamental I']++;
                 else if (/ensino m[eé]dio|\bm[eé]dio\b|colegial|2[º°o]\s*grau/.test(t))          counts['Médio']++;
                 else if (/infantil|maternal|ber[cç][aá]rio|jardim/.test(t))                       counts['Infantil']++;
-                else counts['Não identificado']++;
+                // mensagens sem segmento identificado são ignoradas (não criam fatia)
             });
             return counts;
         },
@@ -920,7 +918,7 @@ async function drilldownByView(rawLabel) {
     const cfg = DONUT_CONFIGS[currentDonutView];
     if (cfg && cfg.drilldown) {
         const ids = await cfg.drilldown(rawLabel);
-        if (ids === null) return; // Não identificado — sem filtro
+        if (ids === null) return; // sem conexão ao Supabase — sem filtro
         topicFilterIds = new Set(ids);
         topicFilterLabel = rawLabel;
         await activateTab('conversas');
@@ -1411,7 +1409,9 @@ function appendBubble(box, msg) {
     const autoPlaceholders = /^\[(imagem|vídeo|áudio|sticker|documento|arquivo)/i;
     const showText = msg.content && (!mediaHtml || !autoPlaceholders.test(msg.content));
     const textHtml = showText ? `<p class="bubble-text">${escapeHtml(msg.content)}</p>` : '';
-    el.innerHTML = `<div class="chat-bubble">${mediaHtml}${textHtml}<span class="bubble-time">${fmtTime(msg.created_at)}</span></div>`;
+    // Em mensagens enviadas por humano (takeover), mostra quem respondeu.
+    const agentLabel = (msg.role !== 'user' && msg.agent_name) ? `<span class="msg-agent">— ${escapeHtml(msg.agent_name)}</span>` : '';
+    el.innerHTML = `<div class="chat-bubble">${mediaHtml}${textHtml}<span class="bubble-time">${fmtTime(msg.created_at)}</span>${agentLabel}</div>`;
     box.appendChild(el);
 }
 

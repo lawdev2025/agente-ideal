@@ -1415,6 +1415,9 @@ html.dark .glass {
     text-align: right;
 }
 
+/* Nome do atendente humano que respondeu (takeover) */
+.msg-agent{display:block;margin-top:2px;font-size:.72rem;opacity:.7;font-style:italic}
+
 /* Valores nulos na tabela */
 .null-val {
     color: var(--text-muted);

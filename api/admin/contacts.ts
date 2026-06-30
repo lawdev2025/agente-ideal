@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "../_lib/cors";
-import { checkAdminAuth } from "../_lib/auth";
+import { requireUser } from "../_lib/auth";
 import { getSupabase } from "../../src/db/supabase-client";
 import { logger } from "../../src/logger";
 
@@ -10,7 +10,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
-  if (!checkAdminAuth(req, res)) return;
+  const authUser = requireUser(req, res);
+  if (!authUser) return;
 
   try {
     const sb = getSupabase();
@@ -21,7 +22,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Ver public/admin/supabase-contacts-inbox-rpc.sql.
     const { data: rpcContacts, error: rpcErr } = await sb.rpc("get_contacts_inbox");
     if (!rpcErr) {
-      res.status(200).json({ contacts: rpcContacts || [] });
+      const list = (rpcContacts || []) as any[];
+      const scoped = authUser.role === "unit"
+        ? list.filter((c) => c.unit_tag === authUser.unit)
+        : list;
+      res.status(200).json({ contacts: scoped });
       return;
     }
     // Fallback: migração ainda não rodada (função inexistente → erro 42883).
@@ -106,7 +111,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     });
 
-    res.status(200).json({ contacts: enriched });
+    const scoped = authUser.role === "unit"
+      ? enriched.filter((c: any) => c.unit_tag === authUser.unit)
+      : enriched;
+    res.status(200).json({ contacts: scoped });
   } catch (error) {
     logger.error({ error }, "Erro em GET /api/admin/contacts");
     res.status(500).json({ error: "Internal error" });

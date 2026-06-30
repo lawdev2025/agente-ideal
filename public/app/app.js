@@ -1093,7 +1093,18 @@
     const r = await fetch("/api/auth/me", { headers: { Authorization: "Bearer " + token } }).catch(() => null);
     if (!r || !r.ok) { localStorage.removeItem("CRM_TOKEN"); token = ""; showScreen("login"); return; }
     currentUser = (await r.json()).user;
-    if (currentUser.must_change_password) { showScreen("change"); return; }
+    if (currentUser.must_change_password) {
+      // Token salvo mas a senha ainda precisa trocar. Não temos a senha atual
+      // nesta sessão (necessária pelo /api/auth/change-password), então pedimos
+      // login de novo — o fluxo de login guarda a senha e abre a troca.
+      localStorage.removeItem("CRM_TOKEN");
+      token = "";
+      currentUser = null;
+      const le = $("login-error");
+      if (le) le.textContent = "Sua senha precisa ser atualizada. Entre novamente para definir uma nova.";
+      showScreen("login");
+      return;
+    }
     await startApp();
   }
   if (window.supabase) boot();

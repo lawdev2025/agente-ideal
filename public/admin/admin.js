@@ -86,9 +86,34 @@ async function afterAuth() {
 let pendingChangeCurrentPassword = '';
 
 async function bootAuth() {
-    const me = await fetchMe();
+    // Fix 2: garante que adminToken nunca carrega um valor legado antes da auth completar
+    adminToken = '';
+
+    let me;
+    try {
+        me = await fetchMe();
+    } catch (_) {
+        // Fix (resiliência): erro de rede → tela de login em vez de rejeição silenciosa
+        showAuthGate('login');
+        return false;
+    }
+
     if (!me) { showAuthGate('login'); return false; }
-    if (me.must_change_password) { showAuthGate('change'); return false; }
+
+    // Fix 1: se a senha precisa ser trocada, não temos a senha atual (ela só é
+    // capturada no fluxo normal de login). Descartamos a sessão e pedimos que o
+    // usuário entre novamente — o fluxo login → must_change → troca funciona corretamente.
+    if (me.must_change_password) {
+        localStorage.removeItem('AUTH_TOKEN');
+        authToken = '';
+        adminToken = '';
+        currentUser = null;
+        showAuthGate('login');
+        const errEl = document.getElementById('auth-login-error');
+        if (errEl) errEl.textContent = 'Sua senha precisa ser atualizada. Entre novamente para definir uma nova.';
+        return false;
+    }
+
     await afterAuth();
     return true;
 }
@@ -314,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) { errEl.textContent = err.message; }
     });
 
-    bootAuth();
+    bootAuth().catch(() => showAuthGate('login'));
 });
 
 // 2. ABAS

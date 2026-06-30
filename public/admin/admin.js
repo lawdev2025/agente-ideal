@@ -483,7 +483,8 @@ if (!document.__adminUsersListenerSet) {
         }
 
         // ── Trocar minha senha (botão na aba Usuários e no footer da sidebar) ─
-        if (e.target.id === 'btn-my-password' || e.target.id === 'btn-change-pw-footer') {
+        // closest() para o clique funcionar mesmo no ícone/texto dentro do botão.
+        if (e.target.closest('#btn-my-password, #btn-change-pw-footer')) {
             const cur = prompt('Senha atual:'); if (!cur) return;
             const np  = prompt('Nova senha (mín. 6):');
             if (!np || np.length < 6) { alert('A nova senha deve ter pelo menos 6 caracteres.'); return; }

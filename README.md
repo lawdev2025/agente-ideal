@@ -274,6 +274,23 @@ npm start
 
 MIT
 
+## Login / usuários
+
+O painel (`/admin`) e o app (`/app`) exigem login. Os usuários ficam na tabela
+`app_users` (Supabase). Para inicializar (uma vez, no deploy):
+
+1. Rode `public/admin/supabase-app-users.sql` no SQL Editor do Supabase.
+2. Rode a versão atualizada de `public/admin/supabase-contacts-inbox-rpc.sql`
+   (passou a incluir `agent_name` no preview da última mensagem).
+3. Rode `npx tsx scripts/seed-users.ts` (cria o admin + as 3 atendentes).
+4. (Opcional) defina `AUTH_SECRET` na Vercel; sem ela, usa `ADMIN_TOKEN`.
+
+- **Admin:** login `admin` (não é e-mail), acesso total + menu **Usuários**.
+- **Atendentes de unidade:** login = e-mail; veem só os contatos e o dashboard
+  da sua unidade (AM/BC/CN). Trocam a senha obrigatoriamente no 1º acesso.
+- A sessão fica salva no dispositivo (não precisa logar de novo a cada vez).
+- O admin gerencia usuários (criar/editar/excluir/resetar senha) no menu Usuários.
+
 ## Support
 
 Para suporte, abra uma issue no repositório.

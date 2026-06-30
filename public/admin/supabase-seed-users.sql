@@ -1,0 +1,7 @@
+-- SEED dos 4 usuarios (hashes scrypt). Idempotente. Rode no SQL Editor DEPOIS de supabase-app-users.sql.
+INSERT INTO app_users (name, login, email, password_hash, role, unit, must_change_password, active, created_at, updated_at) VALUES
+  ('Admin', 'admin', NULL, '0640fc3449b783746331f051f4ab1605:e11d4ad378ab2a15b7de08facd0adb8dd598a4ed2a3f43615d5cd411908f5e5cc6aadf903f2e71efd33f0f3b21bc8bad655da95ae877b614a4ecfd61baa7e52a', 'admin', NULL, FALSE, TRUE, 1782842578743, 1782842578743),
+  ('Elizangela', 'elizangela.cruz@grupoideal.com.br', 'elizangela.cruz@grupoideal.com.br', '254cdc0b5e0c76475ef2567b548b92f2:96cfc4c3866097567a8dbe5cf82c27afed16a782d8ff08ba0f23f6ad2e9399f6316091c84340bcb431cb2b4916bf3702b091c0962156a12e4ef4efb54836794b', 'unit', 'AM', TRUE, TRUE, 1782842578743, 1782842578743),
+  ('Ivane', 'ivane.furtado@grupoideal.com.br', 'ivane.furtado@grupoideal.com.br', 'c7a6edc862aa4e4c1ab23961d228f3be:bd7f72b17461c1988e660d29dc95992e4f6efb69838ee6943096ad3bc6e8ff20f93a0d6b6824b00436214c4b30c9f113cf8682e3b1e6e3f4fd1d1cd602d31bd4', 'unit', 'BC', TRUE, TRUE, 1782842578743, 1782842578743),
+  ('Adriane', 'adriane.fernandes@grupoideal.com.br', 'adriane.fernandes@grupoideal.com.br', 'f5bd4c8b8a1886e8d914f8be1246b2c4:30cb9fff18d9da259344027afb515729939de131f576eab0d2871d81b04370fa15d0eaed44c217a644ac8af6050757c6e89fd1839e2ccdbe719c773ebbc11fb0', 'unit', 'CN', TRUE, TRUE, 1782842578743, 1782842578743)
+ON CONFLICT (login) DO NOTHING;

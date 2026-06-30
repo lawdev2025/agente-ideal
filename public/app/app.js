@@ -118,9 +118,11 @@
 
   // ---------------- START (pos-login) ----------------
   async function startApp() {
-    // Busca configurações do servidor (Supabase keys, VAPID etc.)
+    // Busca config pública do servidor (Supabase URL/anon key p/ realtime).
+    // Usa /api/config (público) — NÃO /api/admin/config, que é só admin e
+    // daria 403 para as atendentes de unidade.
     try {
-      const res = await fetch("/api/admin/config", { headers: { Authorization: "Bearer " + token } });
+      const res = await fetch("/api/config");
       if (res.ok) cfg = await res.json();
     } catch (_) { /* continua sem realtime se falhar */ }
 

@@ -75,8 +75,30 @@ function showAuthGate(mode) {
 }
 function hideAuthGate() { document.getElementById('auth-gate').style.display = 'none'; }
 
-// applyRoleUI: placeholder — Task 13 implementará o controle de papel por unidade.
-function applyRoleUI() {}
+// applyRoleUI: controla visibilidade do menu e trava o dashboard por unidade.
+function applyRoleUI() {
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const setTab = (tab, show) => {
+    const li = document.querySelector(`.sidebar-menu li[data-tab="${tab}"]`);
+    if (li) li.style.display = show ? '' : 'none';
+  };
+  setTab('banco', isAdmin);
+  setTab('config', isAdmin);
+  setTab('usuarios', isAdmin);
+
+  if (!isAdmin && currentUser) {
+    // Trava o dashboard na unidade da atendente.
+    selectedUnitFilter = currentUser.unit;
+    window.LOCKED_UNIT = currentUser.unit;
+    // Se a aba ativa for uma proibida, volta pro dashboard.
+    const active = document.querySelector('.sidebar-menu li.active');
+    const activeTab = active && active.getAttribute('data-tab');
+    if (activeTab === 'banco' || activeTab === 'config' || activeTab === 'usuarios') {
+      const dashLi = document.querySelector('.sidebar-menu li[data-tab="dashboard"]');
+      if (dashLi) dashLi.click();
+    }
+  }
+}
 
 async function afterAuth() {
     applyRoleUI();
@@ -302,7 +324,7 @@ async function startPanel() {
     // Abre a aba a partir do #hash (ex.: /admin#config vindo do drawer do app).
     function tabFromHash() {
         const h = (location.hash || '').replace('#', '');
-        if (['dashboard', 'conversas', 'banco', 'config'].indexOf(h) !== -1) {
+        if (['dashboard', 'conversas', 'banco', 'config', 'usuarios'].indexOf(h) !== -1) {
             activateTab(h);
         }
     }
@@ -354,6 +376,11 @@ function initTabs() {
 // Troca de aba reutilizável (clique na sidebar ou navegação programática, ex.:
 // drill-down de assunto). Devolve a promise do loader pra quem precisar aguardar.
 function activateTab(tab) {
+    // Guarda de papel: atendentes de unidade não podem acessar abas restritas.
+    if (currentUser && currentUser.role !== 'admin' && ['banco', 'config', 'usuarios'].includes(tab)) {
+        tab = 'dashboard';
+    }
+
     document.querySelectorAll('.sidebar-menu li').forEach(i =>
         i.classList.toggle('active', i.getAttribute('data-tab') === tab));
 
@@ -365,7 +392,8 @@ function activateTab(tab) {
         dashboard: { title: 'Painel de Controle', subtitle: 'Resumo estatístico do Agente Ideal e atendimento escolar' },
         conversas: { title: 'Central de Conversas', subtitle: 'Visualize os atendimentos do bot e gerencie o status em tempo real' },
         banco: { title: 'Banco de Dados', subtitle: 'Edite, adicione ou exclua informações da base de conhecimento da escola' },
-        config: { title: 'Configurações de Conexão', subtitle: 'Gerencie as chaves de integração do Supabase' }
+        config: { title: 'Configurações de Conexão', subtitle: 'Gerencie as chaves de integração do Supabase' },
+        usuarios: { title: 'Usuários', subtitle: 'Gerencie os usuários e permissões do painel admin' }
     };
     document.getElementById('tab-title').textContent = titles[tab].title;
     document.getElementById('tab-subtitle').textContent = titles[tab].subtitle;
@@ -796,6 +824,8 @@ async function loadDonutView(view) {
 
 async function drilldownByView(rawLabel) {
     if (!rawLabel) return;
+    // Atendente de unidade não alterna unidade via clique no donut.
+    if (window.LOCKED_UNIT && currentDonutView === 'unidades') return;
     const cfg = DONUT_CONFIGS[currentDonutView];
     if (cfg && cfg.drilldown) {
         const ids = await cfg.drilldown(rawLabel);
@@ -1843,6 +1873,8 @@ async function renderUnitFilterChips() {
     if (!selectedUnitFilter && cachedUnits.length > 0) {
         selectedUnitFilter = cachedUnits[0].id;
     }
+    // Atendente de unidade não muda o filtro: fica preso na unidade dela.
+    if (window.LOCKED_UNIT) selectedUnitFilter = window.LOCKED_UNIT;
 
     cachedUnits.forEach(u => {
         const btn = document.createElement('button');
@@ -1850,6 +1882,7 @@ async function renderUnitFilterChips() {
         btn.className = 'unit-chip' + (selectedUnitFilter === u.id ? ' active' : '');
         btn.textContent = u.name;
         btn.addEventListener('click', () => {
+            if (window.LOCKED_UNIT) return; // atendente de unidade não alterna unidade
             selectedUnitFilter = u.id;
             renderUnitFilterChips();
             loadDatabaseTable();

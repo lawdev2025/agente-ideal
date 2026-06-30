@@ -62,6 +62,9 @@
                         <i class="fa-solid fa-sliders"></i>
                         <span>Configurações</span>
                     </li>
+                    <li data-tab="usuarios" id="nav-usuarios" style="display:none">
+                        <i class="fa-solid fa-users"></i> <span>Usuários</span>
+                    </li>
                 </ul>
             </nav>
             
@@ -365,6 +368,18 @@
                             </table>
                         </div>
                     </div>
+                </section>
+
+                <!-- 5. Aba Usuários (visível apenas para admin) -->
+                <section class="tab-content" id="tab-usuarios">
+                  <div class="users-toolbar">
+                    <button id="btn-new-user" class="btn">+ Novo usuário</button>
+                    <button id="btn-my-password" class="btn">Trocar minha senha</button>
+                  </div>
+                  <table class="db-table" id="users-table">
+                    <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Unidade</th><th>Status</th><th></th></tr></thead>
+                    <tbody></tbody>
+                  </table>
                 </section>
 
                 <!-- 4. Aba Configurações -->

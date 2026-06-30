@@ -1,6 +1,10 @@
+// Handlers por contato reunidos (prefixo "_" → NÃO vira Serverless Function).
+// O roteador é api/admin/contacts/[wa_id]/[action].ts, que despacha por
+// ?action: "messages" (GET histórico / POST takeover) e "pause" (PATCH).
+// URLs do front inalteradas; consolidado p/ caber no limite Hobby (≤12).
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "../../../_lib/cors";
-import { requireUser } from "../../../_lib/auth";
+import { requireUser, checkAdminAuth } from "../../../_lib/auth";
 import { getSupabase } from "../../../../src/db/supabase-client";
 import { config as appConfig } from "../../../../src/config";
 import { StateRepository } from "../../../../src/state/repository";
@@ -15,7 +19,8 @@ const whatsapp = new WhatsAppClient(
   appConfig.whatsapp.businessAccountId
 );
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+// /api/admin/contacts/:wa_id/messages — GET histórico, POST takeover humano
+export async function messages(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
 
   const authUser = requireUser(req, res);
@@ -60,8 +65,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const batch = data || [];
       const hasMore = batch.length === limit;
       // Veio descendente (do mais novo pro mais antigo); inverte pra ascendente.
-      const messages = batch.slice().reverse();
-      res.status(200).json({ messages, hasMore });
+      const msgs = batch.slice().reverse();
+      res.status(200).json({ messages: msgs, hasMore });
     } catch (error) {
       logger.error({ error, wa_id }, "Erro em GET /api/admin/contacts/:wa_id/messages");
       res.status(500).json({ error: "Internal error" });
@@ -133,4 +138,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   res.status(405).json({ error: "Method not allowed" });
+}
+
+// /api/admin/contacts/:wa_id/pause — PATCH pausa/retoma o bot
+export async function pause(req: VercelRequest, res: VercelResponse) {
+  if (!applyCors(req, res)) return;
+  if (req.method !== "PATCH") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+  if (!checkAdminAuth(req, res)) return;
+
+  const wa_id = (req.query.wa_id as string) || "";
+  if (!wa_id) {
+    res.status(400).json({ error: "wa_id required" });
+    return;
+  }
+
+  const body = (req.body || {}) as { paused?: boolean };
+  if (typeof body.paused !== "boolean") {
+    res.status(400).json({ error: "Body must contain { paused: boolean }" });
+    return;
+  }
+
+  try {
+    if (body.paused) {
+      await repo.pauseBot(wa_id, "Pausado via painel admin");
+    } else {
+      await repo.resumeBot(wa_id);
+    }
+    res.status(200).json({ ok: true, wa_id, bot_paused: body.paused });
+  } catch (error) {
+    logger.error({ error, wa_id }, "Erro em PATCH /api/admin/contacts/:wa_id/pause");
+    res.status(500).json({ error: "Internal error" });
+  }
 }

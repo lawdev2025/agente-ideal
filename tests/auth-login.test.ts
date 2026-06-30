@@ -11,7 +11,7 @@ vi.mock("../src/db/supabase-client", () => ({
 }));
 vi.mock("../api/_lib/cors", () => ({ applyCors: () => true }));
 
-import handler from "../api/auth/login";
+import { login as handler } from "../api/auth/_handlers";
 
 function mockRes() {
   const res: any = { statusCode: 0, body: null };

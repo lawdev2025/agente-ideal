@@ -15,7 +15,7 @@ vi.mock("../src/db/supabase-client", () => ({
 vi.mock("../api/_lib/cors", () => ({ applyCors: () => true }));
 vi.mock("../src/config", () => ({ config: { adminToken: "LEGACY" } }));
 
-import handler from "../api/auth/change-password";
+import { changePassword as handler } from "../api/auth/_handlers";
 
 function mockRes() {
   const res: any = { statusCode: 0, body: null };

@@ -60,12 +60,30 @@
           <p class="login-sub">Atendimento WhatsApp em tempo real</p>
         </div>
         <div class="card login-card card-in" style="--d:.12s">
-          <label class="login-label">Token de acesso</label>
-          <input id="login-token" class="tok-field" type="password" inputmode="text"
-                 placeholder="••••••••" autocomplete="current-password" maxlength="48" />
+          <input id="login-user" type="text" inputmode="email" placeholder="E-mail" autocomplete="username" />
+          <input id="login-pass" type="password" placeholder="Senha" autocomplete="current-password" />
           <button id="login-btn" class="btn">Entrar</button>
           <p id="login-error" class="login-error"></p>
           <p class="login-note">Acesso restrito ao time de atendimento</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TROCA DE SENHA ============ -->
+  <section id="screen-change" class="screen">
+    <div class="scr scr-login">
+      <div class="login-wrap">
+        <div class="login-brand card-in">
+          <div class="id-badge"><span>id</span></div>
+          <h1>ideal <span>CRM</span></h1>
+        </div>
+        <div class="card login-card card-in" style="--d:.12s">
+          <h2 style="margin:0 0 12px;font-size:1rem;font-weight:700">Crie uma nova senha</h2>
+          <input id="chg-new" type="password" placeholder="Nova senha (mín. 6)" autocomplete="new-password" />
+          <input id="chg-confirm" type="password" placeholder="Confirme a senha" autocomplete="new-password" />
+          <button id="chg-btn" class="btn">Salvar e entrar</button>
+          <p id="chg-error" class="login-error"></p>
         </div>
       </div>
     </div>

@@ -9,11 +9,9 @@
   const $ = (id) => document.getElementById(id);
 
   // ---------------- estado ----------------
-  // Token embutido p/ login automatico (sem digitar). Tem que bater com o
-  // ADMIN_TOKEN configurado na Vercel. Como vai no JS publico, o endpoint de
-  // config NAO devolve mais segredos (chaves de API) — ver api/admin/config.ts.
-  const BAKED_TOKEN = "crm_shoHLhRunngIfWB-19A-fANzFOX5RyBg";
-  let token = localStorage.getItem("CRM_TOKEN") || BAKED_TOKEN;
+  let token = localStorage.getItem("CRM_TOKEN") || "";
+  let currentUser = null; // { id, name, role, unit, must_change_password }
+  let pendingPwd = "";    // senha atual guardada durante troca obrigatória
   let cfg = {}; // { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY }
   let sb = null; // cliente supabase (realtime)
   let contacts = []; // lista de contatos
@@ -83,35 +81,49 @@
   }
 
   // ---------------- LOGIN ----------------
-  async function doLogin(tok) {
+  async function doLogin(login, password) {
     $("login-error").textContent = "";
-    if (!tok) {
-      $("login-error").textContent = "Informe o token de acesso.";
-      return;
-    }
     try {
-      const res = await fetch("/api/admin/config", {
-        headers: { Authorization: "Bearer " + tok },
+      const r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login, password }),
       });
-      if (res.status === 401) {
-        $("login-error").textContent = "Token inválido.";
-        localStorage.removeItem("CRM_TOKEN");
+      if (!r.ok) {
+        $("login-error").textContent = (await r.json().catch(() => ({}))).error || "Login inválido.";
         showScreen("login");
         return;
       }
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      cfg = await res.json();
-      token = tok;
-      localStorage.setItem("CRM_TOKEN", tok);
-      await start();
+      const data = await r.json();
+      token = data.token;
+      localStorage.setItem("CRM_TOKEN", token);
+      currentUser = data.user;
+      if (data.user.must_change_password) { pendingPwd = password; showScreen("change"); return; }
+      await startApp();
     } catch (e) {
-      $("login-error").textContent = "Falha ao conectar. Verifique a conexão.";
+      $("login-error").textContent = "Falha ao conectar.";
       showScreen("login");
     }
   }
 
+  // Troca de senha obrigatória (primeiro acesso).
+  async function changePassword(np) {
+    const r = await fetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ currentPassword: pendingPwd, newPassword: np }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Falha ao trocar senha");
+  }
+
   // ---------------- START (pos-login) ----------------
-  async function start() {
+  async function startApp() {
+    // Busca configurações do servidor (Supabase keys, VAPID etc.)
+    try {
+      const res = await fetch("/api/admin/config", { headers: { Authorization: "Bearer " + token } });
+      if (res.ok) cfg = await res.json();
+    } catch (_) { /* continua sem realtime se falhar */ }
+
     showScreen("list");
     connectSupabase();
     registerServiceWorker();
@@ -458,7 +470,9 @@
       const autoPlaceholder = /^\[(imagem|vídeo|áudio|sticker|documento|arquivo)/i.test(m.content || "");
       const textHtml = (m.content && (!mediaHtml || !autoPlaceholder))
         ? `<div>${escapeHtml(m.content)}</div>` : "";
-      div.innerHTML = `${mediaHtml}${textHtml}<span class="msg-time">${time}${out ? " ✓✓" : ""}</span>`;
+      // Nome do atendente que respondeu (aparece embaixo na bolha do assistente/saída)
+      const agentHtml = (out && m.agent_name) ? `<small class="msg-agent">— ${escapeHtml(m.agent_name)}</small>` : "";
+      div.innerHTML = `${mediaHtml}${textHtml}${agentHtml}<span class="msg-time">${time}${out ? " ✓✓" : ""}</span>`;
     }
     return div;
   }
@@ -963,9 +977,22 @@
   }
 
   // ---------------- LISTENERS ----------------
-  $("login-btn").addEventListener("click", () => doLogin($("login-token").value.trim()));
-  $("login-token").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") doLogin($("login-token").value.trim());
+  $("login-btn").addEventListener("click", () => doLogin($("login-user").value.trim(), $("login-pass").value));
+  $("login-user").addEventListener("keydown", (e) => { if (e.key === "Enter") $("login-pass").focus(); });
+  $("login-pass").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") doLogin($("login-user").value.trim(), $("login-pass").value);
+  });
+  $("chg-btn").addEventListener("click", async () => {
+    $("chg-error").textContent = "";
+    const np = $("chg-new").value, cf = $("chg-confirm").value;
+    if (np.length < 6) { $("chg-error").textContent = "Mínimo 6 caracteres."; return; }
+    if (np !== cf) { $("chg-error").textContent = "As senhas não conferem."; return; }
+    try {
+      await changePassword(np);
+      currentUser.must_change_password = false;
+      pendingPwd = "";
+      await startApp();
+    } catch (e) { $("chg-error").textContent = e.message; }
   });
   $("logout-btn").addEventListener("click", () => {
     localStorage.removeItem("CRM_TOKEN");
@@ -1057,11 +1084,15 @@
   });
 
   // ---------------- BOOT ----------------
-  function boot() {
+  async function boot() {
     applyTheme(localStorage.getItem("CRM_THEME") || "light");
-    // Login automatico: tenta o token salvo/embutido. So mostra a tela de
-    // login se o token for rejeitado (fallback).
-    doLogin(token).catch(() => showScreen("login"));
+    if (!token) { showScreen("login"); return; }
+    // Valida o token salvo via /api/auth/me antes de entrar no app.
+    const r = await fetch("/api/auth/me", { headers: { Authorization: "Bearer " + token } }).catch(() => null);
+    if (!r || !r.ok) { localStorage.removeItem("CRM_TOKEN"); token = ""; showScreen("login"); return; }
+    currentUser = (await r.json()).user;
+    if (currentUser.must_change_password) { showScreen("change"); return; }
+    await startApp();
   }
   if (window.supabase) boot();
   else window.addEventListener("load", boot);

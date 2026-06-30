@@ -86,6 +86,14 @@ function applyRoleUI() {
   setTab('config', isAdmin);
   setTab('usuarios', isAdmin);
 
+  // Atualiza nome e iniciais no rodapé da sidebar
+  if (currentUser) {
+    const nameEl = document.querySelector('.user-profile .user-info h4');
+    const avatarEl = document.querySelector('.user-profile .avatar');
+    if (nameEl) nameEl.textContent = currentUser.name || currentUser.login || 'Usuário';
+    if (avatarEl) avatarEl.textContent = contactInitials(currentUser.name || currentUser.login);
+  }
+
   if (!isAdmin && currentUser) {
     // Trava o dashboard na unidade da atendente.
     selectedUnitFilter = currentUser.unit;
@@ -401,6 +409,88 @@ function activateTab(tab) {
     if (tab === 'dashboard') return loadDashboardStats();
     if (tab === 'conversas') return loadConversationsTab();
     if (tab === 'banco') { loadDatabaseTable(); loadIntentLearning(); return; }
+    if (tab === 'usuarios') return loadUsers();
+}
+
+// ── Usuários: CRUD ────────────────────────────────────────────────────────────
+
+async function loadUsers() {
+    const r = await fetch(BACKEND_URL + '/api/admin/users', { headers: authHeader() });
+    if (!r.ok) return;
+    const { users } = await r.json();
+    const tb = document.querySelector('#users-table tbody');
+    tb.innerHTML = (users || []).map(u => `
+        <tr data-id="${u.id}">
+          <td>${escapeHtml(u.name)}</td>
+          <td>${escapeHtml(u.login)}</td>
+          <td>${escapeHtml(u.role)}</td>
+          <td>${escapeHtml(u.unit || '-')}</td>
+          <td>${u.active ? 'ativo' : 'inativo'}</td>
+          <td>
+            <button class="btn btn-sm js-reset">Resetar senha</button>
+            <button class="btn btn-sm js-del">Excluir</button>
+          </td>
+        </tr>`).join('');
+}
+
+// Delegação de clique para CRUD de usuários e "Trocar minha senha"
+// Registrado uma única vez (guarda via flag no document).
+if (!document.__adminUsersListenerSet) {
+    document.__adminUsersListenerSet = true;
+    document.addEventListener('click', async (e) => {
+        // ── Novo usuário ──────────────────────────────────────────────────────
+        if (e.target.id === 'btn-new-user') {
+            const name  = prompt('Nome:'); if (!name) return;
+            const login = prompt('Login (e-mail):'); if (!login) return;
+            const role  = prompt('Papel (admin/unit):', 'unit'); if (!role) return;
+            const unit  = role === 'unit' ? prompt('Unidade (AM/BC/CN):', 'AM') : null;
+            const password = prompt('Senha inicial:'); if (!password) return;
+            const r = await fetch(BACKEND_URL + '/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeader() },
+                body: JSON.stringify({ name, login, email: login, role, unit, password }),
+            });
+            if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Erro ao criar usuário'); return; }
+            loadUsers();
+            return;
+        }
+
+        // ── Ações sobre linha da tabela ───────────────────────────────────────
+        const tr = e.target.closest('#users-table tr[data-id]');
+
+        if (tr && e.target.classList.contains('js-reset')) {
+            const np = prompt('Nova senha (mín. 6):');
+            if (!np || np.length < 6) return;
+            const r = await fetch(BACKEND_URL + '/api/admin/users/' + tr.dataset.id, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...authHeader() },
+                body: JSON.stringify({ resetPassword: np }),
+            });
+            if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Erro ao resetar senha'); return; }
+            alert('Senha resetada. O usuário troca no próximo login.');
+            return;
+        }
+
+        if (tr && e.target.classList.contains('js-del')) {
+            if (!confirm('Excluir (desativar) este usuário?')) return;
+            const r = await fetch(BACKEND_URL + '/api/admin/users/' + tr.dataset.id, {
+                method: 'DELETE',
+                headers: authHeader(),
+            });
+            if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Erro ao excluir usuário'); return; }
+            loadUsers();
+            return;
+        }
+
+        // ── Trocar minha senha (botão na aba Usuários e no footer da sidebar) ─
+        if (e.target.id === 'btn-my-password' || e.target.id === 'btn-change-pw-footer') {
+            const cur = prompt('Senha atual:'); if (!cur) return;
+            const np  = prompt('Nova senha (mín. 6):');
+            if (!np || np.length < 6) { alert('A nova senha deve ter pelo menos 6 caracteres.'); return; }
+            try { await changePassword(cur, np); alert('Senha alterada com sucesso.'); }
+            catch (err) { alert(err.message); }
+        }
+    });
 }
 
 // 3. TEMA

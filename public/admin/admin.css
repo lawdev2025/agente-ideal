@@ -327,6 +327,36 @@ html.dark .glass {
     flex-shrink: 0;
 }
 
+/* Botão "Trocar senha" no footer da sidebar (visível para todos os papéis) */
+.btn-change-pw-footer {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    border-radius: var(--radius-lg);
+    color: var(--sidebar-text);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    text-align: left;
+    transition: var(--transition-smooth);
+}
+
+.btn-change-pw-footer:hover {
+    color: var(--sidebar-text-hover);
+    background-color: var(--sidebar-hover-bg);
+}
+
+.btn-change-pw-footer i {
+    opacity: 0.7;
+    width: 16px;
+    text-align: center;
+}
+
 /* CONTEÚDO PRINCIPAL */
 .main-content {
     flex-grow: 1;

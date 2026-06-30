@@ -1,15 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors } from "../_lib/cors";
-import { checkAdminAuth } from "../_lib/auth";
+import { requireUser } from "../_lib/auth";
 import { getSupabase } from "../../src/db/supabase-client";
 import { logger } from "../../src/logger";
 import { LearningRepository } from "../../src/learning/repository";
 
-// Cache em memória do payload de stats. Vive enquanto a function está "warm"
-// (singleton por módulo no Vercel). Métricas de dashboard toleram ~30s de
-// atraso, e isso corta o recomputo em aberturas/refreshes repetidos.
+// Cache em memória do payload de stats, indexado por escopo.
+// Chave: "admin" (visão global) ou "unit:<nome>" (unidade específica).
+// Vive enquanto a function está "warm" (singleton por módulo no Vercel).
+// Métricas de dashboard toleram ~30s de atraso.
 const STATS_TTL_MS = 30_000;
-let statsCache: { at: number; payload: any } | null = null;
+const statsCache = new Map<string, { at: number; payload: any }>();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
@@ -17,17 +18,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
-  if (!checkAdminAuth(req, res)) return;
 
-  if (statsCache && Date.now() - statsCache.at < STATS_TTL_MS) {
+  // Troca checkAdminAuth por requireUser para capturar o usuário e definir escopo.
+  const authUser = requireUser(req, res);
+  if (!authUser) return;
+  const scopeKey = authUser.role === "unit" ? `unit:${authUser.unit}` : "admin";
+
+  const cached = statsCache.get(scopeKey);
+  if (cached && Date.now() - cached.at < STATS_TTL_MS) {
     res.setHeader("X-Cache", "HIT");
-    res.status(200).json(statsCache.payload);
+    res.status(200).json(cached.payload);
     return;
   }
 
   try {
     const sb = getSupabase();
     const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
+
+    // Escopo de unidade: lista de wa_ids dessa unidade (null → admin/global).
+    let unitWaIds: string[] | null = null;
+    if (authUser.role === "unit") {
+      const { data: us } = await sb.from("contacts").select("wa_id").eq("unit_tag", authUser.unit);
+      unitWaIds = (us || []).map((r: any) => r.wa_id);
+      if (unitWaIds.length === 0) unitWaIds = ["__none__"]; // evita filtro vazio = tudo
+    }
+    // Helpers de escopo: aplicam filtro por unidade quando unitWaIds não é null.
+    const scopeMsgs = (q: any) => (unitWaIds ? q.in("wa_id", unitWaIds) : q);
+    const scopeContacts = (q: any) => (unitWaIds ? q.eq("unit_tag", authUser.unit) : q);
 
     const [
       { count: totalMessages },
@@ -38,17 +55,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       uniqueUsersRes,
       subjectsRes,
     ] = await Promise.all([
-      sb.from("messages").select("*", { count: "exact", head: true }),
-      sb.from("contacts").select("*", { count: "exact", head: true }),
-      sb.from("contacts").select("*", { count: "exact", head: true }).gte("last_seen_at", cutoff24h),
-      sb.from("contacts").select("*", { count: "exact", head: true }).eq("bot_paused", true),
-      sb
-        .from("messages")
-        .select("*", { count: "exact", head: true })
-        .eq("role", "tool")
-        .like("content", "%escalate_to_specialist%"),
+      scopeMsgs(sb.from("messages").select("*", { count: "exact", head: true })),
+      scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true })),
+      scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).gte("last_seen_at", cutoff24h)),
+      scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("bot_paused", true)),
+      scopeMsgs(
+        sb
+          .from("messages")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "tool")
+          .like("content", "%escalate_to_specialist%")
+      ),
       // Agregações no Postgres em vez de trazer todas as msgs de usuário pro Node.
       // Ver public/admin/supabase-stats-rpc.sql.
+      // Para usuários de unidade, as RPCs são globais — pulamos o caminho rápido.
       sb.rpc("stats_unique_users_7d"),
       sb.rpc("stats_subjects"),
     ]);
@@ -86,7 +106,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let msgCounts: number[] = [];
 
     // Caminho rápido: as RPCs (supabase-stats-rpc.sql) já devolvem os agregados.
-    if (!uniqueUsersRes.error && !subjectsRes.error) {
+    // Somente para admin (unitWaIds === null) — as RPCs são globais e não filtram por unidade.
+    if (unitWaIds === null && !uniqueUsersRes.error && !subjectsRes.error) {
       for (const row of (uniqueUsersRes.data || []) as any[]) {
         // row.day vem como 'YYYY-MM-DD' (date). Monta label "seg 5".
         const d = new Date(`${row.day}T00:00:00`);
@@ -97,15 +118,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (row.subject in subjects) subjects[row.subject] = Number(row.total) || 0;
       }
     } else {
-      // Fallback: migração não rodada. Recalcula em JS (carrega as msgs de user).
-      logger.warn(
-        { uniqueErr: uniqueUsersRes.error, subjErr: subjectsRes.error },
-        "RPCs de stats indisponíveis — usando fallback (rode supabase-stats-rpc.sql)"
+      // Fallback: migração não rodada, ou usuário de unidade (RPCs são globais).
+      // Recalcula em JS carregando as msgs de usuário com escopo aplicado.
+      if (unitWaIds === null) {
+        logger.warn(
+          { uniqueErr: uniqueUsersRes.error, subjErr: subjectsRes.error },
+          "RPCs de stats indisponíveis — usando fallback (rode supabase-stats-rpc.sql)"
+        );
+      }
+      const { data: userMsgs } = await scopeMsgs(
+        sb.from("messages").select("content, created_at, wa_id").eq("role", "user")
       );
-      const { data: userMsgs } = await sb
-        .from("messages")
-        .select("content, created_at, wa_id")
-        .eq("role", "user");
 
       const now = new Date();
       for (let i = 6; i >= 0; i--) {
@@ -156,7 +179,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       subjects,
       learning,
     };
-    statsCache = { at: Date.now(), payload };
+    // Grava no cache indexado por escopo.
+    statsCache.set(scopeKey, { at: Date.now(), payload });
     res.setHeader("X-Cache", "MISS");
     res.status(200).json(payload);
   } catch (error) {

@@ -2499,3 +2499,11 @@ html.dark .utag-cn { color: #E0A23C; }
     font: 700 12px 'Quicksand', sans-serif; cursor: pointer;
 }
 .audio-preview-cancel:hover { background: var(--border-color); }
+
+/* ── Auth Gate (login / troca forçada de senha) ── */
+.auth-gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg,#0f1115);z-index:9999}
+.auth-card{display:flex;flex-direction:column;gap:12px;width:min(360px,90vw);padding:28px;border-radius:14px;background:var(--card,#1b1f27);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.auth-card h2{margin:0 0 6px;color:var(--text,#fff)}
+.auth-card input{padding:12px 14px;border-radius:10px;border:1px solid #3a3f4b;background:#0f1115;color:#fff}
+.auth-card button{padding:12px;border-radius:10px;border:0;background:#C8202E;color:#fff;font-weight:700;cursor:pointer}
+.auth-error{min-height:18px;color:#ff6b6b;font-size:.9rem;margin:0}

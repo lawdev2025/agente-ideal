@@ -24,11 +24,75 @@ let _audioBlob = null;
 
 const _injected = window.__ADMIN_CONFIG__ || {};
 let adminToken = _injected.ADMIN_TOKEN || '';
-const BACKEND_URL = _injected.BACKEND_URL !== undefined 
-    ? _injected.BACKEND_URL 
+const BACKEND_URL = _injected.BACKEND_URL !== undefined
+    ? _injected.BACKEND_URL
     : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://localhost:3000'
         : window.location.origin;
+
+// ── Autenticação real ──────────────────────────────────────────────────────
+let authToken = localStorage.getItem('AUTH_TOKEN') || '';
+let currentUser = null;
+// Compat: o restante do código usa `adminToken` no header. Sincronizamos aqui.
+function authHeader() { return { 'Authorization': 'Bearer ' + (authToken || adminToken) }; }
+
+async function doLogin(login, password) {
+    const r = await fetch(BACKEND_URL + '/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, password }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Falha no login');
+    const data = await r.json();
+    authToken = data.token; adminToken = data.token;
+    localStorage.setItem('AUTH_TOKEN', authToken);
+    currentUser = data.user;
+    return data.user;
+}
+
+async function fetchMe() {
+    if (!authToken) return null;
+    const r = await fetch(BACKEND_URL + '/api/auth/me', { headers: authHeader() });
+    if (!r.ok) return null;
+    currentUser = (await r.json()).user;
+    adminToken = authToken;
+    return currentUser;
+}
+
+async function changePassword(currentPassword, newPassword) {
+    const r = await fetch(BACKEND_URL + '/api/auth/change-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Falha ao trocar senha');
+}
+
+function logout() { localStorage.removeItem('AUTH_TOKEN'); authToken = ''; currentUser = null; location.reload(); }
+
+function showAuthGate(mode) {
+    document.getElementById('auth-gate').style.display = 'flex';
+    document.getElementById('login-form').style.display = mode === 'login' ? 'flex' : 'none';
+    document.getElementById('change-form').style.display = mode === 'change' ? 'flex' : 'none';
+}
+function hideAuthGate() { document.getElementById('auth-gate').style.display = 'none'; }
+
+// applyRoleUI: placeholder — Task 13 implementará o controle de papel por unidade.
+function applyRoleUI() {}
+
+async function afterAuth() {
+    applyRoleUI();
+    await startPanel();
+}
+
+let pendingChangeCurrentPassword = '';
+
+async function bootAuth() {
+    const me = await fetchMe();
+    if (!me) { showAuthGate('login'); return false; }
+    if (me.must_change_password) { showAuthGate('change'); return false; }
+    await afterAuth();
+    return true;
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 const TABLE_SCHEMAS = {
     school_products: [
@@ -98,7 +162,10 @@ const TABLE_SCHEMAS = {
 };
 
 // 1. INICIALIZAÇÃO
-document.addEventListener('DOMContentLoaded', async () => {
+
+// startPanel: inicializa o painel após autenticação bem-sucedida.
+// Extraído do DOMContentLoaded original para suportar o fluxo de login real (bootAuth).
+async function startPanel() {
     initTabs();
     initTheme();
 
@@ -216,6 +283,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     window.addEventListener('hashchange', tabFromHash);
     tabFromHash();
+} // fim de startPanel()
+
+// Ponto de entrada: aguarda DOM e dispara fluxo de autenticação real.
+document.addEventListener('DOMContentLoaded', () => {
+    // Listeners dos formulários de auth (precisam estar prontos antes de bootAuth mostrar a tela)
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('login-error'); errEl.textContent = '';
+        const login = document.getElementById('login-input').value.trim();
+        const password = document.getElementById('password-input').value;
+        try {
+            const user = await doLogin(login, password);
+            if (user.must_change_password) { pendingChangeCurrentPassword = password; showAuthGate('change'); }
+            else { hideAuthGate(); await afterAuth(); }
+        } catch (err) { errEl.textContent = err.message; }
+    });
+
+    document.getElementById('change-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const errEl = document.getElementById('change-error'); errEl.textContent = '';
+        const np = document.getElementById('new-password').value;
+        const cp = document.getElementById('confirm-password').value;
+        if (np.length < 6) { errEl.textContent = 'Mínimo 6 caracteres.'; return; }
+        if (np !== cp) { errEl.textContent = 'As senhas não conferem.'; return; }
+        try {
+            await changePassword(pendingChangeCurrentPassword, np);
+            currentUser.must_change_password = false;
+            hideAuthGate(); await afterAuth();
+        } catch (err) { errEl.textContent = err.message; }
+    });
+
+    bootAuth();
 });
 
 // 2. ABAS

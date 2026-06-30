@@ -14,6 +14,24 @@
     <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body>
+    <!-- Tela de login / troca forçada de senha -->
+    <div id="auth-gate" class="auth-gate" style="display:none">
+      <form id="login-form" class="auth-card">
+        <h2>Entrar</h2>
+        <input id="login-input" type="text" placeholder="Login ou e-mail" autocomplete="username" />
+        <input id="password-input" type="password" placeholder="Senha" autocomplete="current-password" />
+        <button type="submit">Entrar</button>
+        <p id="login-error" class="auth-error"></p>
+      </form>
+      <form id="change-form" class="auth-card" style="display:none">
+        <h2>Crie uma nova senha</h2>
+        <input id="new-password" type="password" placeholder="Nova senha (mín. 6)" autocomplete="new-password" />
+        <input id="confirm-password" type="password" placeholder="Confirme a nova senha" autocomplete="new-password" />
+        <button type="submit">Salvar e entrar</button>
+        <p id="change-error" class="auth-error"></p>
+      </form>
+    </div>
+
     <div class="admin-container">
         <div class="sidebar-overlay" id="sidebar-overlay" hidden></div>
         <!-- Sidebar lateral escura com estética do Representa Plus -->

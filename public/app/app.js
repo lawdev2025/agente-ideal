@@ -1025,6 +1025,14 @@
   $("menu-btn").addEventListener("click", openDrawer);
   drawerOverlay.addEventListener("click", closeDrawer);
   $("drawer-conversas").addEventListener("click", closeDrawer);
+  // Mapa demográfico (estático, disponível pra todos os papéis).
+  $("drawer-mapa").addEventListener("click", () => {
+    closeDrawer();
+    const frame = $("mapa-frame-app");
+    if (frame && !frame.src) frame.src = "/mapa/index.html";
+    showScreen("mapa");
+  });
+  $("mapa-back").addEventListener("click", () => showScreen("list"));
   $("search-input").addEventListener("input", renderContacts);
 
   // Pull-to-refresh na lista: puxa pra baixo no topo -> recarrega contatos.

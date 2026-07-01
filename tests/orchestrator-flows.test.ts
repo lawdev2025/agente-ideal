@@ -623,6 +623,25 @@ describe("Orchestrator: pagamento de taxas / segunda chamada → secretaria da u
   });
 });
 
+describe("Orchestrator: enrollment lembra a unidade já dita (não re-pergunta)", () => {
+  it("já disse 'Cidade Nova'; depois 'Jardim I' → responde com a unidade, sem pedir de novo", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Oi" },
+        { role: "user", content: "Ana" },
+        { role: "user", content: "Cidade nova" },
+        { role: "assistant", content: "Perfeito! Aqui em Cidade Nova a gente tem vagas..." },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Jardim I", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/Cidade Nova/);
+    expect(sent).toMatch(/3346-0011/); // telefone da Cidade Nova
+    expect(sent).not.toMatch(/me diz qual/i); // NÃO re-pergunta a unidade
+  });
+});
+
 describe("Orchestrator: limite de 7 respostas do bot → atendimento humano", () => {
   // 7 mensagens do bot na sessão (saudação + 6) → a próxima vira handoff.
   const sevenBotMsgs = [

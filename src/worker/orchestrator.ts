@@ -415,7 +415,7 @@ export class MessageOrchestrator {
     // de tool (runDeterministicToolFlow), que é a válvula pra palavra-chave que
     // disparou por engano.
     if (intent.kind === "enrollment_info" && intent.nivel) {
-      await this.handleEnrollmentInfo(conversationId, studentId, userMessage, intent, contact.name);
+      await this.handleEnrollmentInfo(conversationId, studentId, userMessage, intent, contact.name, conversationHistory);
       await this.recordTurnOutcome(userMessage, true);
       return;
     }
@@ -596,11 +596,16 @@ export class MessageOrchestrator {
     studentId: string,
     userMessage: string,
     intent: Extract<RoutedIntent, { kind: "enrollment_info" }>,
-    name: string | null
+    name: string | null,
+    conversationHistory: ConversationMessage[]
   ): Promise<void> {
+    // Se a unidade não veio na mensagem atual ("Jardim I"), reaproveita a que o
+    // cliente já disse antes ("Cidade Nova") — assim o bot não re-pergunta a
+    // unidade que ele mesmo já sabia. Sem isto, a pessoa era obrigada a repetir.
+    const unit = intent.unit ?? this.findRecentUnit(conversationHistory);
     const reply = buildEnrollmentReply({
       nivel: intent.nivel,
-      unit: intent.unit,
+      unit,
       name,
       asksSchedule: SCHEDULE_KEYWORDS.test(userMessage),
       escalateAfter: intent.escalateAfter,

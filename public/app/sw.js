@@ -6,14 +6,14 @@
 //
 // IMPORTANTE: bump CACHE quando mudar arquivos do shell, senao o celular serve
 // a versao velha do cache. O Vercel atualiza no servidor, mas o SW intercepta.
-const CACHE = "crm-ideal-v13";
+const CACHE = "crm-ideal-v14";
 const SHELL = [
   "/app/",
   "/app/index.html",
   "/app/ideal-ui.css",
   "/app/proto.css",
   "/app/app.css",
-  "/app/app.js?v=8",
+  "/app/app.js?v=10",
   "/app/manifest.webmanifest",
   "/app/icons/icon-192.png",
   "/app/icons/icon-512.png",
@@ -39,13 +39,37 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Network-first pra chamadas de API (sempre dados frescos); cache-first pro
-// shell estatico. Nunca cacheia /api/ — dados de conversa precisam ser ao vivo.
+// Estrategia por tipo. Nunca cacheia /api/ — dados de conversa precisam ser ao vivo.
+//   - Codigo (HTML/JS): NETWORK-FIRST. Garante que uma versao nova entra no ar
+//     sem exigir refresh manual (bug historico: SW servia app.js velho do cache).
+//     Cai pro cache so quando offline.
+//   - Assets estaticos (css/icones): cache-first com revalidacao em background.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== "GET" || url.pathname.startsWith("/api/")) return;
   if (!url.pathname.startsWith("/app")) return;
+
+  const isCode =
+    req.mode === "navigate" ||
+    url.pathname === "/app/" ||
+    url.pathname.endsWith(".html") ||
+    url.pathname.endsWith(".js");
+
+  if (isCode) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200 && res.type === "basic") {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(req).then((cached) => {

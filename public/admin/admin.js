@@ -82,6 +82,9 @@ function applyRoleUI() {
     const li = document.querySelector(`.sidebar-menu li[data-tab="${tab}"]`);
     if (li) li.style.display = show ? '' : 'none';
   };
+  // Atendente de unidade só acessa Conversas (escopada à sua unidade). Todo o
+  // resto — dashboard, banco, config, usuarios — é exclusivo do admin.
+  setTab('dashboard', isAdmin);
   setTab('banco', isAdmin);
   setTab('config', isAdmin);
   setTab('usuarios', isAdmin);
@@ -95,22 +98,19 @@ function applyRoleUI() {
   }
 
   if (!isAdmin && currentUser) {
-    // Trava o dashboard na unidade da atendente.
+    // Trava a visão da atendente na sua unidade (o backend também escopa).
     selectedUnitFilter = currentUser.unit;
     window.LOCKED_UNIT = currentUser.unit;
-    // Se a aba ativa for uma proibida, volta pro dashboard.
-    const active = document.querySelector('.sidebar-menu li.active');
-    const activeTab = active && active.getAttribute('data-tab');
-    if (activeTab === 'banco' || activeTab === 'config' || activeTab === 'usuarios') {
-      const dashLi = document.querySelector('.sidebar-menu li[data-tab="dashboard"]');
-      if (dashLi) dashLi.click();
-    }
+    // A aba padrão dela é Conversas — quem define isso é o afterAuth, depois
+    // que o startPanel terminou de montar os handlers/carregadores.
   }
 }
 
 async function afterAuth() {
     applyRoleUI();
     await startPanel();
+    // Atendente de unidade não tem dashboard: abre direto nas Conversas.
+    if (currentUser && currentUser.role !== 'admin') activateTab('conversas');
 }
 
 let pendingChangeCurrentPassword = '';
@@ -384,9 +384,10 @@ function initTabs() {
 // Troca de aba reutilizável (clique na sidebar ou navegação programática, ex.:
 // drill-down de assunto). Devolve a promise do loader pra quem precisar aguardar.
 function activateTab(tab) {
-    // Guarda de papel: atendentes de unidade não podem acessar abas restritas.
-    if (currentUser && currentUser.role !== 'admin' && ['banco', 'config', 'usuarios'].includes(tab)) {
-        tab = 'dashboard';
+    // Guarda de papel: atendentes de unidade só acessam Conversas. Qualquer
+    // outra aba (inclusive dashboard, via #hash ou drill-down) cai em conversas.
+    if (currentUser && currentUser.role !== 'admin' && tab !== 'conversas') {
+        tab = 'conversas';
     }
 
     document.querySelectorAll('.sidebar-menu li').forEach(i =>

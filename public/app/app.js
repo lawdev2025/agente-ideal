@@ -116,6 +116,16 @@
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Falha ao trocar senha");
   }
 
+  // Aplica o papel do usuário na UI: atalhos pro painel admin só pra admin.
+  function applyRole() {
+    const isAdmin = currentUser && currentUser.role === "admin";
+    document.querySelectorAll("[data-admin-only]").forEach((el) => {
+      el.style.display = isAdmin ? "" : "none";
+    });
+    const foot = document.querySelector(".drawer-foot b");
+    if (foot && currentUser) foot.textContent = currentUser.name || "Time Ideal";
+  }
+
   // ---------------- START (pos-login) ----------------
   async function startApp() {
     // Busca config pública do servidor (Supabase URL/anon key p/ realtime).
@@ -125,6 +135,10 @@
       const res = await fetch("/api/config");
       if (res.ok) cfg = await res.json();
     } catch (_) { /* continua sem realtime se falhar */ }
+
+    // Papel: só admin enxerga os atalhos pro painel (dashboard/banco/config).
+    // Atendente de unidade fica restrita às Conversas da sua unidade.
+    applyRole();
 
     showScreen("list");
     connectSupabase();

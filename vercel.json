@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/admin", "destination": "/admin/index.html" },
     { "source": "/app", "destination": "/app/index.html" },
+    { "source": "/mapa", "destination": "/mapa/index.html" },
     { "source": "/webhook", "destination": "/api/webhook" }
   ],
   "redirects": [

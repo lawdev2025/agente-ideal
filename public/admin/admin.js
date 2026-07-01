@@ -384,9 +384,9 @@ function initTabs() {
 // Troca de aba reutilizável (clique na sidebar ou navegação programática, ex.:
 // drill-down de assunto). Devolve a promise do loader pra quem precisar aguardar.
 function activateTab(tab) {
-    // Guarda de papel: atendentes de unidade só acessam Conversas. Qualquer
-    // outra aba (inclusive dashboard, via #hash ou drill-down) cai em conversas.
-    if (currentUser && currentUser.role !== 'admin' && tab !== 'conversas') {
+    // Guarda de papel: atendentes de unidade só acessam Conversas e o Mapa.
+    // Qualquer outra aba (dashboard, banco, etc.) cai em conversas.
+    if (currentUser && currentUser.role !== 'admin' && tab !== 'conversas' && tab !== 'mapa') {
         tab = 'conversas';
     }
 
@@ -400,6 +400,7 @@ function activateTab(tab) {
     const titles = {
         dashboard: { title: 'Painel de Controle', subtitle: 'Resumo estatístico do Agente Ideal e atendimento escolar' },
         conversas: { title: 'Central de Conversas', subtitle: 'Visualize os atendimentos do bot e gerencie o status em tempo real' },
+        mapa: { title: 'Mapa Demográfico', subtitle: 'Distribuição dos alunos por bairro em Belém e Ananindeua' },
         banco: { title: 'Banco de Dados', subtitle: 'Edite, adicione ou exclua informações da base de conhecimento da escola' },
         config: { title: 'Configurações de Conexão', subtitle: 'Gerencie as chaves de integração do Supabase' },
         usuarios: { title: 'Usuários', subtitle: 'Gerencie os usuários e permissões do painel admin' }
@@ -407,6 +408,12 @@ function activateTab(tab) {
     document.getElementById('tab-title').textContent = titles[tab].title;
     document.getElementById('tab-subtitle').textContent = titles[tab].subtitle;
 
+    if (tab === 'mapa') {
+        // Carrega o mapa estático só na 1ª abertura (isola CSS/tema do painel).
+        const frame = document.getElementById('mapa-frame');
+        if (frame && !frame.src) frame.src = '/mapa/index.html';
+        return;
+    }
     if (tab === 'dashboard') return loadDashboardStats();
     if (tab === 'conversas') return loadConversationsTab();
     if (tab === 'banco') { loadDatabaseTable(); loadIntentLearning(); return; }

@@ -54,6 +54,10 @@
                         <i class="fa-solid fa-comments"></i>
                         <span>Conversas</span>
                     </li>
+                    <li data-tab="mapa">
+                        <i class="fa-solid fa-map-location-dot"></i>
+                        <span>Mapa</span>
+                    </li>
                     <li data-tab="banco">
                         <i class="fa-solid fa-database"></i>
                         <span>Gerenciar Banco</span>
@@ -260,6 +264,13 @@
                             </div>
                         </div>
                     </div>
+                </section>
+
+                <!-- Aba Mapa Demográfico (estático, acessível por todos os papéis) -->
+                <section class="tab-content" id="tab-mapa">
+                    <iframe id="mapa-frame" title="Mapa Demográfico dos Alunos"
+                        style="width:100%;height:calc(100vh - 176px);border:0;border-radius:14px;background:var(--bg-secondary)"
+                        loading="lazy"></iframe>
                 </section>
 
                 <!-- 3. Aba Gerenciar Banco de Dados -->

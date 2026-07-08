@@ -26,11 +26,17 @@ export type RoutedIntent =
   | { kind: "unit_info"; unit?: string }
   /**
    * Necessidade documental (boletim, histórico escolar, declaração, atestado,
-   * 2ª via, transferência). Tudo isso é feito na SECRETARIA da unidade — a
-   * gente responde com o telefone da unidade pedida (ou pergunta qual unidade)
-   * e avisa o time em silêncio. NÃO pausa o bot.
+   * 2ª via). Tudo isso é feito na SECRETARIA da unidade — a gente responde com
+   * o telefone da unidade pedida (ou pergunta qual unidade) e avisa o time em
+   * silêncio. NÃO pausa o bot. (Transferência saiu daqui — virou transfer_request.)
    */
   | { kind: "document_request"; unit?: string }
+  /**
+   * Transferência de escola. Interpretada como interesse em VIR pro Ideal
+   * (não como documento de saída): perguntamos a unidade e mandamos o link de
+   * visita + telefone da secretaria. NÃO pausa o bot — é lead quente.
+   */
+  | { kind: "transfer_request"; unit?: string }
   /**
    * Pedido de visita / agendamento. O cliente quer conhecer a escola ou pediu
    * o link de agendamento. Respondido de forma DETERMINÍSTICA com o link de
@@ -144,7 +150,12 @@ const SOFT_OFF_SCOPE_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
 // parte (document_request), não como soft_redirect genérico, porque o cliente
 // precisa do NÚMERO da unidade certa pra resolver boletim/histórico/etc.
 const DOCUMENT_KEYWORDS =
-  /\b(boletim|hist[óo]rico\s+escolar|hist[óo]rico|declara[çc][ãa]o|atestado|segunda\s+via|2[ªa]\s+via|documenta[çc][ãa]o|documento|documentos|transfer[êe]ncia)\b/i;
+  /\b(boletim|hist[óo]rico\s+escolar|hist[óo]rico|declara[çc][ãa]o|atestado|segunda\s+via|2[ªa]\s+via|documenta[çc][ãa]o|documento|documentos)\b/i;
+
+// Transferência de escola → interesse em VIR pro Ideal (não documento de saída).
+// "transferência"/"transferir" e as variações "mudar/trocar de escola".
+const TRANSFER_KEYWORDS =
+  /\b(transfer[êe]ncia|transferir|transferi|mudar\s+de\s+(escola|col[ée]gio)|trocar\s+de\s+(escola|col[ée]gio))\b/i;
 
 // Pedido de visita / agendamento. "visita", "visitar" e "conhecer a escola" são
 // inequívocos. "link" sozinho também entra: o ÚNICO link que a gente passa é o
@@ -220,8 +231,18 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   const hasEnrollmentSignal =
     matchedNivel !== undefined || ENROLLMENT_KEYWORDS.test(text);
 
-  // Necessidade documental (boletim/histórico/declaração/2ª via/transferência)
-  // SEM ser pergunta de matrícula → secretaria da unidade. Vem antes de
+  // Transferência de escola → interpretamos como interesse em VIR pro Ideal.
+  // Mesmo citando um nível ("transferir pro médio"), a intenção é a mudança de
+  // escola. Pergunta de VALOR ("quanto custa a transferência") já foi
+  // interceptada pelo guard de preço no orquestrador. EXCEÇÃO: se a mensagem
+  // também traz uma palavra concreta de documento ("transferência do
+  // histórico"), aí é documento de fato → cai no bloco de documento abaixo.
+  if (TRANSFER_KEYWORDS.test(text) && !DOCUMENT_KEYWORDS.test(text)) {
+    return { kind: "transfer_request", unit: matchedUnit };
+  }
+
+  // Necessidade documental (boletim/histórico/declaração/2ª via) SEM ser
+  // pergunta de matrícula → secretaria da unidade. Vem antes de
   // contato/unit_info pra "histórico da Batista Campos" não virar endereço.
   if (DOCUMENT_KEYWORDS.test(text) && !hasEnrollmentSignal) {
     return { kind: "document_request", unit: matchedUnit };

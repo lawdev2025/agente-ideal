@@ -216,7 +216,9 @@ export class MessageOrchestrator {
             ? buildDocumentReplyWithUnit(followUpUnit)
             : pendingAsk === "payment"
               ? buildPaymentReplyWithUnit(followUpUnit)
-              : buildSecretariaRedirectReply(followUpUnit);
+              : pendingAsk === "transfer"
+                ? buildTransferReplyWithUnit(followUpUnit)
+                : buildSecretariaRedirectReply(followUpUnit);
         logger.info({ studentId, pendingAsk, unit: followUpUnit }, "Follow-up de unidade resolvido deterministicamente");
         await this.stateRepository.appendMessage(conversationId, "assistant", reply);
         await this.whatsappClient.sendMessage(studentId, reply);
@@ -273,6 +275,19 @@ export class MessageOrchestrator {
           studentId,
           intent.reason,
           detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory)
+        );
+        return;
+      }
+
+      // Transferência de escola → interesse em VIR pro Ideal. Pergunta a
+      // unidade e manda link de visita + telefone da secretaria. Não é
+      // cacheável (fluxo próprio), então tratamos aqui antes do dispatch.
+      if (intent.kind === "transfer_request") {
+        await this.handleTransferRequest(
+          conversationId,
+          studentId,
+          intent.unit,
+          conversationHistory
         );
         return;
       }
@@ -770,6 +785,29 @@ export class MessageOrchestrator {
     );
   }
 
+  // Transferência de escola: interpretada como interesse em VIR pro Ideal. Se o
+  // cliente já disse a unidade (na mensagem ou no histórico), manda o link de
+  // visita + telefone da secretaria daquela unidade; senão pergunta qual. Sem
+  // LLM e sem pausar o bot — é lead quente, então avisa o time em silêncio.
+  private async handleTransferRequest(
+    conversationId: string,
+    studentId: string,
+    unit: string | undefined,
+    conversationHistory: ConversationMessage[]
+  ): Promise<void> {
+    const resolvedUnit = unit ?? this.findRecentUnit(conversationHistory);
+    const reply = resolvedUnit
+      ? buildTransferReplyWithUnit(resolvedUnit)
+      : TRANSFER_ASK_UNIT_REPLY;
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    await this.softNotifyTeam(
+      conversationId,
+      studentId,
+      `Cliente quer TRANSFERÊNCIA / vir pro Ideal${resolvedUnit ? ` (${resolvedUnit})` : ""}.`
+    );
+  }
+
   // Varre o histórico do mais recente pro mais antigo e devolve a primeira
   // unidade citada — usado pra resolver "tem link?" depois que o cliente já
   // disse de qual unidade estava falando.
@@ -1004,6 +1042,30 @@ function buildVisitReplyWithUnit(unit: string): string {
   );
 }
 
+// Resposta de TRANSFERÊNCIA com a unidade conhecida: transferência é
+// interpretada como interesse em VIR pro Ideal, então mandamos o link de visita
+// daquela unidade + o telefone da secretaria (pra dúvidas de documentos/vaga).
+function buildTransferReplyWithUnit(unit: string): string {
+  const link = VISIT_LINKS[unit] ?? VISIT_LINKS["Batista Campos"];
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  return (
+    `Que ótimo que você quer vir pro *Colégio Ideal*! 🎉 A transferência é bem tranquila.\n\n` +
+    `Na unidade *${unit}*, agende uma visita que a gente te explica tudo:\n` +
+    `👉 ${link}\n\n` +
+    `📞 E pra dúvidas de documentos/vaga, fale com a secretaria: *${phone}*`
+  );
+}
+
+// Resposta de TRANSFERÊNCIA sem unidade definida: pergunta qual unidade. A
+// primeira frase é a MARCA que detectPendingUnitAsk usa pra reconhecer que o
+// bot está esperando a unidade (aí "Cidade Nova" sozinho resolve sem LLM).
+const TRANSFER_ASK_UNIT_REPLY =
+  "Que ótimo que você quer fazer a transferência pro *Colégio Ideal*! 🎉\n\n" +
+  "Pra te passar o link de visita e o contato certinho, me diz de qual unidade você quer:\n" +
+  "🏫 *Batista Campos*\n" +
+  "🏫 *Augusto Montenegro*\n" +
+  "🏫 *Cidade Nova (Ananindeua)*";
+
 // Resposta de visita sem unidade definida: lista os 3 links pra escolher.
 const VISIT_ASK_UNIT_REPLY =
   "Que ótimo que você quer conhecer a gente! 🎉\n\n" +
@@ -1152,13 +1214,15 @@ function buildSecretariaRedirectReply(unit?: string): string {
 // unidade pra passar um telefone, um nome de unidade sozinho na resposta vira a
 // resposta certa (sem LLM). Olha SÓ a última mensagem do assistant — se não for
 // uma dessas perguntas, devolve null e o fluxo normal de roteamento segue.
-type PendingUnitAsk = "document" | "payment" | "secretaria" | null;
+type PendingUnitAsk = "document" | "payment" | "secretaria" | "transfer" | null;
 function detectPendingUnitAsk(history: ConversationMessage[]): PendingUnitAsk {
   for (let i = history.length - 1; i >= 0; i--) {
     if (history[i].role !== "assistant") continue;
     const t = history[i].content;
     if (/Boletim, hist[óo]rico escolar/i.test(t)) return "document";
     if (/Pagamento de taxas/i.test(t)) return "payment";
+    // Frase-marca exclusiva do TRANSFER_ASK_UNIT_REPLY.
+    if (/fazer a transfer[êe]ncia pro \*?Col[ée]gio Ideal/i.test(t)) return "transfer";
     if (/De qual unidade voc[êe] [ée]\?|me diz qual voc[êe] prefere que eu te passe o n[úu]mero/i.test(t))
       return "secretaria";
     return null;

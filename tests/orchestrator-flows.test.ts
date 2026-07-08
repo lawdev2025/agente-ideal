@@ -469,6 +469,11 @@ describe("Orchestrator: follow-up determinístico de unidade (responde só o nom
       reply: "Augusto Montenegro",
       phone: "(91) 3120-3188",
     },
+    {
+      ask: "Que ótimo que você quer fazer a transferência pro *Colégio Ideal*! 🎉\n\nPra te passar o link de visita e o contato certinho, me diz de qual unidade você quer:\n🏫 *Batista Campos*",
+      reply: "Cidade Nova",
+      phone: "(91) 3346-0011",
+    },
   ];
   for (const { ask, reply, phone } of cases) {
     it(`bot perguntou a unidade → '${reply}' devolve ${phone} sem LLM`, async () => {
@@ -620,6 +625,37 @@ describe("Orchestrator: pagamento de taxas / segunda chamada → secretaria da u
     expect(sent).toMatch(/secretaria/i);
     expect(sent).not.toMatch(/presencialmente/i);
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("Orchestrator: transferência → interesse em vir pro Ideal (visita + secretaria)", () => {
+  it("'quero fazer a transferência' (sem unidade) pergunta qual unidade, sem LLM, sem pausar", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero fazer a transferência do meu filho", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/transfer[êe]ncia pro \*?Col[ée]gio Ideal/i);
+    expect(sent).toMatch(/qual unidade/i);
+    expect(sent).toMatch(/Batista Campos/);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+    // Lead quente — avisa o time em silêncio
+    expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+  });
+
+  it("'transferir pra Cidade Nova' manda link de visita + telefone da secretaria", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero transferir meu filho pra Cidade Nova", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/agendamento-ideal-cidade-nova/); // link de visita da CN
+    expect(sent).toMatch(/3346-0011/); // telefone da secretaria da CN
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
   });
 });
 
@@ -797,6 +833,20 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
   });
   it("transferência/histórico → document_request (secretaria, não soft genérico)", () => {
     expect(routeIntent("como faço a transferência do histórico?", false).kind).toBe("document_request");
+  });
+  it("transferência de escola → transfer_request (interesse em vir pro Ideal)", () => {
+    expect(routeIntent("quero fazer a transferência do meu filho", false).kind).toBe("transfer_request");
+  });
+  it("transferir citando unidade → transfer_request com a unidade", () => {
+    const r = routeIntent("quero transferir pra Cidade Nova", false);
+    expect(r.kind).toBe("transfer_request");
+    expect((r as { unit?: string }).unit).toBe("Cidade Nova");
+  });
+  it("'mudar de escola' → transfer_request", () => {
+    expect(routeIntent("estou querendo mudar de escola", false).kind).toBe("transfer_request");
+  });
+  it("transferir citando nível ainda é transfer_request (não enrollment)", () => {
+    expect(routeIntent("quero transferir meu filho pro médio", false).kind).toBe("transfer_request");
   });
   it("transporte escolar → soft_redirect", () => {
     expect(routeIntent("tem transporte escolar?", false).kind).toBe("soft_redirect");

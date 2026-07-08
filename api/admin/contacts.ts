@@ -4,6 +4,15 @@ import { requireUser } from "../_lib/auth";
 import { getSupabase } from "../../src/db/supabase-client";
 import { logger } from "../../src/logger";
 
+// Escopo de visibilidade de um contato para uma atendente de unidade.
+// Ela vê os contatos da SUA unidade E os leads de matrícula que ainda não
+// disseram unidade (unit_tag vazio) — senão esses órfãos não apareciam para
+// ninguém. Órfãos aparecem para as 3 ao mesmo tempo (sem "claim"), de propósito.
+function scopedToUnit(c: any, unit: string | null | undefined): boolean {
+  if (c.unit_tag === unit) return true;
+  return !c.unit_tag && c.tag === "matricula";
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
   if (req.method !== "GET") {
@@ -24,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!rpcErr) {
       const list = (rpcContacts || []) as any[];
       const scoped = authUser.role === "unit"
-        ? list.filter((c) => c.unit_tag === authUser.unit)
+        ? list.filter((c) => scopedToUnit(c, authUser.unit))
         : list;
       res.status(200).json({ contacts: scoped });
       return;
@@ -112,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const scoped = authUser.role === "unit"
-      ? enriched.filter((c: any) => c.unit_tag === authUser.unit)
+      ? enriched.filter((c: any) => scopedToUnit(c, authUser.unit))
       : enriched;
     res.status(200).json({ contacts: scoped });
   } catch (error) {

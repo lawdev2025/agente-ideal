@@ -212,13 +212,15 @@ export class MessageOrchestrator {
       const followUpUnit = pendingAsk ? detectUnit(userMessage) : undefined;
       if (pendingAsk && followUpUnit) {
         const reply =
-          pendingAsk === "document"
-            ? buildDocumentReplyWithUnit(followUpUnit)
-            : pendingAsk === "payment"
-              ? buildPaymentReplyWithUnit(followUpUnit)
-              : pendingAsk === "transfer"
-                ? buildTransferReplyWithUnit(followUpUnit)
-                : buildSecretariaRedirectReply(followUpUnit);
+          pendingAsk === "rematricula"
+            ? buildRematriculaFollowUpReply(followUpUnit)
+            : pendingAsk === "document"
+              ? buildDocumentReplyWithUnit(followUpUnit)
+              : pendingAsk === "payment"
+                ? buildPaymentReplyWithUnit(followUpUnit)
+                : pendingAsk === "transfer"
+                  ? buildTransferReplyWithUnit(followUpUnit)
+                  : buildSecretariaRedirectReply(followUpUnit);
         logger.info({ studentId, pendingAsk, unit: followUpUnit }, "Follow-up de unidade resolvido deterministicamente");
         await this.stateRepository.appendMessage(conversationId, "assistant", reply);
         await this.whatsappClient.sendMessage(studentId, reply);
@@ -275,6 +277,20 @@ export class MessageOrchestrator {
           studentId,
           intent.reason,
           detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory)
+        );
+        return;
+      }
+
+      // Rematrícula → passo a passo do Portal do Aluno (determinístico), com o
+      // telefone da secretaria da unidade no fim. Não é cacheável (fluxo
+      // próprio), então tratamos aqui antes do dispatch.
+      if (intent.kind === "rematricula_request") {
+        await this.handleRematriculaRequest(
+          conversationId,
+          studentId,
+          userMessage,
+          intent.unit,
+          conversationHistory
         );
         return;
       }
@@ -808,6 +824,29 @@ export class MessageOrchestrator {
     );
   }
 
+  // Rematrícula (aluno que já estuda aqui): o processo é 100% online, pelo
+  // Portal do Aluno. Mandamos o passo a passo completo e, no fim, o telefone da
+  // secretaria da unidade — se ela ainda não é conhecida, perguntamos qual (o
+  // follow-up determinístico de unidade fecha o ciclo). Sem LLM e sem pausar o
+  // bot; o time só é avisado em silêncio.
+  private async handleRematriculaRequest(
+    conversationId: string,
+    studentId: string,
+    userMessage: string,
+    unit: string | undefined,
+    conversationHistory: ConversationMessage[]
+  ): Promise<void> {
+    const resolvedUnit = unit ?? this.findRecentUnit(conversationHistory);
+    const reply = buildRematriculaReply(resolvedUnit);
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    await this.softNotifyTeam(
+      conversationId,
+      studentId,
+      `Cliente quer fazer REMATRÍCULA${resolvedUnit ? ` (${resolvedUnit})` : ""}. Mensagem: "${userMessage}"`
+    );
+  }
+
   // Varre o histórico do mais recente pro mais antigo e devolve a primeira
   // unidade citada — usado pra resolver "tem link?" depois que o cliente já
   // disse de qual unidade estava falando.
@@ -1214,11 +1253,14 @@ function buildSecretariaRedirectReply(unit?: string): string {
 // unidade pra passar um telefone, um nome de unidade sozinho na resposta vira a
 // resposta certa (sem LLM). Olha SÓ a última mensagem do assistant — se não for
 // uma dessas perguntas, devolve null e o fluxo normal de roteamento segue.
-type PendingUnitAsk = "document" | "payment" | "secretaria" | "transfer" | null;
+type PendingUnitAsk = "document" | "payment" | "secretaria" | "transfer" | "rematricula" | null;
 function detectPendingUnitAsk(history: ConversationMessage[]): PendingUnitAsk {
   for (let i = history.length - 1; i >= 0; i--) {
     if (history[i].role !== "assistant") continue;
     const t = history[i].content;
+    // Frase-marca exclusiva do passo a passo da rematrícula. Vem antes do check
+    // genérico de secretaria porque a pergunta de unidade é a mesma.
+    if (/aba \*?Rematr[íi]cula/i.test(t)) return "rematricula";
     if (/Boletim, hist[óo]rico escolar/i.test(t)) return "document";
     if (/Pagamento de taxas/i.test(t)) return "payment";
     // Frase-marca exclusiva do TRANSFER_ASK_UNIT_REPLY.
@@ -1256,6 +1298,57 @@ function buildDocumentReplyWithUnit(unit: string): string {
     "Boletim, histórico escolar, declarações e qualquer outro documento são " +
     "emitidos direto na *secretaria* da unidade. 📄\n\n" +
     `Na *${unit}* é só falar com a secretaria pelo *${phone}* que o nosso time te orienta certinho. 😊`
+  );
+}
+
+// Passo a passo OFICIAL da rematrícula (Portal do Aluno / TOTVS). Texto único,
+// reusado com e sem unidade — os links são dados oficiais do colégio e não podem
+// ser reescritos pelo LLM, por isso a resposta é montada aqui.
+const REMATRICULA_PORTAL_URL =
+  "https://grupoeducacional136937.rm.cloudtotvs.com.br/FrameHTML/Web/App/Edu/PortalEducacional/login/";
+const MEU_ARCO_URL = "https://isaac.com.br/meu-isaac-arco";
+
+const REMATRICULA_PASSOS =
+  "Que bom que você vai continuar com a gente! 🎓\n" +
+  "A *rematrícula* é feita online, pelo Portal do Aluno. É rapidinho:\n\n" +
+  `*1.* Acesse o portal do aluno: ${REMATRICULA_PORTAL_URL}\n` +
+  "*2.* Faça o login com o *CPF* (login) e a *data de nascimento* (senha) do responsável financeiro. " +
+  "⚠️ Digite *só números*, sem pontos, traços ou barras.\n" +
+  "*3.* Clique na aba *Rematrícula*.\n" +
+  "*4.* Siga as instruções da página, conferindo as informações.\n" +
+  "*5.* Leia e assine o *contrato digital*.\n" +
+  "*6.* Depois da assinatura, o boleto da taxa de matrícula é enviado para o e-mail cadastrado no sistema em até *10 minutos*. " +
+  `O mesmo boleto também pode ser emitido na plataforma *Meu Arco*: ${MEU_ARCO_URL}`;
+
+// Rematrícula com a unidade conhecida → fecha com o telefone da secretaria dela.
+// Sem unidade → pergunta qual (o follow-up determinístico devolve o telefone).
+function buildRematriculaReply(unit?: string): string {
+  if (unit) {
+    const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+    return (
+      REMATRICULA_PASSOS +
+      "\n\n" +
+      `Qualquer dúvida no processo, é só falar com a secretaria da *${unit}* pelo *${phone}* que o nosso time te orienta certinho. 😊`
+    );
+  }
+  return (
+    REMATRICULA_PASSOS +
+    "\n\n" +
+    "Se precisar de ajuda, me diz de qual unidade você é que eu te passo o telefone certinho:\n" +
+    "🏫 *Batista Campos*\n" +
+    "🏫 *Augusto Montenegro*\n" +
+    "🏫 *Cidade Nova (Ananindeua)*"
+  );
+}
+
+// Follow-up da rematrícula: o cliente respondeu só o nome da unidade depois do
+// passo a passo. Não repetimos os 6 passos (já estão logo acima na conversa) —
+// só entregamos o telefone da secretaria daquela unidade.
+function buildRematriculaFollowUpReply(unit: string): string {
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  return (
+    `Perfeito! Qualquer dúvida na *rematrícula*, é só falar com a secretaria da *${unit}* ` +
+    `pelo *${phone}* que o nosso time te orienta certinho. 📞😊`
   );
 }
 

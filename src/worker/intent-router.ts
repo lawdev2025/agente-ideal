@@ -38,6 +38,14 @@ export type RoutedIntent =
    */
   | { kind: "transfer_request"; unit?: string }
   /**
+   * Rematrícula / renovação de matrícula de aluno que JÁ estuda no Ideal. É um
+   * processo 100% online (Portal do Aluno), então respondemos de forma
+   * DETERMINÍSTICA com o passo a passo e o telefone da secretaria da unidade —
+   * antes isso caía em escalate ("assunto burocrático") e o cliente ficava
+   * esperando um humano pra receber um link. NÃO pausa o bot.
+   */
+  | { kind: "rematricula_request"; unit?: string }
+  /**
    * Pedido de visita / agendamento. O cliente quer conhecer a escola ou pediu
    * o link de agendamento. Respondido de forma DETERMINÍSTICA com o link de
    * visita da unidade (ou os 3 links se não disse qual) — sem LLM, porque o
@@ -154,6 +162,12 @@ const DOCUMENT_KEYWORDS =
 
 // Transferência de escola → interesse em VIR pro Ideal (não documento de saída).
 // "transferência"/"transferir" e as variações "mudar/trocar de escola".
+// Rematrícula / renovação de matrícula de quem JÁ é aluno. Só formas explícitas
+// ("rematrícula", "renovar a matrícula", "portal do aluno") — "renovar" sozinho
+// não entra, pra não capturar renovação de convênio/uniforme.
+const REMATRICULA_KEYWORDS =
+  /(rematr[íi]cul|re-\s?matr[íi]cul|renova(?:r|ndo|[çc][ãa]o)\s+(?:a\s+|da\s+|de\s+|minha\s+|nossa\s+|essa\s+)?matr[íi]cul|matr[íi]cula\s+de\s+renova[çc][ãa]o|portal\s+do\s+aluno)/i;
+
 const TRANSFER_KEYWORDS =
   /\b(transfer[êe]ncia|transferir|transferi|mudar\s+de\s+(escola|col[ée]gio)|trocar\s+de\s+(escola|col[ée]gio))\b/i;
 
@@ -230,6 +244,14 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   }
   const hasEnrollmentSignal =
     matchedNivel !== undefined || ENROLLMENT_KEYWORDS.test(text);
+
+  // Rematrícula → passo a passo do Portal do Aluno (determinístico). Vem ANTES
+  // de transferência/documento/matrícula: "rematrícula" contém "matrícula" e a
+  // frase costuma citar série ("rematrícula do 5º ano"), então sem esta
+  // prioridade cairia em enrollment_info e o cliente receberia valores.
+  if (REMATRICULA_KEYWORDS.test(text)) {
+    return { kind: "rematricula_request", unit: matchedUnit };
+  }
 
   // Transferência de escola → interpretamos como interesse em VIR pro Ideal.
   // Mesmo citando um nível ("transferir pro médio"), a intenção é a mudança de

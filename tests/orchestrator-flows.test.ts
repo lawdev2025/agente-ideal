@@ -659,6 +659,60 @@ describe("Orchestrator: transferência → interesse em vir pro Ideal (visita + 
   });
 });
 
+describe("Orchestrator: rematrícula → passo a passo do Portal do Aluno", () => {
+  it("'como faço a rematrícula' (sem unidade) manda os 6 passos e pergunta a unidade", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "como faço a rematrícula do meu filho?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toContain("PortalEducacional/login");
+    expect(sent).toContain("isaac.com.br/meu-isaac-arco");
+    expect(sent).toMatch(/aba \*?Rematr[íi]cula/i);
+    expect(sent).toMatch(/contrato digital/i);
+    expect(sent).toMatch(/10 minutos/);
+    expect(sent).toMatch(/qual unidade/i);
+    // Determinístico, sem pausar o bot — e nunca cai na resposta de valores.
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+    expect(sent).not.toMatch(/presencialmente/i);
+  });
+
+  it("'rematrícula na Cidade Nova' fecha com o telefone daquela secretaria", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero fazer a rematrícula na Cidade Nova", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toContain("PortalEducacional/login");
+    expect(sent).toContain("(91) 3346-0011");
+    expect(sent).not.toMatch(/qual unidade/i);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("depois do passo a passo, responder só a unidade devolve o telefone (sem repetir os passos)", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Oi" },
+        { role: "user", content: "Ana" },
+        {
+          role: "assistant",
+          content:
+            "*3.* Clique na aba *Rematrícula*.\n\nSe precisar de ajuda, me diz de qual unidade você é:\n🏫 *Batista Campos*",
+        },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Augusto Montenegro", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toContain("(91) 3120-3188");
+    expect(sent).not.toContain("PortalEducacional/login");
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe("Orchestrator: enrollment lembra a unidade já dita (não re-pergunta)", () => {
   it("já disse 'Cidade Nova'; depois 'Jardim I' → responde com a unidade, sem pedir de novo", async () => {
     const m = buildMocks({
@@ -834,6 +888,22 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
   it("transferência/histórico → document_request (secretaria, não soft genérico)", () => {
     expect(routeIntent("como faço a transferência do histórico?", false).kind).toBe("document_request");
   });
+  it("rematrícula → rematricula_request (não enrollment_info nem escalate)", () => {
+    expect(routeIntent("como faço a rematrícula do meu filho?", false).kind).toBe("rematricula_request");
+    expect(routeIntent("quero renovar a matrícula da minha filha", false).kind).toBe("rematricula_request");
+    expect(routeIntent("não consigo entrar no portal do aluno", false).kind).toBe("rematricula_request");
+  });
+
+  it("rematrícula citando série/unidade continua rematricula_request", () => {
+    const r = routeIntent("rematrícula do 5º ano na Cidade Nova", false);
+    expect(r.kind).toBe("rematricula_request");
+    expect((r as any).unit).toBe("Cidade Nova");
+  });
+
+  it("matrícula nova (sem 're') NÃO vira rematricula_request", () => {
+    expect(routeIntent("quero fazer matrícula no 5º ano", false).kind).toBe("enrollment_info");
+  });
+
   it("transferência de escola → transfer_request (interesse em vir pro Ideal)", () => {
     expect(routeIntent("quero fazer a transferência do meu filho", false).kind).toBe("transfer_request");
   });

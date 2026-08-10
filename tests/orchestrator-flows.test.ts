@@ -5,6 +5,7 @@ import { StateRepository } from "../src/state/repository";
 import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
 import { routeIntent, detectNivel } from "../src/worker/intent-router";
+import { config } from "../src/config";
 
 function buildMocks(opts: {
   history?: Array<{ role: string; content: string }>;
@@ -43,6 +44,7 @@ function buildMocks(opts: {
   } as unknown as StateRepository;
   const whatsapp = {
     sendMessage: vi.fn(async () => ({ messageId: "m1" })),
+    sendImage: vi.fn(async () => ({ messageId: "i1" })),
   } as unknown as WhatsAppClient;
   const escalation = {
     escalateToGroup: vi.fn(async () => ({ messageId: "e1" })),
@@ -690,6 +692,52 @@ describe("Orchestrator: rematrícula → passo a passo do Portal do Aluno", () =
     expect(sent).toContain("(91) 3346-0011");
     expect(sent).not.toMatch(/qual unidade/i);
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("com REMATRICULA_ART_URL configurada, manda a arte ANTES do passo a passo", async () => {
+    const original = config.rematriculaArtUrl;
+    config.rematriculaArtUrl = "https://exemplo.com/rematricula-2027.jpg";
+    try {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", "quero fazer a rematrícula", "u1");
+      expect(m.whatsapp.sendImage).toHaveBeenCalledWith(
+        "u1",
+        "https://exemplo.com/rematricula-2027.jpg"
+      );
+      const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+      expect(sent).toContain("PortalEducacional/login");
+    } finally {
+      config.rematriculaArtUrl = original;
+    }
+  });
+
+  it("se a arte falhar, o passo a passo é enviado do mesmo jeito", async () => {
+    const original = config.rematriculaArtUrl;
+    config.rematriculaArtUrl = "https://exemplo.com/rematricula-2027.jpg";
+    try {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      (m.whatsapp.sendImage as any).mockRejectedValueOnce(new Error("media falhou"));
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", "quero fazer a rematrícula", "u1");
+      const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+      expect(sent).toContain("PortalEducacional/login");
+    } finally {
+      config.rematriculaArtUrl = original;
+    }
+  });
+
+  it("sem REMATRICULA_ART_URL, não tenta mandar imagem", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero fazer a rematrícula", "u1");
+    expect(m.whatsapp.sendImage).not.toHaveBeenCalled();
   });
 
   it("depois do passo a passo, responder só a unidade devolve o telefone (sem repetir os passos)", async () => {

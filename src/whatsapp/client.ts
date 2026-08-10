@@ -27,11 +27,15 @@ export interface WhatsAppMessage {
   text?: {
     body: string;
   };
+  // Na Cloud API a legenda vai DENTRO do objeto de mídia — caption no topo do
+  // payload é silenciosamente ignorada (a imagem chega sem texto nenhum).
   image?: {
     link: string;
+    caption?: string;
   };
   document?: {
     link: string;
+    filename?: string;
   };
 }
 
@@ -112,16 +116,24 @@ export class WhatsAppClient {
     imageUrl: string,
     caption?: string
   ): Promise<{ messageId: string }> {
+    // Mesmo contrato do sendMessage: em DRY_RUN não toca a API da Meta.
+    if (config.whatsapp.dryRun) {
+      logger.info({ to, imageUrl, dryRun: true }, "WhatsApp image (DRY_RUN - not actually sent)");
+      return { messageId: "dry-run-" + Date.now() };
+    }
+
     try {
       const payload: WhatsAppMessage = {
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to,
+        // Sem normalizar, o celular brasileiro de 12 dígitos (sem o 9) vira
+        // destinatário inválido e a imagem simplesmente não chega.
+        to: normalizeBrazilMobile(to),
         type: "image",
         image: {
           link: imageUrl,
+          ...(caption ? { caption } : {}),
         },
-        ...(caption && { caption }),
       };
 
       const response = await this.client.post(`/messages`, payload);
@@ -142,14 +154,20 @@ export class WhatsAppClient {
     documentUrl: string,
     filename?: string
   ): Promise<{ messageId: string }> {
+    if (config.whatsapp.dryRun) {
+      logger.info({ to, documentUrl, dryRun: true }, "WhatsApp document (DRY_RUN - not actually sent)");
+      return { messageId: "dry-run-" + Date.now() };
+    }
+
     try {
       const payload: WhatsAppMessage = {
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to,
+        to: normalizeBrazilMobile(to),
         type: "document",
         document: {
           link: documentUrl,
+          ...(filename ? { filename } : {}),
         },
       };
 

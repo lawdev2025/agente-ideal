@@ -27,6 +27,11 @@ const EnvSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_CHAT_ID: z.string().min(1),
 
+  // Arte da campanha de rematrícula enviada ANTES do passo a passo do Portal do
+  // Aluno. URL pública HTTPS — a Meta busca a imagem pelo link, então não pode
+  // ser caminho local. Vazio (default) = bot manda só o texto.
+  REMATRICULA_ART_URL: z.string().default(''),
+
   // Institution
   INSTITUTION_NAME: z.string().min(1),
   PERSONA_NAME: z.string().default('Ana'),

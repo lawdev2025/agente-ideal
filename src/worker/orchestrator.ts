@@ -837,6 +837,19 @@ export class MessageOrchestrator {
     conversationHistory: ConversationMessage[]
   ): Promise<void> {
     const resolvedUnit = unit ?? this.findRecentUnit(conversationHistory);
+
+    // Arte da campanha ANTES do texto. Vai como mensagem separada (não como
+    // legenda) porque o passo a passo passa dos 1024 caracteres que a Cloud API
+    // aceita em caption — como legenda, a mensagem seria rejeitada inteira.
+    // Best-effort: se a mídia falhar, o passo a passo é enviado do mesmo jeito.
+    if (config.rematriculaArtUrl) {
+      try {
+        await this.whatsappClient.sendImage(studentId, config.rematriculaArtUrl);
+      } catch (err) {
+        logger.error({ err, studentId }, "Falha ao enviar arte da rematrícula — seguindo com o texto");
+      }
+    }
+
     const reply = buildRematriculaReply(resolvedUnit);
     await this.stateRepository.appendMessage(conversationId, "assistant", reply);
     await this.whatsappClient.sendMessage(studentId, reply);

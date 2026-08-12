@@ -1391,7 +1391,7 @@ const SELETIVA_LANDING_URL = "https://grupoideal.com.br/seletivas2027/";
 const SELETIVA_CALENDARIO =
   "🏆 *SELETIVA IDEAL 2027* — nossa prova de bolsas, com descontos de *até 50%*!\n\n" +
   "📝 Inscrições abertas até *25/09*\n" +
-  "📚 Aulões preparatórios *gratuitos*: *21/09* e *23/09*\n" +
+  "📚 Aulas experimentais *gratuitas*: *21/09* e *23/09*\n" +
   "🗓️ Prova: *sábado, 26/09*, a partir das *13:30*";
 
 // Com a unidade definida → manda o link da landing e o telefone da secretaria.

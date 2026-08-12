@@ -28,6 +28,25 @@ describe("classifyContactTag: matrícula IMPLÍCITA (valor/série/nível) — bu
   }
 });
 
+describe("classifyContactTag: Seletiva Ideal 2027", () => {
+  const cases = [
+    "quero saber da seletiva",
+    "como funciona o processo seletivo?",
+    "vocês vão ter prova de bolsa esse ano?",
+    "quando é o concurso de bolsas?",
+    "tem teste de seleção?",
+  ];
+  for (const c of cases) {
+    it(`'${c}' → seletiva`, () => expect(classifyContactTag(c)).toBe("seletiva"));
+  }
+  it("seletiva vence matrícula quando a frase tem as duas (é campanha própria)", () => {
+    expect(classifyContactTag("quero matricular meu filho pela seletiva")).toBe("seletiva");
+  });
+  it("'sou aluno e quero fazer a seletiva' → seletiva (não rematricula)", () => {
+    expect(classifyContactTag("ja sou aluno e quero fazer a seletiva")).toBe("seletiva");
+  });
+});
+
 describe("classifyContactTag: prioridade (eixo/esporte/rematrícula antes de matrícula)", () => {
   it("'valor do eixo' → eixo (não matricula)", () => {
     expect(classifyContactTag("qual o valor do eixo?")).toBe("eixo");

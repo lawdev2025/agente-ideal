@@ -91,9 +91,11 @@ body {
 }
 .itag-matricula { background: var(--brand-tint); color: var(--brand-deep); }
 .itag-rematricula { background: var(--ok-tint); color: var(--ok); }
+.itag-seletiva { background: rgba(245,158,11,.15); color: #92400E; }
 .itag-eixo { background: rgba(108,92,231,.14); color: #6C5CE7; }
 .itag-esporte { background: rgba(37,99,235,.14); color: #2563EB; }
 .ideal.dark .itag-matricula { color: var(--brand-bright); }
+.ideal.dark .itag-seletiva { color: #FBBF24; }
 .ideal.dark .itag-eixo { color: #9D8CFF; }
 .ideal.dark .itag-esporte { color: #6FA8F5; }
 

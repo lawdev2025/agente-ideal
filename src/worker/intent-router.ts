@@ -46,6 +46,14 @@ export type RoutedIntent =
    */
   | { kind: "rematricula_request"; unit?: string }
   /**
+   * Seletiva Ideal 2027 (prova de bolsa / processo seletivo). A inscrição é
+   * feita numa landing por unidade, então o fluxo EXIGE a unidade antes de
+   * mandar o link: é a escolha da unidade que grava o unit_tag e direciona o
+   * lead pra atendente certa. Sem unidade → resumo da campanha + pergunta.
+   * NÃO pausa o bot.
+   */
+  | { kind: "seletiva_request"; unit?: string }
+  /**
    * Pedido de visita / agendamento. O cliente quer conhecer a escola ou pediu
    * o link de agendamento. Respondido de forma DETERMINÍSTICA com o link de
    * visita da unidade (ou os 3 links se não disse qual) — sem LLM, porque o
@@ -162,6 +170,13 @@ const DOCUMENT_KEYWORDS =
 
 // Transferência de escola → interesse em VIR pro Ideal (não documento de saída).
 // "transferência"/"transferir" e as variações "mudar/trocar de escola".
+// Seletiva Ideal 2027 — prova de bolsa / processo seletivo. Inclui as formas
+// que o cliente usa na prática ("concurso de bolsas", "prova de bolsa") e o
+// aulão preparatório. "bolsa" SOZINHO não entra: continua caindo no soft
+// redirect de bolsa/financiamento, que é a política do colégio.
+const SELETIVA_KEYWORDS =
+  /(seletivas?\b|processo\s+seletivo|prova\s+de\s+bolsa|provas\s+de\s+bolsa|concurso\s+de\s+bolsas?|teste\s+de\s+sele[çc][ãa]o|prova\s+de\s+sele[çc][ãa]o|aul[ãa]o)/i;
+
 // Rematrícula / renovação de matrícula de quem JÁ é aluno. Só formas explícitas
 // ("rematrícula", "renovar a matrícula", "portal do aluno") — "renovar" sozinho
 // não entra, pra não capturar renovação de convênio/uniforme.
@@ -244,6 +259,14 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   }
   const hasEnrollmentSignal =
     matchedNivel !== undefined || ENROLLMENT_KEYWORDS.test(text);
+
+  // Seletiva Ideal 2027 → fluxo próprio. Vem ANTES de tudo (inclusive do soft
+  // redirect de bolsa): "prova de bolsa" e "concurso de bolsas" casam com o
+  // padrão de bolsa/financiamento e sem esta prioridade o cliente seria mandado
+  // pra secretaria em vez de receber a campanha.
+  if (SELETIVA_KEYWORDS.test(text)) {
+    return { kind: "seletiva_request", unit: matchedUnit };
+  }
 
   // Rematrícula → passo a passo do Portal do Aluno (determinístico). Vem ANTES
   // de transferência/documento/matrícula: "rematrícula" contém "matrícula" e a

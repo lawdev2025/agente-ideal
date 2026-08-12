@@ -830,14 +830,15 @@ const DONUT_CONFIGS = {
         colors: {
             matricula:        '#C8202E',
             rematricula:      '#E86A73',
+            seletiva:         '#F59E0B',
             eixo:             '#3B82F6',
             esporte:          '#10B981',
         },
-        labels: { matricula: 'Matrícula', rematricula: 'Rematrícula', eixo: 'Eixo', esporte: 'Esporte' },
+        labels: { matricula: 'Matrícula', rematricula: 'Rematrícula', seletiva: 'Seletiva', eixo: 'Eixo', esporte: 'Esporte' },
         fetch: async () => {
             if (!_sb) return {};
             const { data } = await _sb.from('contacts').select('tag');
-            const counts = { matricula: 0, rematricula: 0, eixo: 0, esporte: 0 };
+            const counts = { matricula: 0, rematricula: 0, seletiva: 0, eixo: 0, esporte: 0 };
             (data || []).forEach(r => { const k = r.tag; if (k && k in counts) counts[k]++; });
             return counts;
         },
@@ -1265,6 +1266,7 @@ function tagInfo(tag) {
     switch (tag) {
         case 'matricula': return { label: 'Matrícula', cls: 'itag-matricula' };
         case 'rematricula': return { label: 'Rematrícula', cls: 'itag-rematricula' };
+        case 'seletiva': return { label: 'Seletiva', cls: 'itag-seletiva' };
         case 'eixo': return { label: 'Eixo', cls: 'itag-eixo' };
         case 'esporte': return { label: 'Esporte', cls: 'itag-esporte' };
         default: return null;

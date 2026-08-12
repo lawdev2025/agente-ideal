@@ -17,6 +17,7 @@ export interface Config {
   };
   /** URL pública da arte da campanha de rematrícula ('' = não enviar imagem). */
   rematriculaArtUrl: string;
+  seletivaArtUrl: string;
   whatsapp: {
     phoneNumberId: string;
     accessToken: string;
@@ -61,6 +62,7 @@ export const config: Config = {
     enrollmentPeriodEnd: rawConfig.ENROLLMENT_PERIOD_END,
   },
   rematriculaArtUrl: rawConfig.REMATRICULA_ART_URL,
+  seletivaArtUrl: rawConfig.SELETIVA_ART_URL,
   whatsapp: {
     phoneNumberId: rawConfig.WHATSAPP_PHONE_NUMBER_ID,
     accessToken: rawConfig.WHATSAPP_ACCESS_TOKEN,

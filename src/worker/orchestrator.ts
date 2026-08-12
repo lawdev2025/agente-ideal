@@ -212,7 +212,9 @@ export class MessageOrchestrator {
       const followUpUnit = pendingAsk ? detectUnit(userMessage) : undefined;
       if (pendingAsk && followUpUnit) {
         const reply =
-          pendingAsk === "rematricula"
+          pendingAsk === "seletiva"
+            ? buildSeletivaReplyWithUnit(followUpUnit)
+            : pendingAsk === "rematricula"
             ? buildRematriculaFollowUpReply(followUpUnit)
             : pendingAsk === "document"
               ? buildDocumentReplyWithUnit(followUpUnit)
@@ -277,6 +279,20 @@ export class MessageOrchestrator {
           studentId,
           intent.reason,
           detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory)
+        );
+        return;
+      }
+
+      // Seletiva Ideal 2027 → campanha própria. A unidade é OBRIGATÓRIA antes
+      // do link (é ela que grava o unit_tag e direciona o lead pra atendente
+      // certa), então sem unidade o bot pergunta em vez de mandar o link.
+      if (intent.kind === "seletiva_request") {
+        await this.handleSeletivaRequest(
+          conversationId,
+          studentId,
+          userMessage,
+          intent.unit,
+          conversationHistory
         );
         return;
       }
@@ -860,6 +876,43 @@ export class MessageOrchestrator {
     );
   }
 
+  // Seletiva Ideal 2027 (prova de bolsa). A inscrição é por unidade, e a
+  // escolha da unidade é o que grava o unit_tag do contato (o webhook detecta o
+  // nome da unidade na resposta do cliente) — por isso NUNCA mandamos o link
+  // antes de saber a unidade: sem ela o lead fica órfão e não cai pra atendente
+  // certa. Com unidade → arte + calendário + link + telefone.
+  private async handleSeletivaRequest(
+    conversationId: string,
+    studentId: string,
+    userMessage: string,
+    unit: string | undefined,
+    conversationHistory: ConversationMessage[]
+  ): Promise<void> {
+    const resolvedUnit = unit ?? this.findRecentUnit(conversationHistory);
+
+    // Arte da campanha ANTES do texto, como na rematrícula (o texto passa dos
+    // 1024 caracteres que a Cloud API aceita em caption). Best-effort: se a
+    // mídia falhar, o texto vai do mesmo jeito.
+    if (config.seletivaArtUrl) {
+      try {
+        await this.whatsappClient.sendImage(studentId, config.seletivaArtUrl);
+      } catch (err) {
+        logger.error({ err, studentId }, "Falha ao enviar arte da seletiva — seguindo com o texto");
+      }
+    }
+
+    const reply = resolvedUnit
+      ? buildSeletivaReplyWithUnit(resolvedUnit)
+      : SELETIVA_ASK_UNIT_REPLY;
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    await this.softNotifyTeam(
+      conversationId,
+      studentId,
+      `Cliente interessado na SELETIVA IDEAL 2027${resolvedUnit ? ` (${resolvedUnit})` : " (unidade ainda não informada)"}. Mensagem: "${userMessage}"`
+    );
+  }
+
   // Varre o histórico do mais recente pro mais antigo e devolve a primeira
   // unidade citada — usado pra resolver "tem link?" depois que o cliente já
   // disse de qual unidade estava falando.
@@ -1168,7 +1221,8 @@ function buildPresentialValuesReply(unit?: string): string {
     return (
       intro +
       `Que tal agendar uma visita à unidade *${unit}*? É só clicar no link:\n` +
-      `👉 ${VISIT_LINKS[unit]}`
+      `👉 ${VISIT_LINKS[unit]}` +
+      SELETIVA_CROSS_SELL
     );
   }
 
@@ -1177,7 +1231,8 @@ function buildPresentialValuesReply(unit?: string): string {
     "Quer agendar uma visita? Escolha a unidade mais próxima:\n" +
     `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
     `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
-    `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}`
+    `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}` +
+    SELETIVA_CROSS_SELL
   );
 }
 
@@ -1234,6 +1289,11 @@ function buildEnrollmentReply(opts: {
       `quer que eu te passe o telefone? 😊`;
   }
 
+  // Toda resposta de matrícula termina puxando a Seletiva (desconto de até 50%)
+  // — exceto a de horário, que é uma dúvida pontual de quem já é da casa e não
+  // combina com oferta de campanha.
+  if (!asksSchedule) reply += SELETIVA_CROSS_SELL;
+
   return reply;
 }
 
@@ -1266,11 +1326,21 @@ function buildSecretariaRedirectReply(unit?: string): string {
 // unidade pra passar um telefone, um nome de unidade sozinho na resposta vira a
 // resposta certa (sem LLM). Olha SÓ a última mensagem do assistant — se não for
 // uma dessas perguntas, devolve null e o fluxo normal de roteamento segue.
-type PendingUnitAsk = "document" | "payment" | "secretaria" | "transfer" | "rematricula" | null;
+type PendingUnitAsk =
+  | "document"
+  | "payment"
+  | "secretaria"
+  | "transfer"
+  | "rematricula"
+  | "seletiva"
+  | null;
 function detectPendingUnitAsk(history: ConversationMessage[]): PendingUnitAsk {
   for (let i = history.length - 1; i >= 0; i--) {
     if (history[i].role !== "assistant") continue;
     const t = history[i].content;
+    // Frase-marca exclusiva da pergunta de unidade da Seletiva. É o turno que
+    // fecha o fluxo: a unidade escolhida vira unit_tag e libera o link.
+    if (/qual unidade voc[êe] quer fazer a \*?Seletiva/i.test(t)) return "seletiva";
     // Frase-marca exclusiva do passo a passo da rematrícula. Vem antes do check
     // genérico de secretaria porque a pergunta de unidade é a mesma.
     if (/aba \*?Rematr[íi]cula/i.test(t)) return "rematricula";
@@ -1313,6 +1383,50 @@ function buildDocumentReplyWithUnit(unit: string): string {
     `Na *${unit}* é só falar com a secretaria pelo *${phone}* que o nosso time te orienta certinho. 😊`
   );
 }
+
+// SELETIVA IDEAL 2027 — prova de bolsa. Datas e link oficiais; montados aqui
+// (não no LLM) pra data e URL nunca serem "melhoradas" pelo modelo.
+const SELETIVA_LANDING_URL = "https://grupoideal.com.br/seletivas2027/";
+
+const SELETIVA_CALENDARIO =
+  "🏆 *SELETIVA IDEAL 2027* — nossa prova de bolsas, com descontos de *até 50%*!\n\n" +
+  "📝 Inscrições abertas até *25/09*\n" +
+  "📚 Aulões preparatórios *gratuitos*: *21/09* e *23/09*\n" +
+  "🗓️ Prova: *sábado, 26/09*, a partir das *13:30*";
+
+// Com a unidade definida → manda o link da landing e o telefone da secretaria.
+// A landing pede a unidade de novo; já sabendo qual é, orientamos a seleção pra
+// o cliente não errar (e o unit_tag dele já foi gravado pelo webhook).
+function buildSeletivaReplyWithUnit(unit: string): string {
+  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  return (
+    SELETIVA_CALENDARIO +
+    "\n\n" +
+    `Perfeito, unidade *${unit}*! 🎯 A inscrição é rapidinha, por aqui:\n` +
+    `👉 ${SELETIVA_LANDING_URL}\n` +
+    `É só selecionar a unidade *${unit}* na página e preencher os dados.\n\n` +
+    `Qualquer dúvida, fala com a secretaria da *${unit}* pelo *${phone}*. 😊`
+  );
+}
+
+// Sem unidade → apresenta a campanha e PERGUNTA a unidade. O link fica pro
+// próximo turno de propósito: a escolha da unidade é o que grava o unit_tag e
+// direciona o lead pra atendente daquela unidade.
+const SELETIVA_ASK_UNIT_REPLY =
+  SELETIVA_CALENDARIO +
+  "\n\n" +
+  "Pra eu te mandar o link de inscrição certinho, em qual unidade você quer fazer a *Seletiva*?\n" +
+  "🏫 *Batista Campos*\n" +
+  "🏫 *Augusto Montenegro*\n" +
+  "🏫 *Cidade Nova (Ananindeua)*";
+
+// Convite de fim de mensagem: toda resposta de MATRÍCULA termina oferecendo a
+// Seletiva (é o gancho de desconto que puxa o lead pra campanha). Frase curta e
+// sem o link — quem responder "quero" cai no fluxo de seletiva, que pergunta a
+// unidade e só então manda o link.
+const SELETIVA_CROSS_SELL =
+  "\n\n🏆 Ah! Quer saber sobre a *Seletiva Ideal 2027*? " +
+  "É a nossa prova de bolsas, com descontos de *até 50%* — é só me dizer que eu te explico. 😉";
 
 // Passo a passo OFICIAL da rematrícula (Portal do Aluno / TOTVS). Texto único,
 // reusado com e sem unidade — os links são dados oficiais do colégio e não podem

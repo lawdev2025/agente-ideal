@@ -5,12 +5,15 @@ import { getSupabase } from "../../src/db/supabase-client";
 import { logger } from "../../src/logger";
 
 // Escopo de visibilidade de um contato para uma atendente de unidade.
-// Ela vê os contatos da SUA unidade E os leads de matrícula que ainda não
+// Ela vê os contatos da SUA unidade E os leads de entrada que ainda não
 // disseram unidade (unit_tag vazio) — senão esses órfãos não apareciam para
 // ninguém. Órfãos aparecem para as 3 ao mesmo tempo (sem "claim"), de propósito.
+// Seletiva entra como lead de entrada junto com matrícula: o bot pergunta a
+// unidade antes de mandar o link, mas o cliente pode largar a conversa no meio.
+const ORPHAN_ENTRY_TAGS = new Set(["matricula", "seletiva"]);
 function scopedToUnit(c: any, unit: string | null | undefined): boolean {
   if (c.unit_tag === unit) return true;
-  return !c.unit_tag && c.tag === "matricula";
+  return !c.unit_tag && ORPHAN_ENTRY_TAGS.has(c.tag);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

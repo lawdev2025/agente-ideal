@@ -32,6 +32,10 @@ const EnvSchema = z.object({
   // ser caminho local. Vazio (default) = bot manda só o texto.
   REMATRICULA_ART_URL: z.string().default(''),
 
+  // Arte da Seletiva Ideal 2027, enviada ANTES do texto da campanha. Mesmas
+  // regras do REMATRICULA_ART_URL: URL pública HTTPS, vazio = só texto.
+  SELETIVA_ART_URL: z.string().default(''),
+
   // Institution
   INSTITUTION_NAME: z.string().min(1),
   PERSONA_NAME: z.string().default('Ana'),

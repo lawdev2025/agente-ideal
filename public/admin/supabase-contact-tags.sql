@@ -1,5 +1,6 @@
 -- =====================================================================
--- Tag de INTENÇÃO por contato (matrícula / rematrícula / eixo / esporte).
+-- Tag de INTENÇÃO por contato (matrícula / rematrícula / seletiva / eixo /
+-- esporte).
 -- O webhook classifica a mensagem que chega e grava a tag aqui; o app e o
 -- painel mostram um selo discreto ao lado do nome.
 --

@@ -661,6 +661,106 @@ describe("Orchestrator: transferência → interesse em vir pro Ideal (visita + 
   });
 });
 
+describe("Orchestrator: Seletiva Ideal 2027 (unidade ANTES do link)", () => {
+  it("'quero saber da seletiva' NÃO manda o link — apresenta a campanha e pergunta a unidade", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero saber da seletiva", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/25\/09/);
+    expect(sent).toMatch(/21\/09/);
+    expect(sent).toMatch(/23\/09/);
+    expect(sent).toMatch(/26\/09/);
+    expect(sent).toMatch(/13:30/);
+    expect(sent).toMatch(/at[ée] 50%/i);
+    expect(sent).toMatch(/qual unidade voc[êe] quer fazer a \*?Seletiva/i);
+    // O link só sai DEPOIS da escolha da unidade — é ela que grava o unit_tag.
+    expect(sent).not.toContain("seletivas2027");
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+  });
+
+  it("'prova de bolsa' vai pra seletiva, não pro redirect de bolsa/financiamento", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "vocês têm prova de bolsa?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/SELETIVA IDEAL 2027/i);
+    expect(sent).not.toMatch(/confirma certinho é a nossa \*secretaria\*/i);
+  });
+
+  it("citando a unidade já na 1ª mensagem manda o link + telefone daquela unidade", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero fazer a seletiva na Cidade Nova", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toContain("https://grupoideal.com.br/seletivas2027/");
+    expect(sent).toContain("(91) 3346-0011");
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("respondendo só a unidade depois da pergunta libera o link (sem LLM)", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Oi" },
+        { role: "user", content: "Ana" },
+        {
+          role: "assistant",
+          content:
+            "Pra eu te mandar o link de inscrição certinho, em qual unidade você quer fazer a *Seletiva*?\n🏫 *Batista Campos*",
+        },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Augusto Montenegro", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toContain("https://grupoideal.com.br/seletivas2027/");
+    expect(sent).toContain("(91) 3120-3188");
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("Orchestrator: matrícula termina oferecendo a Seletiva", () => {
+  it("pergunta de valor fecha com o convite da Seletiva (até 50%)", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "qual o valor da mensalidade?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/presencialmente/i);
+    expect(sent).toMatch(/Seletiva Ideal 2027/i);
+    expect(sent).toMatch(/at[ée] 50%/i);
+  });
+
+  it("interesse em série também fecha com a Seletiva", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "tem vaga no 6º ano na Cidade Nova?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/Seletiva Ideal 2027/i);
+  });
+
+  it("dúvida de horário NÃO recebe o convite (é pergunta pontual, não lead novo)", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "qual o horário de aula do 6º ano?", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/07:30/);
+    expect(sent).not.toMatch(/Seletiva/i);
+  });
+});
+
 describe("Orchestrator: rematrícula → passo a passo do Portal do Aluno", () => {
   it("'como faço a rematrícula' (sem unidade) manda os 6 passos e pergunta a unidade", async () => {
     const m = buildMocks({
@@ -936,6 +1036,23 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
   it("transferência/histórico → document_request (secretaria, não soft genérico)", () => {
     expect(routeIntent("como faço a transferência do histórico?", false).kind).toBe("document_request");
   });
+  it("seletiva → seletiva_request (vence o soft redirect de bolsa)", () => {
+    expect(routeIntent("quero saber da seletiva", false).kind).toBe("seletiva_request");
+    expect(routeIntent("como é o processo seletivo?", false).kind).toBe("seletiva_request");
+    expect(routeIntent("vocês têm prova de bolsa?", false).kind).toBe("seletiva_request");
+    expect(routeIntent("quando é o concurso de bolsas?", false).kind).toBe("seletiva_request");
+  });
+
+  it("'bolsa' sozinho continua soft_redirect (política do colégio, não seletiva)", () => {
+    expect(routeIntent("vocês dão bolsa de estudo?", false).kind).toBe("soft_redirect");
+  });
+
+  it("seletiva citando unidade carrega a unidade", () => {
+    const r = routeIntent("quero fazer a seletiva na Cidade Nova", false);
+    expect(r.kind).toBe("seletiva_request");
+    expect((r as any).unit).toBe("Cidade Nova");
+  });
+
   it("rematrícula → rematricula_request (não enrollment_info nem escalate)", () => {
     expect(routeIntent("como faço a rematrícula do meu filho?", false).kind).toBe("rematricula_request");
     expect(routeIntent("quero renovar a matrícula da minha filha", false).kind).toBe("rematricula_request");

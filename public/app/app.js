@@ -221,6 +221,7 @@
     switch (tag) {
       case "matricula": return { label: "Matrícula", cls: "itag-matricula" };
       case "rematricula": return { label: "Rematrícula", cls: "itag-rematricula" };
+      case "seletiva": return { label: "Seletiva", cls: "itag-seletiva" };
       case "eixo": return { label: "Eixo", cls: "itag-eixo" };
       case "esporte": return { label: "Esporte", cls: "itag-esporte" };
       default: return null;

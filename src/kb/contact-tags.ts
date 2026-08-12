@@ -5,15 +5,16 @@
  * triângulo de atendimento mostrar um selo ao lado do nome (app + painel):
  *   - matricula    → interessado em matricular (aluno novo)
  *   - rematricula  → já é aluno, quer renovar
+ *   - seletiva     → Seletiva Ideal 2027 (prova de bolsa / processo seletivo)
  *   - eixo         → Pré-Enem / Pré-Vestibular / cursinho (Eixo)
  *   - esporte      → escolinha de esporte
  *
  * Determinístico (regex sobre texto normalizado), roda no webhook a cada
  * mensagem do usuário. Retorna null quando não há sinal claro (mantém a tag
- * anterior). A ORDEM importa: "rematrícula" contém "matrícula", e eixo/esporte
- * vêm antes de matrícula para não serem engolidos.
+ * anterior). A ORDEM importa: "rematrícula" contém "matrícula", e seletiva/
+ * eixo/esporte vêm antes de matrícula para não serem engolidos.
  */
-export type ContactTag = "matricula" | "rematricula" | "eixo" | "esporte";
+export type ContactTag = "matricula" | "rematricula" | "seletiva" | "eixo" | "esporte";
 
 function norm(s: string): string {
   return (s || "")
@@ -25,6 +26,16 @@ function norm(s: string): string {
 export function classifyContactTag(text: string): ContactTag | null {
   const t = norm(text);
   if (!t.trim()) return null;
+
+  // Seletiva Ideal 2027 vem PRIMEIRO: é uma campanha própria e as frases dela
+  // contêm palavras que cairiam em matrícula ("inscrição", "prova") ou em
+  // rematrícula ("sou aluno e quero fazer a seletiva").
+  // "bolsa" sozinho NÃO entra (nem "bolsa de estudo"): essas frases caem no
+  // soft redirect de bolsa/financiamento no roteador, e a tag tem que casar com
+  // o que o cliente ouviu — senão o painel marca Seletiva num lead que foi
+  // mandado pra secretaria.
+  if (/(seletiva|processo seletivo|prova de bolsa|provas de bolsa|concurso de bolsa|teste de selecao|prova de selecao|aulao)/.test(t))
+    return "seletiva";
 
   if (/(rematricul|renovac|renova matric|ja sou aluno|sou aluno do|aluno antigo|ja estudo|ja estuda|filho ja estuda|filha ja estuda|voltar a estudar)/.test(t))
     return "rematricula";

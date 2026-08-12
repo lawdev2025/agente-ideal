@@ -2133,10 +2133,12 @@ html.dark .glass {
 /* Itags: texto escuro no modo claro (WCAG AA), texto vibrante no escuro */
 .itag-matricula   { background: var(--brand-subtle); color: var(--badge-err-text); }
 .itag-rematricula { background: rgba(31,157,85,.13);  color: var(--badge-ok-text); }
+.itag-seletiva    { background: rgba(245,158,11,.15); color: #92400E; }
 .itag-eixo        { background: rgba(108,92,231,.14); color: #3B2BAF; }
 .itag-esporte     { background: rgba(37,99,235,.13);  color: var(--badge-info-text); }
 html.dark .itag-matricula   { color: var(--brand-light); }
 html.dark .itag-rematricula { color: var(--accent-green); }
+html.dark .itag-seletiva    { color: #FBBF24; }
 html.dark .itag-eixo        { color: #9D8CFF; }
 html.dark .itag-esporte     { color: #6FA8F5; }
 /* Selo de UNIDADE (AM/BC/CN) — discreto, ao lado da tag de intenção */

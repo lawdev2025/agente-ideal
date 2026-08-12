@@ -92,16 +92,19 @@ const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
       /\b(maternal|jardim\s*[iI1]?\b|jardim\s+de\s+inf[âa]ncia|educa[çc][ãa]o\s+infantil|ber[çc][áa]rio|pr[ée][-\s]?escola|cre+che|infantil|ideal\s*j[úu]nior|j[úu]nior|jr)\b/i,
     nivel: "Educação Infantil",
   },
-  // Fundamental 1
+  // Fundamental 1 — inclui o ordinal POR EXTENSO ("quinta série", "quinto
+  // ano"). RAIZ DE BUG: só o formato numérico era reconhecido, então "Quinta
+  // série" virava enrollment_info SEM nível e caía no fraseamento por LLM, que
+  // improvisava (listou os 3 telefones e mandou a seletiva pra secretaria).
   {
     regex:
-      /\b(fundamental\s*1|fund\s*1|fundamental\s*i\b|prim[áa]rio|anos\s+iniciais|[1-5][ºo°]?\s*ano|primeiro\s+ao\s+quinto)\b/i,
+      /\b(fundamental\s*1|fund\s*1|fundamental\s*i\b|prim[áa]rio|anos\s+iniciais|[1-5][ºo°]?\s*ano|primeiro\s+ao\s+quinto|(quarta|quinta)\s+s[ée]rie|(primeiro|segundo|quarto|quinto)\s+ano)\b/i,
     nivel: "Fundamental 1",
   },
-  // Fundamental 2
+  // Fundamental 2 — idem para 6º-9º ("sexta série", "sétimo ano").
   {
     regex:
-      /\b(fundamental\s*2|fund\s*2|fundamental\s*ii\b|anos\s+finais|[6-9][ºo°]?\s*ano|sexto\s+ao\s+nono)\b/i,
+      /\b(fundamental\s*2|fund\s*2|fundamental\s*ii\b|anos\s+finais|[6-9][ºo°]?\s*ano|sexto\s+ao\s+nono|(sexta|s[ée]tima|oitava|nona)\s+s[ée]rie|(sexto|s[ée]timo|oitavo|nono)\s+ano)\b/i,
     nivel: "Fundamental 2",
   },
   // Pré-Enem variants (must come BEFORE Ensino Médio so "3º ano" hits this branch)
@@ -113,7 +116,7 @@ const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
   // Ensino Médio
   {
     regex:
-      /\b(ensino\s+m[ée]dio|m[ée]dio|colegial|EM|1[ªa]\s*s[ée]rie|2[ªa]\s*s[ée]rie)\b/i,
+      /\b(ensino\s+m[ée]dio|m[ée]dio|colegial|EM|1[ªa]\s*s[ée]rie|2[ªa]\s*s[ée]rie|(primeira|segunda)\s+s[ée]rie)\b/i,
     nivel: "Ensino Médio",
   },
 ];
@@ -174,8 +177,13 @@ const DOCUMENT_KEYWORDS =
 // que o cliente usa na prática ("concurso de bolsas", "prova de bolsa") e o
 // aulão preparatório. "bolsa" SOZINHO não entra: continua caindo no soft
 // redirect de bolsa/financiamento, que é a política do colégio.
+// RAIZ DE BUG (não reintroduzir): o padrão era /seletivas?\b/ e o cliente
+// escreveu "Seleticas" — a mensagem caiu no LLM, que improvisou. Casamos o
+// prefixo "selet" + qualquer sufixo, que cobre seletiva/seletivas/seletivo e os
+// erros de digitação comuns (seletica, seleticas, seletva). Em português não há
+// outra família de palavras começando em "selet", então não há falso positivo.
 const SELETIVA_KEYWORDS =
-  /(seletivas?\b|processo\s+seletivo|prova\s+de\s+bolsa|provas\s+de\s+bolsa|concurso\s+de\s+bolsas?|teste\s+de\s+sele[çc][ãa]o|prova\s+de\s+sele[çc][ãa]o|aul[ãa]o)/i;
+  /(\bselet[a-zçãáéíóú]*|processo\s+seletivo|prova\s+de\s+bolsa|provas\s+de\s+bolsa|concurso\s+de\s+bolsas?|teste\s+de\s+sele[çc][ãa]o|prova\s+de\s+sele[çc][ãa]o|aul[ãa]o)/i;
 
 // Rematrícula / renovação de matrícula de quem JÁ é aluno. Só formas explícitas
 // ("rematrícula", "renovar a matrícula", "portal do aluno") — "renovar" sozinho

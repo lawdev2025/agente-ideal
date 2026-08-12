@@ -1043,6 +1043,23 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
     expect(routeIntent("quando é o concurso de bolsas?", false).kind).toBe("seletiva_request");
   });
 
+  // Bug real de produção: o cliente digitou "Seleticas" e a mensagem escapou da
+  // campanha (caiu no LLM, que improvisou e mandou pra secretaria).
+  it("erro de digitação em 'seletivas' ainda cai na campanha", () => {
+    for (const t of ["Seleticas", "seletva", "seletivass", "Seletiva"]) {
+      expect(routeIntent(t, false).kind).toBe("seletiva_request");
+    }
+  });
+
+  // Bug real de produção: "Quinta série" virava enrollment_info SEM nível e caía
+  // no fraseamento por LLM, que listou os 3 telefones e improvisou.
+  it("série por extenso resolve o nível (não sobra pro LLM)", () => {
+    expect(detectNivel("Quinta série")).toBe("Fundamental 1");
+    expect(detectNivel("quinta serie")).toBe("Fundamental 1");
+    expect(detectNivel("sexta série")).toBe("Fundamental 2");
+    expect(detectNivel("primeira série")).toBe("Ensino Médio");
+  });
+
   it("'bolsa' sozinho continua soft_redirect (política do colégio, não seletiva)", () => {
     expect(routeIntent("vocês dão bolsa de estudo?", false).kind).toBe("soft_redirect");
   });

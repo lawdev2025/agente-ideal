@@ -1583,6 +1583,10 @@ const DADOS_COLEGIO = [
   "• Endereços (dê a rua completa quando perguntarem): Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esq. WE-21), Coqueiro, Ananindeua-PA.",
   `• Links de visita: Batista Campos → ${VISIT_LINKS["Batista Campos"]} · Augusto Montenegro → ${VISIT_LINKS["Augusto Montenegro"]} · Cidade Nova → ${VISIT_LINKS["Cidade Nova"]}.`,
   "• 3 unidades, todas do Maternal ao Pré-Enem: Maternal, Jardim, Fund 1 (1º-5º), Fund 2 (6º-9º), Médio, Pré-Enem (Eixo). Sistema Poliedro. Material/uniforme comprados na escola/malharia. Aulas 07:30 (30 min de tolerância), iguais nas 3 unidades.",
+  // A Seletiva PRECISA estar aqui: sem ela, a regra de "dado concreto fora dos
+  // dados acima → a secretaria confirma" fazia o modelo empurrar a campanha pra
+  // secretaria (bug real em produção, print do cliente).
+  `• SELETIVA IDEAL 2027 (prova de bolsa, descontos de ATÉ 50%): inscrições até 25/09 · aulas experimentais gratuitas 21/09 e 23/09 · prova sábado 26/09 a partir das 13:30 · inscrição em ${SELETIVA_LANDING_URL}.`,
 ].join("\n");
 
 // Regras duras compartilhadas (telefone, valor, anti-alucinação). Antes estavam
@@ -1594,6 +1598,7 @@ const REGRAS_COMUNS = [
   "- Telefone/número/secretaria → dê o telefone fixo da unidade pedida (Batista Campos por padrão se não disser qual). Nunca ofereça WhatsApp, nunca diga 'não tenho essa informação' (os números estão acima).",
   "- Valor/mensalidade/preço/taxa → diga que os valores são informados presencialmente e convide para agendar visita pelo link da unidade (ou liste os 3 se não souber qual). Nunca cite R$. Não use 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
   "- Dado concreto fora dos dados acima (taxa de matrícula, vencimento, desconto, pagamento, início das aulas, documentos, link de cadastro, prazo): NÃO invente — diga que a secretaria confirma certinho e ofereça o telefone (ex.: Batista Campos (91) 3323-5000).",
+  "- Seletiva / processo seletivo / prova de bolsa / concurso de bolsas: é campanha NOSSA e os dados estão acima — NUNCA diga que a secretaria confirma. Dê as datas e PERGUNTE em qual unidade o cliente quer fazer a Seletiva. Só mande o link de inscrição DEPOIS que ele disser a unidade (é a unidade que direciona o lead pra atendente certa).",
   "- Nunca invente telefone com DDD diferente de 91. Nunca escreva texto que pareça chamada de função (ex.: get_enrollment_info(...)). Nunca diga 'aguarde' / 'um momento' / 'vou verificar'.",
 ].join("\n");
 

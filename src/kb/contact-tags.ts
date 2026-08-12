@@ -34,7 +34,9 @@ export function classifyContactTag(text: string): ContactTag | null {
   // soft redirect de bolsa/financiamento no roteador, e a tag tem que casar com
   // o que o cliente ouviu — senão o painel marca Seletiva num lead que foi
   // mandado pra secretaria.
-  if (/(seletiva|processo seletivo|prova de bolsa|provas de bolsa|concurso de bolsa|teste de selecao|prova de selecao|aulao)/.test(t))
+  // "selet" + sufixo livre tolera o erro de digitação ("seleticas") que fazia a
+  // mensagem escapar da campanha. Espelha SELETIVA_KEYWORDS no intent-router.
+  if (/(\bselet[a-z]*|processo seletivo|prova de bolsa|provas de bolsa|concurso de bolsa|teste de selecao|prova de selecao|aulao)/.test(t))
     return "seletiva";
 
   if (/(rematricul|renovac|renova matric|ja sou aluno|sou aluno do|aluno antigo|ja estudo|ja estuda|filho ja estuda|filha ja estuda|voltar a estudar)/.test(t))

@@ -7,6 +7,7 @@ import { logger } from "../logger";
 import { config } from "../config";
 import { routeIntent, RoutedIntent, detectUnit, detectNivel } from "./intent-router";
 import { matchDirectResponse } from "../kb/direct-responses";
+import { unitAbbrev } from "../kb/contact-tags";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 
@@ -107,6 +108,17 @@ export class MessageOrchestrator {
         role: msg.role,
         content: msg.content,
       }));
+
+      // TAG DE UNIDADE: gravada aqui, num ponto só, assim que a unidade é
+      // conhecida — pela mensagem atual OU pelo histórico. O webhook também
+      // tenta, mas só enxerga a mensagem crua: quando o cliente responde "em
+      // qual unidade?" com "Augusto", ou quando a unidade só aparece alguns
+      // turnos atrás, era ali que a tag se perdia e o lead ficava órfão, sem
+      // chegar na atendente da unidade.
+      await this.persistUnitTag(
+        studentId,
+        detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory)
+      );
 
       // LIMITE DE RESPOSTAS DO BOT: o bot envia no máximo MAX_BOT_RESPONSES
       // mensagens por sessão (contém o custo de token do Claude). Ao bater o
@@ -859,11 +871,12 @@ export class MessageOrchestrator {
     // aceita em caption — como legenda, a mensagem seria rejeitada inteira.
     // Best-effort: se a mídia falhar, o passo a passo é enviado do mesmo jeito.
     if (config.rematriculaArtUrl) {
-      try {
-        await this.whatsappClient.sendImage(studentId, config.rematriculaArtUrl);
-      } catch (err) {
-        logger.error({ err, studentId }, "Falha ao enviar arte da rematrícula — seguindo com o texto");
-      }
+      await this.sendAndRecordArt(
+        conversationId,
+        studentId,
+        config.rematriculaArtUrl,
+        "arte da campanha de rematrícula"
+      );
     }
 
     const reply = buildRematriculaReply(resolvedUnit);
@@ -894,11 +907,12 @@ export class MessageOrchestrator {
     // 1024 caracteres que a Cloud API aceita em caption). Best-effort: se a
     // mídia falhar, o texto vai do mesmo jeito.
     if (config.seletivaArtUrl) {
-      try {
-        await this.whatsappClient.sendImage(studentId, config.seletivaArtUrl);
-      } catch (err) {
-        logger.error({ err, studentId }, "Falha ao enviar arte da seletiva — seguindo com o texto");
-      }
+      await this.sendAndRecordArt(
+        conversationId,
+        studentId,
+        config.seletivaArtUrl,
+        "arte da Seletiva Ideal 2027"
+      );
     }
 
     const reply = resolvedUnit
@@ -922,6 +936,62 @@ export class MessageOrchestrator {
       if (u) return u;
     }
     return undefined;
+  }
+
+  // Envia uma arte de campanha e GRAVA no histórico. O registro é o que faz a
+  // imagem aparecer no CRM (app e painel leem a tabela de mensagens e montam a
+  // bolha a partir de media_type + media_url) — sem ele a arte chegava no
+  // WhatsApp do cliente mas sumia do histórico.
+  //
+  // Best-effort nos dois sentidos: se o envio falhar, NÃO grava (seria uma
+  // imagem fantasma que o cliente nunca viu) e o texto segue normalmente.
+  private async sendAndRecordArt(
+    conversationId: string,
+    studentId: string,
+    url: string,
+    caption: string
+  ): Promise<void> {
+    try {
+      await this.whatsappClient.sendImage(studentId, url);
+    } catch (err) {
+      logger.error({ err, studentId }, `Falha ao enviar ${caption} — seguindo com o texto`);
+      return;
+    }
+    try {
+      await this.stateRepository.appendMessage(conversationId, "assistant", `[${caption}]`, {
+        media_type: "image",
+        media_url: url,
+        media_mime: "image/jpeg",
+      });
+    } catch (err) {
+      logger.warn({ err, studentId }, `Arte enviada mas nao registrada no historico (${caption})`);
+    }
+  }
+
+  // Mesma varredura do findRecentUnit, mas SÓ nas mensagens do cliente. A tag
+  // de unidade não pode sair do texto do bot: a pergunta "em qual unidade?"
+  // lista as três e começa por Batista Campos, então varrer o histórico inteiro
+  // marcaria BC em qualquer contato que só viu o menu.
+  private findRecentUnitFromUser(history: ConversationMessage[]): string | undefined {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const msg = history[i];
+      if (msg?.role !== "user") continue;
+      const u = detectUnit(msg.content ?? "");
+      if (u) return u;
+    }
+    return undefined;
+  }
+
+  // Grava a tag de unidade (AM/BC/CN) do contato. Best-effort: a tag é um selo
+  // de triagem no painel, então falha aqui nunca derruba a conversa.
+  private async persistUnitTag(studentId: string, unit: string | undefined): Promise<void> {
+    const tag = unitAbbrev(unit);
+    if (!tag) return;
+    try {
+      await this.stateRepository.setContactUnitTag?.(studentId, tag);
+    } catch (err) {
+      logger.warn({ err, studentId, tag }, "Falha ao gravar unit_tag (nao critico)");
+    }
   }
 
   // Aviso silencioso pro time no Telegram: registra no histórico e notifica

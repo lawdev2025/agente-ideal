@@ -41,6 +41,7 @@ function buildMocks(opts: {
     })),
     setName: vi.fn(async () => {}),
     updateLastSeen: vi.fn(async () => {}),
+    setContactUnitTag: vi.fn(async () => {}),
   } as unknown as StateRepository;
   const whatsapp = {
     sendMessage: vi.fn(async () => ({ messageId: "m1" })),
@@ -51,6 +52,67 @@ function buildMocks(opts: {
   } as unknown as EscalationHandler;
   return { llm, stateRepo, whatsapp, escalation };
 }
+
+// A tag de unidade é o que direciona o lead pra atendente daquela unidade. Ela
+// se perdia quando o cliente respondia "em qual unidade?" com só o primeiro
+// nome — o bot respondia certo (via LLM) mas o contato ficava órfão no painel.
+describe("Orchestrator: unit_tag gravado sempre que a unidade é resolvida", () => {
+  const ASK_UNIT =
+    "Pra eu te mandar o link de inscrição certinho, em qual unidade você quer fazer a *Seletiva*?\n" +
+    "🏫 *Batista Campos*\n🏫 *Augusto Montenegro*\n🏫 *Cidade Nova (Ananindeua)*";
+
+  it("responder só 'Augusto' ao follow-up grava AM", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "Seletivas" },
+        { role: "assistant", content: ASK_UNIT },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Augusto", "u1");
+    expect(m.stateRepo.setContactUnitTag).toHaveBeenCalledWith("u1", "AM");
+  });
+
+  it("'Batista' → BC e 'Cidade' → CN", async () => {
+    for (const [answer, tag] of [["Batista", "BC"], ["Cidade", "CN"]] as const) {
+      const m = buildMocks({
+        history: [
+          { role: "user", content: "Seletivas" },
+          { role: "assistant", content: ASK_UNIT },
+        ],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", answer, "u1");
+      expect(m.stateRepo.setContactUnitTag).toHaveBeenCalledWith("u1", tag);
+    }
+  });
+
+  it("unidade dita turnos atrás pelo cliente ainda grava a tag", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "quero saber da seletiva na Cidade Nova" },
+        { role: "assistant", content: "Claro!" },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "e tem link?", "u1");
+    expect(m.stateRepo.setContactUnitTag).toHaveBeenCalledWith("u1", "CN");
+  });
+
+  // O menu de unidades do PRÓPRIO bot não pode virar tag — ele lista as três e
+  // começa por Batista Campos, o que marcaria BC em quem só viu a pergunta.
+  it("menu de unidades do bot NÃO grava tag", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "Seletivas" },
+        { role: "assistant", content: ASK_UNIT },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "ainda não sei", "u1");
+    expect(m.stateRepo.setContactUnitTag).not.toHaveBeenCalled();
+  });
+});
 
 describe("Orchestrator: greeting de boas-vindas (Grupo Ideal)", () => {
   it("primeira mensagem responde com saudação do Grupo Ideal", async () => {
@@ -558,21 +620,25 @@ describe("Orchestrator: uniforme não escala mais (roteiro já sabe)", () => {
 });
 
 describe("Orchestrator: necessidade documental → secretaria da unidade (com telefone)", () => {
-  it("'preciso do boletim' (sem unidade) pergunta qual unidade, sem LLM, sem pausar", async () => {
+  it("'preciso do boletim' manda o Portal do Aluno direto, sem pedir unidade, sem LLM, sem pausar", async () => {
     const m = buildMocks({
       history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
     });
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "preciso do boletim do meu filho", "u1");
     const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
-    expect(sent).toMatch(/secretaria/i);
-    expect(sent).toMatch(/qual unidade/i);
-    expect(sent).toMatch(/Batista Campos/);
+    expect(sent).toMatch(/Portal do Aluno/i);
+    expect(sent).toMatch(/boletim/i);
+    expect(sent).toMatch(/PortalEducacional\/login/);
+    // O portal é o mesmo nas 3 unidades — não faz sentido perguntar qual é
+    expect(sent).not.toMatch(/qual unidade/i);
     expect(sent).not.toMatch(/presencialmente/i);
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
     expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
-    // Avisa o time em silêncio
-    expect(m.escalation.escalateToGroup).toHaveBeenCalled();
+    // "boletim" é gatilho de Resposta Direta (school_faq), que responde verbatim
+    // e curto-circuita o intent router. Autoatendimento puro: o cliente resolve
+    // sozinho no portal, então o time NÃO é avisado.
+    expect(m.escalation.escalateToGroup).not.toHaveBeenCalled();
   });
 
   it("'histórico escolar na Cidade Nova' passa o telefone da Cidade Nova", async () => {
@@ -809,6 +875,52 @@ describe("Orchestrator: rematrícula → passo a passo do Portal do Aluno", () =
       );
       const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
       expect(sent).toContain("PortalEducacional/login");
+    } finally {
+      config.rematriculaArtUrl = original;
+    }
+  });
+
+  // A arte chegava no WhatsApp mas não era gravada no histórico — o CRM lê a
+  // tabela de mensagens, então a imagem simplesmente não aparecia lá.
+  it("a arte enviada é gravada no histórico com media_type/media_url (aparece no CRM)", async () => {
+    const original = config.rematriculaArtUrl;
+    config.rematriculaArtUrl = "https://exemplo.com/rematricula-2027.jpg";
+    try {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", "quero fazer a rematrícula", "u1");
+      expect(m.stateRepo.appendMessage).toHaveBeenCalledWith(
+        "u1",
+        "assistant",
+        expect.any(String),
+        expect.objectContaining({
+          media_type: "image",
+          media_url: "https://exemplo.com/rematricula-2027.jpg",
+        })
+      );
+    } finally {
+      config.rematriculaArtUrl = original;
+    }
+  });
+
+  // Se o envio falhou, o cliente não recebeu nada — gravar viraria uma imagem
+  // fantasma no CRM que o cliente nunca viu.
+  it("arte que FALHOU não é gravada no histórico", async () => {
+    const original = config.rematriculaArtUrl;
+    config.rematriculaArtUrl = "https://exemplo.com/rematricula-2027.jpg";
+    try {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      (m.whatsapp.sendImage as any).mockRejectedValueOnce(new Error("media falhou"));
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", "quero fazer a rematrícula", "u1");
+      const withMedia = (m.stateRepo.appendMessage as any).mock.calls.filter(
+        (c: any) => c[3]?.media_url
+      );
+      expect(withMedia).toHaveLength(0);
     } finally {
       config.rematriculaArtUrl = original;
     }

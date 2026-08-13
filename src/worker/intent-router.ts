@@ -210,11 +210,35 @@ const CONTACT_KEYWORDS =
 const UNIT_KEYWORDS =
   /\b(unidade|unidades|sede|campus|campi|endere[çc]o|rua|logradouro|onde\s+fica|como\s+chegar|hor[áa]rio\s+de\s+funcionamento|hor[áa]rio\s+da\s+escola|hor[áa]rio\s+de\s+atendimento|infraestrutura|atividades|extracurricular|capacidade|quantos\s+alunos|quantidade\s+de\s+alunos|n[úu]mero\s+de\s+alunos|estrutura|laborat[óo]rio|quadra|gin[áa]sio|parquinho|brinquedoteca|batista|montenegro|cidade\s+nova|ananindeua)\b/i;
 
+// Nomes INEQUÍVOCOS da unidade: valem em qualquer lugar do texto, por mais
+// longa que seja a frase. Nenhum deles é palavra comum nem nome de pessoa.
 const UNIT_NAME_PATTERNS: Array<{ regex: RegExp; unit: string }> = [
   { regex: /\b(batista\s+campos?|sede)\b/i, unit: "Batista Campos" },
   { regex: /\b(augusto\s+montenegro|montenegro)\b/i, unit: "Augusto Montenegro" },
   { regex: /\b(cidade\s+nova|ananindeua)\b/i, unit: "Cidade Nova" },
 ];
+
+// PRIMEIRO nome da unidade, sozinho. Na prática o cliente responde "em qual
+// unidade?" com só "Augusto" / "Batista" / "Cidade" — e sem reconhecer isso o
+// unit_tag não era gravado e o lead ficava órfão (não chegava na atendente da
+// unidade), mesmo o bot tendo respondido certo pela via do LLM.
+//
+// Só valem em mensagem CURTA (ver SHORT_ANSWER_MAX_WORDS) porque fora do
+// formato de resposta essas palavras são ambíguas: "augusto"/"batista" são
+// nome de pessoa ("meu filho Augusto...") e "cidade" é palavra comum
+// ("em que cidade fica a escola?").
+const UNIT_FIRST_NAME_PATTERNS: Array<{ regex: RegExp; unit: string }> = [
+  { regex: /\bbatista\b/i, unit: "Batista Campos" },
+  { regex: /\baugusto\b/i, unit: "Augusto Montenegro" },
+  { regex: /\bcidade\b/i, unit: "Cidade Nova" },
+];
+
+const SHORT_ANSWER_MAX_WORDS = 3;
+
+function isShortAnswer(text: string): boolean {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.length <= SHORT_ANSWER_MAX_WORDS;
+}
 
 const GREETING_ONLY =
   /^(oi|ol[áa]|opa|hey|e[ai]+|bom\s+dia|boa\s+tarde|boa\s+noite|tudo\s+bem|td\s+bom|salve)[\s!.,?]*$/i;
@@ -368,6 +392,13 @@ export function detectUnit(text: string): string | undefined {
   const t = (text || "").trim();
   for (const { regex, unit } of UNIT_NAME_PATTERNS) {
     if (regex.test(t)) return unit;
+  }
+  // Fallback pelo primeiro nome — só em resposta curta, onde não há ambiguidade
+  // com nome de pessoa nem com "cidade" no sentido comum.
+  if (isShortAnswer(t)) {
+    for (const { regex, unit } of UNIT_FIRST_NAME_PATTERNS) {
+      if (regex.test(t)) return unit;
+    }
   }
   return undefined;
 }

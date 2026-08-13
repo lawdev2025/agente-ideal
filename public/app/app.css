@@ -232,9 +232,18 @@ body {
 }
 
 /* ---------------- CONN BANNER ---------------- */
+/* Pílula FLUTUANTE, fora do fluxo. Antes era um bloco no fluxo (flex-shrink:0 +
+   position:relative) entre o cabeçalho e a lista: cada vez que o Realtime caía
+   e voltava, o banner aparecia/sumia e empurrava a lista pra baixo e de volta —
+   no celular, onde a conexão oscila, isso virava um vai-e-vem constante.
+   Como overlay, o estado de conexão continua visível e o layout nunca mexe. */
 .conn-banner {
-  flex-shrink: 0; padding: 7px 14px; font: 600 12px 'Quicksand', sans-serif;
-  text-align: center; background: var(--warn-tint); color: var(--warn); position: relative; z-index: 3;
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); z-index: 49;
+  padding: 8px 16px; border-radius: 24px;
+  font: 600 12px 'Quicksand', sans-serif; text-align: center;
+  background: var(--warn-tint); color: var(--warn);
+  box-shadow: 0 6px 20px rgba(40,5,8,.22); max-width: 86%;
 }
 .conn-banner.ok { background: var(--ok-tint); color: var(--ok); }
 

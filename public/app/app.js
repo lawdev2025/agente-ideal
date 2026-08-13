@@ -21,6 +21,9 @@
   const unread = {}; // wa_id -> contador local de nao lidas
   let realtimeChannel = null;
   let reconnectTimer = null; // reconexão do realtime após queda
+  let offlineNoticeTimer = null; // atraso antes de AVISAR que caiu (não atrasa a reconexão)
+  let connectionDegraded = false; // o usuário chegou a ver o aviso de queda?
+  const OFFLINE_NOTICE_DELAY_MS = 4000;
   let safetyTimer = null;    // poll de segurança (realtime cai às vezes)
   let pendingChat = null; // ?chat= ou clique em notificacao antes de carregar
   // Paginacao do historico do chat aberto.
@@ -164,8 +167,14 @@
     }
   }
 
+  // Estado do banner de conexão. O Realtime oscila no celular (app em segundo
+  // plano, troca de Wi-Fi/4G) e cada queda+volta acendia dois banners seguidos.
+  // Guardamos o timer pra nunca deixar dois agendamentos concorrendo.
+  let bannerHideTimer = null;
+
   function setBanner(text, ok) {
     const b = $("conn-banner");
+    clearTimeout(bannerHideTimer);
     if (!text) {
       b.classList.add("hidden");
       return;
@@ -173,7 +182,7 @@
     b.textContent = text;
     b.classList.toggle("ok", !!ok);
     b.classList.remove("hidden");
-    if (ok) setTimeout(() => b.classList.add("hidden"), 2500);
+    if (ok) bannerHideTimer = setTimeout(() => b.classList.add("hidden"), 2500);
   }
 
   // ---------------- CONTATOS ----------------
@@ -852,9 +861,24 @@
         onContactChange(payload.new);
       })
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") setBanner("Conectado em tempo real", true);
-        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          setBanner("Reconectando ao tempo real…");
+        if (status === "SUBSCRIBED") {
+          // Só comemora se o usuário chegou a VER que caiu. Sem isso, toda
+          // queda invisível de 1s acendia um banner verde do nada.
+          clearTimeout(offlineNoticeTimer);
+          if (connectionDegraded) {
+            connectionDegraded = false;
+            setBanner("Conectado em tempo real", true);
+          } else {
+            setBanner("");
+          }
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          // Queda curta não vira aviso: só avisamos se persistir. A reconexão
+          // segue imediata — o que atrasa é o aviso, não o conserto.
+          clearTimeout(offlineNoticeTimer);
+          offlineNoticeTimer = setTimeout(() => {
+            connectionDegraded = true;
+            setBanner("Reconectando ao tempo real…");
+          }, OFFLINE_NOTICE_DELAY_MS);
           clearTimeout(reconnectTimer);
           reconnectTimer = setTimeout(subscribeRealtime, 3000); // reconecta sozinho
         }

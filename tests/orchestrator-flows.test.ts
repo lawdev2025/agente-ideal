@@ -114,6 +114,97 @@ describe("Orchestrator: unit_tag gravado sempre que a unidade é resolvida", () 
   });
 });
 
+// Pagamento da INSCRIÇÃO da Seletiva é auto-serviço: o cliente confere na área
+// do candidato, no mesmo link em que se inscreveu, e o pagamento aparece em até
+// 24h. Não é a mesma coisa que pagar mensalidade/boleto (isso sim é secretaria),
+// e os dois disputam a palavra "pagamento" — por isso o fluxo exige DOIS sinais.
+describe("Orchestrator: confirmação de pagamento da inscrição da Seletiva", () => {
+  const dispara = [
+    "Boa tarde! Fiz o pagamento do pix. Só queria confirmar a inscriçao da minha filha para o 6 ano/2027",
+    "Paguei a inscrição, está confirmada?",
+    "Fiz o pix da inscrição, vocês receberam?",
+    "Como sei se minha inscrição foi confirmada?",
+    "me inscrevi e paguei mas não veio nada",
+    "Segue o comprovante da inscrição",
+    "a inscrição da seletiva deu certo?",
+  ];
+  for (const msg of dispara) {
+    it(`'${msg.slice(0, 42)}…' → área do candidato`, async () => {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", msg, "u1");
+      const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+      expect(sent).toMatch(/área do candidato/i);
+      expect(sent).toContain("grupoideal.com.br/seletivas2027/");
+      expect(sent).toMatch(/24h/);
+      expect(m.llm.generateMessage).not.toHaveBeenCalled();
+      expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+    });
+  }
+
+  // A trava contra confusão: citar mensalidade/matrícula/boleto joga de volta
+  // pro fluxo de secretaria, que é onde essas coisas se resolvem.
+  const naoDispara = [
+    "como faço o pagamento da mensalidade?",
+    "paguei o boleto da matrícula, está confirmado?",
+    "quero pagar a fatura, como faço?",
+    "preciso fazer a prova de segunda chamada",
+  ];
+  for (const msg of naoDispara) {
+    it(`'${msg.slice(0, 42)}…' NÃO cai na área do candidato`, async () => {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", msg, "u1");
+      const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+      expect(sent).not.toMatch(/área do candidato/i);
+      expect(sent).toMatch(/secretaria/i);
+    });
+  }
+
+  // Pedir inscrição sem falar em pagamento continua sendo a campanha.
+  it("'quero fazer a inscrição na seletiva' segue no fluxo da campanha", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero fazer a inscrição na seletiva", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).not.toMatch(/área do candidato/i);
+    expect(sent).toMatch(/qual unidade/i);
+  });
+
+  it("com a unidade conhecida, aponta o botão dela e fecha com o telefone", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "quero a seletiva na Batista Campos" },
+        { role: "assistant", content: "Claro!" },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "fiz o pix, queria confirmar a inscrição", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toContain("Batista Campos");
+    expect(sent).toContain("(91) 3323-5000");
+  });
+
+  // Sem unidade não despejamos os 3 telefones (padrão marcado como bug no
+  // codigo) — oferecemos passar o número se o cliente disser qual é.
+  it("sem unidade, não lista os três telefones", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "fiz o pix, queria confirmar a inscrição", "u1");
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).not.toContain("3120-3188");
+    expect(sent).not.toContain("3346-0011");
+  });
+});
+
 describe("Orchestrator: greeting de boas-vindas (Grupo Ideal)", () => {
   it("primeira mensagem responde com saudação do Grupo Ideal", async () => {
     const m = buildMocks({ history: [] });

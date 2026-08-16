@@ -150,6 +150,24 @@ export class MessageOrchestrator {
       // ANTES do guard de preço porque "pagamento de taxa" contém "taxa" e
       // cairia no fluxo de valores — mas aqui a intenção é PROCESSO (como/onde
       // pagar, 2ª chamada), não o valor em si.
+      // Confirmação de pagamento da INSCRIÇÃO da Seletiva → área do candidato
+      // (auto-serviço). Vem ANTES do fluxo de pagamento porque "pagamento da
+      // inscrição" casa com os dois, e aqui o assunto é mais específico: quem
+      // pergunta isso não precisa da secretaria, precisa do próprio link.
+      if (isSeletivaInscricaoPaymentQuestion(userMessage)) {
+        const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
+        logger.info({ studentId, unit }, "Confirmação de inscrição da Seletiva — área do candidato");
+        const reply = buildSeletivaInscricaoStatusReply(unit);
+        await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+        await this.whatsappClient.sendMessage(studentId, reply);
+        await this.softNotifyTeam(
+          conversationId,
+          studentId,
+          `Cliente perguntou sobre PAGAMENTO/CONFIRMAÇÃO da inscrição da Seletiva${unit ? ` (${unit})` : ""}. Mensagem: "${userMessage}"`
+        );
+        return;
+      }
+
       if (isPaymentOrSegundaChamadaQuestion(userMessage)) {
         await this.handlePaymentRequest(
           conversationId,
@@ -1601,6 +1619,56 @@ function countSessionBotMessages(
 export function isPaymentOrSegundaChamadaQuestion(text: string): boolean {
   const t = (text || "").toLowerCase();
   return /(?<!\p{L})(pagamento|pagamentos|boleto|boletos|fatura|faturas|vencimento|venceu|atrasad[ao]|inadimpl|segunda\s+chamada|2[ªa]\s*chamada|forma\s+de\s+pagamento|como\s+(eu\s+)?pago|onde\s+(eu\s+)?pago|como\s+(eu\s+)?fa[çc]o\s+(o\s+)?pagamento)(?!\p{L})/u.test(t);
+}
+
+// ── PAGAMENTO DA INSCRIÇÃO DA SELETIVA ──────────────────────────────────────
+// Auto-serviço: o cliente confere na *área do candidato*, pelo botão da unidade
+// dele na própria landing em que se inscreveu. O pagamento leva até 24h pra
+// aparecer; passado disso, a secretaria da unidade confirma.
+//
+// CUIDADO AO MEXER: três assuntos disputam a palavra "pagamento" —
+//   1. VALOR de mensalidade/material  → isPriceOrMaterialQuestion (presencial)
+//   2. PAGAR mensalidade/boleto/taxa  → isPaymentOrSegundaChamadaQuestion (secretaria)
+//   3. inscrição da Seletiva          → aqui
+// Por isso este detector exige DOIS sinais ao mesmo tempo (inscrição/seletiva +
+// pagamento-feito/confirmação) e recusa quem cita mensalidade/matrícula/boleto.
+// "pagamento" sozinho continua pertencendo ao caso 2.
+const SELETIVA_INSCRICAO_SIGNAL =
+  /(inscri[çc][ãa]o|inscricao|inscri[çc][õo]es|me\s+inscrevi|inscrevi|selet[a-zçãáéíóú]*|prova\s+de\s+bolsa|concurso\s+de\s+bolsas?)/i;
+
+const PAGOU_OU_CONFIRMA_SIGNAL =
+  /(paguei|pagamento|pagou|\bpix\b|efetuei|realizei|transferi|comprovante|confirmar|confirma[çc][ãa]o|confirmad[ao]|deu\s+certo|est[áa]\s+tudo\s+certo|status|receberam|recebeu|caiu)/i;
+
+// Quem cita estes assuntos NÃO é inscrição de Seletiva: volta pro fluxo da
+// secretaria, que é onde mensalidade/boleto/2ª chamada se resolvem.
+const NAO_E_INSCRICAO_SELETIVA =
+  /(mensalidade|matr[íi]cula|boleto|fatura|segunda\s+chamada|2[ªa]\s*chamada)/i;
+
+export function isSeletivaInscricaoPaymentQuestion(text: string): boolean {
+  const t = text || "";
+  if (NAO_E_INSCRICAO_SELETIVA.test(t)) return false;
+  return SELETIVA_INSCRICAO_SIGNAL.test(t) && PAGOU_OU_CONFIRMA_SIGNAL.test(t);
+}
+
+// Com a unidade conhecida apontamos o botão dela e fechamos com o telefone.
+// Sem unidade, NÃO listamos os três números (padrão marcado como bug neste
+// arquivo): oferecemos passar o telefone se o cliente disser qual é.
+function buildSeletivaInscricaoStatusReply(unit?: string): string {
+  const abertura =
+    "Pra confirmar se a inscrição na *Seletiva Ideal 2027* foi registrada, é só voltar " +
+    "no mesmo link da inscrição e entrar na *área do candidato*";
+  const botao = unit ? `, pelo botão da *${unit}*` : ", pelo botão da sua unidade";
+  const fecho = unit
+    ? `Se passar disso e ainda não constar, é só ligar pra secretaria da *${unit}* no ` +
+      `*${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}* que o nosso time confirma pra você. 😊`
+    : "Se passar disso e ainda não constar, me diz de qual unidade é a inscrição que eu " +
+      "te passo o telefone da secretaria pra confirmar. 😊";
+  return (
+    `${abertura}${botao}:\n` +
+    `👉 ${SELETIVA_LANDING_URL}\n\n` +
+    "O pagamento leva até *24h* pra aparecer lá. ⏳\n\n" +
+    fecho
+  );
 }
 
 // Resposta de pagamento/2ª chamada com a unidade conhecida → telefone dela.

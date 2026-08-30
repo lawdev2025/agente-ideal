@@ -11,8 +11,7 @@
   ],
   "functions": {
     "api/webhook.ts": { "maxDuration": 30 },
-    "api/jobs/classify-topics.ts": { "maxDuration": 60 },
-    "api/jobs/temperature.ts": { "maxDuration": 60 }
+    "api/jobs/[job].ts": { "maxDuration": 60 }
   },
   "crons": [
     { "path": "/api/jobs/classify-topics", "schedule": "0 3 * * *" },

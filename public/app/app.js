@@ -127,6 +127,17 @@
     });
     const foot = document.querySelector(".drawer-foot b");
     if (foot && currentUser) foot.textContent = currentUser.name || "Time Ideal";
+
+    // Atendente de unidade não escolhe unidade: o chip some e o filtro fica
+    // preso na dela. Mesma regra do window.LOCKED_UNIT no /admin.
+    lockedUnit = !isAdmin && currentUser && currentUser.unit ? currentUser.unit : null;
+    const chipUnidade = $("f-unidade");
+    if (lockedUnit) {
+      queueFilters.unidade = lockedUnit;
+      if (chipUnidade) { chipUnidade.value = lockedUnit; chipUnidade.hidden = true; }
+    } else if (chipUnidade) {
+      chipUnidade.hidden = false;
+    }
   }
 
   // ---------------- START (pos-login) ----------------
@@ -205,11 +216,26 @@
       .sort((a, b) => parseTs(b.last_message_at || b.last_seen_at) - parseTs(a.last_message_at || a.last_seen_at));
   }
 
+  // Filtros da fila — espelham os do /admin (setupContactFilters lá).
+  // Combinam entre si com E, e convivem com a busca textual. Ficam em
+  // memória: todo refresh (realtime, polling, pull-to-refresh) passa por
+  // renderContacts(), então o filtro sobrevive sozinho.
+  const queueFilters = { unidade: "", segmento: "", interesse: "", temperatura: "" };
+  const FILTER_CHIPS = [
+    ["f-unidade", "unidade"], ["f-segmento", "segmento"],
+    ["f-interesse", "interesse"], ["f-temperatura", "temperatura"],
+  ];
+  let lockedUnit = null; // unidade fixa da atendente (null = admin, escolhe)
+
   function renderContacts() {
     const q = ($("search-input").value || "").toLowerCase().trim();
     const list = $("contacts-list");
     list.innerHTML = "";
     const items = sortedContacts().filter((c) => {
+      if (queueFilters.unidade && c.unit_tag !== queueFilters.unidade) return false;
+      if (queueFilters.segmento && c.segment_tag !== queueFilters.segmento) return false;
+      if (queueFilters.interesse && c.tag !== queueFilters.interesse) return false;
+      if (queueFilters.temperatura && c.temperature !== queueFilters.temperatura) return false;
       if (!q) return true;
       return (
         displayName(c).toLowerCase().includes(q) ||
@@ -217,9 +243,61 @@
         String(c.last_message || "").toLowerCase().includes(q)
       );
     });
-    $("list-empty").classList.toggle("hidden", items.length > 0);
+    syncFilterChips();
+    // Vazio COM filtro ligado não é "nenhuma conversa ainda" — é recorte.
+    // Sem isto, filtrar por um segmento que ninguém tem parece perda de dados.
+    const empty = $("list-empty");
+    empty.classList.toggle("hidden", items.length > 0);
+    empty.textContent = (q || anyFilterActive())
+      ? "Nenhuma conversa com esses filtros."
+      : "Nenhuma conversa ainda.";
     for (const c of items) list.appendChild(contactRow(c));
     updateListHeader();
+  }
+
+  // Há filtro de fila ligado que o botão "Limpar" consiga desligar? A unidade
+  // travada da atendente não conta: não é escolha dela, não dá pra limpar.
+  function anyFilterActive() {
+    const dela = ["segmento", "interesse", "temperatura"].some((k) => queueFilters[k]);
+    return dela || (!lockedUnit && !!queueFilters.unidade);
+  }
+
+  // Reflete o estado nos chips: aceso quando filtrando, e "Limpar" só aparece
+  // quando há o que limpar.
+  function syncFilterChips() {
+    FILTER_CHIPS.forEach(([id, key]) => {
+      const el = $(id);
+      if (el) el.classList.toggle("on", !!queueFilters[key]);
+    });
+    const clear = $("f-clear");
+    if (clear) clear.hidden = !anyFilterActive();
+  }
+
+  function setupQueueFilters() {
+    FILTER_CHIPS.forEach(([id, key]) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("change", () => {
+        queueFilters[key] = el.value;
+        renderContacts();
+        // A faixa rola: o chip que acabou de acender pode estar fora de vista,
+        // e aí a lista encolhe sem nenhum sinal visível do porquê. Traz ele
+        // (e o "Limpar", que fica no fim) pra tela. block:"nearest" impede
+        // que a página inteira role junto.
+        el.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+      });
+    });
+    const clear = $("f-clear");
+    if (clear) clear.addEventListener("click", () => {
+      FILTER_CHIPS.forEach(([id, key]) => {
+        // A unidade travada permanece: limpar não pode revelar outra unidade.
+        if (key === "unidade" && lockedUnit) return;
+        queueFilters[key] = "";
+        const el = $(id);
+        if (el) el.value = "";
+      });
+      renderContacts();
+    });
   }
 
   // Ícone de "precisa de atendimento" (pulsa quando o bot está pausado/escalado).
@@ -233,6 +311,21 @@
       case "seletiva": return { label: "Seletiva", cls: "itag-seletiva" };
       case "eixo": return { label: "Eixo", cls: "itag-eixo" };
       case "esporte": return { label: "Esporte", cls: "itag-esporte" };
+      default: return null;
+    }
+  }
+
+  // Temperatura -> selo de PRIORIDADE. Espelha tempInfo() do /admin
+  // (public/admin/admin.js); se mexer num, mexa no outro. Não é intenção,
+  // por isso não entra no donut nem vira tag.
+  //   quente = conversou, recebeu link e parou -> é quem vale ligar hoje
+  //   morno  = conversou mas parou antes do link
+  //   frio   = mandou uma mensagem e sumiu
+  function tempInfo(t) {
+    switch (t) {
+      case "quente": return { label: "🔥", title: "Quente — recebeu link e parou. Prioridade de contato." };
+      case "morno": return { label: "🟡", title: "Morno — conversou mas parou antes de receber link." };
+      case "frio": return { label: "🧊", title: "Frio — mandou uma mensagem e não respondeu mais." };
       default: return null;
     }
   }
@@ -263,6 +356,8 @@
     const preview = c.last_message_role === "user" ? "" : c.last_message_role === "assistant" ? "✓ " : "";
     const ti = tagInfo(c.tag);
     const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
+    const tp = tempInfo(c.temperature);
+    const tempHtml = tp ? `<span class="ctemp" title="${tp.title}">${tp.label}</span>` : "";
     const utHtml = c.unit_tag ? `<span class="utag utag-${String(c.unit_tag).toLowerCase()}">${escapeHtml(c.unit_tag)}</span>` : "";
     const attnHtml = c.bot_paused ? `<span class="attn-ic" title="Precisa de atendimento humano">${HEADSET_SVG}</span>` : "";
     wrap.innerHTML = `
@@ -276,7 +371,7 @@
             <div class="avatar ${av}">${initials(c)}<span class="st-dot ${st}"></span></div>
             <div class="row-main">
               <div class="row-top">
-                <span class="row-name-wrap"><span class="row-name">${escapeHtml(displayName(c))}</span>${attnHtml}${tagHtml}${utHtml}</span>
+                <span class="row-name-wrap"><span class="row-name">${escapeHtml(displayName(c))}</span>${attnHtml}${tempHtml}${tagHtml}${utHtml}</span>
                 <span class="row-time${n ? " unread" : ""}">${fmtTime(c.last_message_at || c.last_seen_at)}</span>
               </div>
               <div class="row-bottom">
@@ -1059,6 +1154,7 @@
   });
   $("mapa-back").addEventListener("click", () => showScreen("list"));
   $("search-input").addEventListener("input", renderContacts);
+  setupQueueFilters();
 
   // Pull-to-refresh na lista: puxa pra baixo no topo -> recarrega contatos.
   (function initPullToRefresh() {

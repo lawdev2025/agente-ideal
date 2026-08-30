@@ -70,6 +70,63 @@ body {
 .list-search input { flex: 1; min-width: 0; border: none; background: transparent; outline: none; color: var(--ink); font: 400 14.5px 'Lato', sans-serif; }
 .list-search input::placeholder { color: var(--dim); }
 
+/* ---------------- FILTROS DA FILA ---------------- */
+/* Faixa rolável de chips. flex-shrink:0 pra ela não ser espremida quando a
+   lista cresce; a barra de rolagem some (é gesto de dedo, não de mouse). */
+.qfilters {
+  flex-shrink: 0; display: flex; gap: 7px; align-items: center;
+  padding: 8px 14px 2px; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.qfilters::-webkit-scrollbar { display: none; }
+
+/* O <select> É o chip. appearance:none tira o visual nativo do controle, mas
+   o TOQUE continua abrindo o seletor nativo do sistema — que é justamente o
+   que queremos no celular. A setinha vem como background-image porque
+   pseudo-elementos não funcionam dentro de <select>. */
+.qchip {
+  flex: 0 0 auto; max-width: 46vw;
+  font: 600 12px 'Quicksand', sans-serif; color: var(--dim);
+  background-color: var(--surface-2); border: 1px solid var(--divider);
+  border-radius: 999px; padding: 7px 26px 7px 13px;
+  line-height: 1.25; white-space: nowrap; text-overflow: ellipsis;
+  outline: none; cursor: pointer;
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  background-repeat: no-repeat;
+  background-position: right 10px center; background-size: 9px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%238A7E7E' d='M1 1.5 6 6.5l5-5'/></svg>");
+}
+/* Filtro ativo: chip preenchido na cor da marca, pra dar pra ver num relance
+   que a lista está recortada — o maior risco desta tela é achar que sumiram
+   conversas quando na verdade há filtro ligado. */
+.qchip.on {
+  background-color: var(--brand-tint); color: var(--brand-deep);
+  border-color: rgba(200,32,46,.30); font-weight: 700;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23A31621' d='M1 1.5 6 6.5l5-5'/></svg>");
+}
+.ideal.dark .qchip {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23A19292' d='M1 1.5 6 6.5l5-5'/></svg>");
+}
+.ideal.dark .qchip.on {
+  color: var(--brand-bright);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23F2666B' d='M1 1.5 6 6.5l5-5'/></svg>");
+}
+/* As <option> herdam a cor do chip em alguns Android, o que deixava o menu
+   nativo ilegível quando o chip estava aceso. Fixamos as cores do menu. */
+.qchip option { background: var(--surface); color: var(--ink); font-weight: 500; }
+
+.qclear {
+  flex: 0 0 auto; border: none; background: transparent; cursor: pointer;
+  font: 700 11.5px 'Quicksand', sans-serif; color: var(--brand-deep);
+  padding: 7px 6px; text-decoration: underline; text-underline-offset: 2px;
+}
+.ideal.dark .qclear { color: var(--brand-bright); }
+
+/* Selo de TEMPERATURA (🔥/🟡/🧊) — prioridade de atendimento, carimbada de
+   hora em hora pelo job /api/jobs/temperature. Vem antes do selo de intenção,
+   mesma ordem do /admin. */
+.ctemp { flex-shrink: 0; font-size: 11px; line-height: 1.6; }
+
 /* pull-to-refresh: o spinner mora numa faixa de altura 0; o JS empurra */
 .ptr-host { height: 0; position: relative; z-index: 0; }
 .ptr-host .ptr-spin {

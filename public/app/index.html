@@ -131,6 +131,45 @@
           <input id="search-input" type="search" placeholder="Pesquisar conversa" />
         </div>
 
+        <!-- Filtros da fila (espelham os do /admin). Faixa ROLÁVEL: quatro
+             seletores não cabem lado a lado na largura de um celular, então
+             rolam na horizontal em vez de quebrar linha e empurrar a lista.
+             Cada chip é um <select> de verdade — o toque abre o seletor
+             nativo do aparelho, sem dropdown próprio pra manter e sem risco
+             de abrir pra fora da tela. -->
+        <div class="qfilters" id="qfilters">
+          <select id="f-unidade" class="qchip" aria-label="Filtrar por unidade">
+            <option value="">Unidade</option>
+            <option value="AM">Augusto Montenegro</option>
+            <option value="BC">Batista Campos</option>
+            <option value="CN">Cidade Nova</option>
+          </select>
+          <select id="f-segmento" class="qchip" aria-label="Filtrar por segmento">
+            <option value="">Segmento</option>
+            <option value="Educação Infantil">Infantil</option>
+            <option value="Fundamental 1">Fundamental 1</option>
+            <option value="Fundamental 2">Fundamental 2</option>
+            <option value="Ensino Médio">Médio</option>
+            <option value="Preparatório Militar">Militar</option>
+            <option value="Pré-Enem">Pré-Enem / Eixo</option>
+          </select>
+          <select id="f-interesse" class="qchip" aria-label="Filtrar por interesse">
+            <option value="">Interesse</option>
+            <option value="matricula">Matrícula</option>
+            <option value="rematricula">Rematrícula</option>
+            <option value="seletiva">Seletiva</option>
+            <option value="eixo">Eixo</option>
+            <option value="esporte">Esporte</option>
+          </select>
+          <select id="f-temperatura" class="qchip" aria-label="Filtrar por temperatura">
+            <option value="">Temperatura</option>
+            <option value="quente">🔥 Quente</option>
+            <option value="morno">🟡 Morno</option>
+            <option value="frio">🧊 Frio</option>
+          </select>
+          <button type="button" id="f-clear" class="qclear" hidden>Limpar</button>
+        </div>
+
         <!-- indicador pull-to-refresh -->
         <div class="ptr-host"><span id="ptr-spin" class="ptr-spin"></span></div>
 
@@ -204,6 +243,6 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/app/app.js?v=13" defer></script>
+<script src="/app/app.js?v=14" defer></script>
 </body>
 </html>

@@ -83,7 +83,70 @@ export type RoutedIntent =
   | { kind: "soft_redirect"; reason: string }
   | { kind: "ask_llm" };
 
-const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
+/**
+ * SEGMENTO MILITAR — nível de interesse, não tag.
+ *
+ * O militar não é uma frente própria do colégio: é a preparação para concursos
+ * militares que o *Eixo* já oferece (KB: "Pré-Vestibular (Eixo) › Militares —
+ * EsPCEx, AFA, IME, EFOMM e outros"). Por isso ele entra como NÍVEL (igual a
+ * "Ensino Médio"), e NÃO como ContactTag — a intenção fica guardada, sem selo
+ * novo no painel.
+ *
+ * A identificação é em TRÊS ESTÁGIOS, e cada um entra num ponto diferente da
+ * sequência de níveis, porque nem todo sinal militar tem a mesma força:
+ *
+ *   1. PROVA/CONCURSO NOMEADO (EsPCEx, EFOMM, CIABA, EPCAr, EEAR, EsFCEx,
+ *      AMAN, Escola/Colégio Naval, CFO/CFN) — inequívoco e já pressupõe
+ *      Médio/pós-Médio. Vai ANTES de todos os outros níveis: "estou no 3º ano
+ *      e quero a EsPCEx" é militar, não Fundamental/Pré-Enem.
+ *   2. SIGLA CURTA + CONTEXTO — "ITA", "IME", "AFA", "ESA", "EAM" só contam
+ *      quando a mensagem também traz palavra de estudo/prova. Sem isso, "esa"
+ *      (typo de "essa") e "ita" (pedaço de nome próprio) virariam interesse
+ *      militar em qualquer conversa. Mesma posição do estágio 1.
+ *   3. CONTEXTO MILITAR GENÉRICO ("militar", "cívico-militar", "Marinha",
+ *      "Exército", "Aeronáutica", "Forças Armadas") — forte, mas ambíguo
+ *      quanto à série: quem diz "6º ano do colégio militar" quer o 6º ano.
+ *      Por isso entra DEPOIS de Infantil/Fundamental e ANTES de Pré-Enem/
+ *      Médio ("tem ensino médio militar?" é militar).
+ *
+ * O donut de Segmento no painel espelha esta mesma sequência.
+ */
+export const NIVEL_MILITAR = "Preparatório Militar";
+
+// Estágio 1 — nome de prova/concurso militar. Só siglas longas o bastante pra
+// não colidir com palavra comum.
+const MILITAR_PROVAS =
+  /(espcex|esp\s?cex|efomm|ciaba|epcar|eear|esfcex|\baman\b|escola\s+naval|col[ée]gio\s+naval|escola\s+preparat[óo]ria\s+de\s+cadetes|\bcfo\b|\bcfn\b)/i;
+
+// Estágio 3 — contexto militar genérico (forte, mas não diz a série).
+const MILITAR_GENERIC =
+  /(\bmilitar(es|izad[oa]s?|ismo)?\b|c[ií]vico[-\s]?militar|for[çc]as?\s+armadas|\bmarinha\b|aeron[áa]utica|ex[ée]rcito)/i;
+
+// Estágio 2 — siglas curtas (ambíguas) e o contexto que as habilita.
+const MILITAR_SIGLA = /\b(ita|ime|afa|esa|eam)\b/i;
+const MILITAR_CONTEXT =
+  /\b(prova|provas|concurso|concursos|vestibular|preparat[óo]ri[oa]|preparar|passar|aprova[çc][ãa]o|aprovar|classifica|curso|cursinho|turma|carreira|estudar|simulado|olimp[íi]ada|exatas|engenharia|intensivo|extensivo|terceir[ãa]o|3[ºo°]?\s*ano)\b/i;
+
+/**
+ * Interesse em carreira/prova militar. Usado pelo NIVEL_PATTERNS abaixo e
+ * exportado para o painel/testes poderem checar a mesma regra.
+ */
+export function isMilitarInterest(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return false;
+  if (MILITAR_PROVAS.test(t) || MILITAR_GENERIC.test(t)) return true;
+  return MILITAR_SIGLA.test(t) && MILITAR_CONTEXT.test(t);
+}
+
+// `requires`: segunda condição obrigatória (usada pelas siglas curtas do
+// militar, que só valem acompanhadas de contexto de estudo/prova).
+const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string; requires?: RegExp }> = [
+  // Militar ESTÁGIOS 1 e 2 — prova/concurso nomeado, e sigla curta com
+  // contexto. Vêm ANTES de tudo: o nome da prova já define o segmento, e sem
+  // esta prioridade "estou no 3º ano e quero a EsPCEx" caía em Fundamental 1
+  // (cujo padrão [1-5]º ano cobre o "3º ano"). Ver isMilitarInterest.
+  { regex: MILITAR_PROVAS, nivel: NIVEL_MILITAR },
+  { regex: MILITAR_SIGLA, nivel: NIVEL_MILITAR, requires: MILITAR_CONTEXT },
   // Educação Infantil (must come FIRST so maternal/jardim never reaches escalation)
   // "Ideal Júnior" (e a abreviação "jr") é a MARCA do nosso segmento INFANTIL —
   // quem pergunta por "ideal junior"/"jr" está perguntando da Educação Infantil.
@@ -107,6 +170,10 @@ const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string }> = [
       /\b(fundamental\s*2|fund\s*2|fundamental\s*ii\b|anos\s+finais|[6-9][ºo°]?\s*ano|sexto\s+ao\s+nono|(sexta|s[ée]tima|oitava|nona)\s+s[ée]rie|(sexto|s[ée]timo|oitavo|nono)\s+ano)\b/i,
     nivel: "Fundamental 2",
   },
+  // Militar ESTÁGIO 3 — contexto genérico. Aqui, depois de Infantil/Fundamental
+  // ("6º ano do colégio militar" é Fundamental 2) e antes de Pré-Enem/Médio
+  // ("ensino médio militar" é militar). Ver isMilitarInterest.
+  { regex: MILITAR_GENERIC, nivel: NIVEL_MILITAR },
   // Pré-Enem variants (must come BEFORE Ensino Médio so "3º ano" hits this branch)
   {
     regex:
@@ -274,13 +341,7 @@ export function routeIntent(message: string, hasName: boolean): RoutedIntent {
   }
 
   // Find the most specific nivel match (if any) — needed for both branches.
-  let matchedNivel: string | undefined;
-  for (const { regex, nivel } of NIVEL_PATTERNS) {
-    if (regex.test(text)) {
-      matchedNivel = nivel;
-      break;
-    }
-  }
+  const matchedNivel: string | undefined = detectNivel(text);
   // Match unit name too — applies to enrollment_info AND unit_info.
   let matchedUnit: string | undefined;
   for (const { regex, unit: u } of UNIT_NAME_PATTERNS) {
@@ -408,8 +469,8 @@ export function detectUnit(text: string): string | undefined {
 // só da mensagem (o cache guarda o tipo de intent, não o nível).
 export function detectNivel(text: string): string | undefined {
   const t = (text || "").trim();
-  for (const { regex, nivel } of NIVEL_PATTERNS) {
-    if (regex.test(t)) return nivel;
+  for (const { regex, nivel, requires } of NIVEL_PATTERNS) {
+    if (regex.test(t) && (!requires || requires.test(t))) return nivel;
   }
   return undefined;
 }

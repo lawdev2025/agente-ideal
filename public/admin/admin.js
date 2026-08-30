@@ -824,6 +824,37 @@ function clearTopicFilter() {
 // =====================================================================
 // DONUT — 3 VISÕES ALTERNÁVEIS (Intenções | Unidades | Segmento)
 // =====================================================================
+
+// Interesse em carreira/prova militar — ESPELHO de isMilitarInterest() em
+// src/worker/intent-router.ts (o painel é browser puro, não importa o worker;
+// se mexer lá, mexa aqui). Militar não tem tag própria: é um NÍVEL, aparece só
+// na visão "Segmento" do donut.
+//
+// Três estágios, cada um com um peso diferente na sequência do donut:
+//   1. PROVA NOMEADA (EsPCEx, EFOMM, CIABA, EPCAr, EEAR, EsFCEx, AMAN,
+//      Escola/Colégio Naval, CFO/CFN) — inequívoco, vale acima de qualquer
+//      série citada na mesma mensagem.
+//   2. SIGLA CURTA + CONTEXTO — ITA, IME, AFA, ESA, EAM só contam se a
+//      mensagem também tiver palavra de estudo/prova. Sem isso, "esa" (typo de
+//      "essa") e "ita" (pedaço de nome próprio) inflariam a fatia.
+//   3. GENÉRICO (militar, cívico-militar, Marinha, Exército, Aeronáutica,
+//      Forças Armadas) — forte, mas não diz a série: perde para Fundamental.
+const MILITAR_PROVAS_RE = /(espcex|esp\s?cex|efomm|ciaba|epcar|eear|esfcex|\baman\b|escola\s+naval|col[ée]gio\s+naval|escola\s+preparat[óo]ria\s+de\s+cadetes|\bcfo\b|\bcfn\b)/i;
+const MILITAR_GENERIC_RE = /(\bmilitar(es|izad[oa]s?|ismo)?\b|c[íi]vico[-\s]?militar|for[çc]as?\s+armadas|\bmarinha\b|aeron[áa]utica|ex[ée]rcito)/i;
+const MILITAR_SIGLA_RE = /\b(ita|ime|afa|esa|eam)\b/i;
+const MILITAR_CONTEXT_RE = /\b(prova|provas|concurso|concursos|vestibular|preparat[óo]ri[oa]|preparar|passar|aprova[çc][ãa]o|aprovar|classifica|curso|cursinho|turma|carreira|estudar|simulado|olimp[íi]ada|exatas|engenharia|intensivo|extensivo|terceir[ãa]o|3[ºo°]?\s*ano)\b/i;
+
+// Estágios 1 e 2 — vencem a série citada na mensagem.
+function isMilitarProva(text) {
+    const t = (text || '').trim();
+    if (!t) return false;
+    if (MILITAR_PROVAS_RE.test(t)) return true;
+    return MILITAR_SIGLA_RE.test(t) && MILITAR_CONTEXT_RE.test(t);
+}
+// Estágio 3 — perde para Infantil/Fundamental.
+function isMilitarGeneric(text) {
+    return MILITAR_GENERIC_RE.test((text || '').trim());
+}
 const DONUT_CONFIGS = {
     intencoes: {
         subtitle: 'Distribuição por intenção de matrícula',
@@ -874,7 +905,8 @@ const DONUT_CONFIGS = {
             'Fundamental I':  '#F59E0B',
             'Fundamental II': '#EF4444',
             'Médio':          '#8B5CF6',
-            'Militar':        '#6B7280',
+            // Verde militar — o cinza antigo lia como "não identificado".
+            'Militar':        '#166534',
             'Eixo':           '#3B82F6',
         },
         labels: null,
@@ -884,12 +916,18 @@ const DONUT_CONFIGS = {
             const counts = { Infantil: 0, 'Fundamental I': 0, 'Fundamental II': 0, Médio: 0, Militar: 0, Eixo: 0 };
             (msgs || []).forEach(m => {
                 const t = (m.content || '').toLowerCase();
-                if (/militar|c[íi]vico|civico.milit/.test(t))                                    counts['Militar']++;
-                else if (/\beixo\b|vestibular|pre.?enem|\benem\b|cursinho|preparat/.test(t))      counts['Eixo']++;
-                else if (/fundamental\s*2|fundamental\s*ii|anos finais|6[º°o]\s*(ao|-)?\s*9/.test(t)) counts['Fundamental II']++;
-                else if (/fundamental\s*1|fundamental\s*i(?!i)|anos iniciais|1[º°o]\s*(ao|-)?\s*5/.test(t)) counts['Fundamental I']++;
-                else if (/ensino m[eé]dio|\bm[eé]dio\b|colegial|2[º°o]\s*grau/.test(t))          counts['Médio']++;
+                // Sequência espelha NIVEL_PATTERNS do intent-router (src/worker/
+                // intent-router.ts): prova militar → Infantil → Fundamental →
+                // militar genérico → Eixo → Médio. O nome da prova vence a
+                // série ("3º ano, quero a EsPCEx" é militar); o "militar" solto
+                // não ("6º ano do colégio militar" é Fundamental II).
+                if (isMilitarProva(t))                                                            counts['Militar']++;
                 else if (/infantil|maternal|ber[cç][aá]rio|jardim/.test(t))                       counts['Infantil']++;
+                else if (/fundamental\s*1|fundamental\s*i(?!i)|anos iniciais|1[º°o]\s*(ao|-)?\s*5/.test(t)) counts['Fundamental I']++;
+                else if (/fundamental\s*2|fundamental\s*ii|anos finais|6[º°o]\s*(ao|-)?\s*9/.test(t)) counts['Fundamental II']++;
+                else if (isMilitarGeneric(t))                                                     counts['Militar']++;
+                else if (/\beixo\b|vestibular|pre.?enem|\benem\b|cursinho|preparat/.test(t))      counts['Eixo']++;
+                else if (/ensino m[eé]dio|\bm[eé]dio\b|colegial|2[º°o]\s*grau/.test(t))          counts['Médio']++;
                 // mensagens sem segmento identificado são ignoradas (não criam fatia)
             });
             return counts;

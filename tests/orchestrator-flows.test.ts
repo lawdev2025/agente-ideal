@@ -1263,6 +1263,51 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
     expect(detectNivel("primeira série")).toBe("Ensino Médio");
   });
 
+  // Segmento MILITAR: é nível, não tag. A sequência tem dois estágios (sinal
+  // forte sozinho; sigla curta só com contexto de estudo/prova) e uma ordem
+  // fixa dentro de NIVEL_PATTERNS.
+  describe("segmento militar", () => {
+    it("sinal forte sozinho já resolve o nível", () => {
+      for (const t of [
+        "quero preparação militar",
+        "vocês têm turma cívico-militar?",
+        "curso pra EsPCEx",
+        "preparatório pra EFOMM",
+        "meu filho quer a CIABA",
+        "tem turma pro Colégio Naval?",
+        "quero passar na EEAR",
+        "sonho com a AMAN",
+        "quero seguir carreira na Marinha",
+      ]) {
+        expect(detectNivel(t)).toBe("Preparatório Militar");
+      }
+    });
+
+    it("sigla curta só conta com contexto de estudo/prova", () => {
+      expect(detectNivel("quero curso pro ITA")).toBe("Preparatório Militar");
+      expect(detectNivel("prova do IME")).toBe("Preparatório Militar");
+      expect(detectNivel("preparatório pra AFA")).toBe("Preparatório Militar");
+      // Sem contexto, a sigla curta não vira militar (evita falso positivo).
+      expect(detectNivel("esa mensagem não abriu")).not.toBe("Preparatório Militar");
+      expect(detectNivel("oi, tudo bem?")).toBeUndefined();
+    });
+
+    it("Fundamental vence militar; militar vence Pré-Enem e Médio", () => {
+      // Quem cita a série concreta quer a série — o "militar" é a escola atual.
+      expect(detectNivel("meu filho está no 6º ano do colégio militar")).toBe("Fundamental 2");
+      // Já "3º ano + prova militar" é interesse no preparatório, não Pré-Enem.
+      expect(detectNivel("estou no 3º ano e quero a EsPCEx")).toBe("Preparatório Militar");
+      expect(detectNivel("tem ensino médio militar?")).toBe("Preparatório Militar");
+    });
+
+    it("interesse militar vira enrollment_info com o nível certo", () => {
+      const r = routeIntent("quero preparatório pro IME em Batista Campos", false);
+      expect(r.kind).toBe("enrollment_info");
+      expect((r as any).nivel).toBe("Preparatório Militar");
+      expect((r as any).unit).toBe("Batista Campos");
+    });
+  });
+
   it("'bolsa' sozinho continua soft_redirect (política do colégio, não seletiva)", () => {
     expect(routeIntent("vocês dão bolsa de estudo?", false).kind).toBe("soft_redirect");
   });

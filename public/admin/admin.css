@@ -2542,3 +2542,54 @@ html.dark .utag-cn { color: #E0A23C; }
 .auth-card input{padding:12px 14px;border-radius:10px;border:1px solid #3a3f4b;background:#0f1115;color:#fff}
 .auth-card button{padding:12px;border-radius:10px;border:0;background:#C8202E;color:#fff;font-weight:700;cursor:pointer}
 .auth-error{min-height:18px;color:#ff6b6b;font-size:.9rem;margin:0}
+
+/* ── Filtros da fila de conversas (unidade/segmento/interesse/temperatura) ──
+   Selects nativos de propósito: no celular abrem o seletor do sistema, que é
+   melhor que qualquer dropdown custom, e não custam JS nenhum. */
+.contacts-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 16px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+.contacts-filters .cfilter {
+    flex: 1 1 calc(50% - 3px); /* 2 por linha; vira 1 só se não couber */
+    min-width: 0;              /* sem isto o select estoura o flex no mobile */
+    font-family: 'Quicksand', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-input, transparent);
+    color: var(--text-main);
+    cursor: pointer;
+}
+.contacts-filters .cfilter:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+}
+.contacts-filters .cfilter[hidden] { display: none; }
+.cfilter-clear {
+    flex: 0 0 auto;
+    font-family: 'Quicksand', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.cfilter-clear:hover { color: var(--text-main); }
+
+/* Selo de TEMPERATURA — prioridade da fila, não intenção. Só o emoji: a
+   explicação vai no title, pra não competir com a tag de intenção ao lado. */
+.ctemp {
+    flex-shrink: 0;
+    font-size: 11px;
+    line-height: 1.7;
+    cursor: help;
+}

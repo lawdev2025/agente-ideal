@@ -214,6 +214,40 @@
                                 <i class="fa-solid fa-magnifying-glass"></i>
                                 <input type="text" id="contact-search" placeholder="Buscar aluno...">
                             </div>
+                            <!-- Filtros da fila. Unidade some pra atendente de
+                                 unidade: ela já está presa na dela. -->
+                            <div class="contacts-filters" id="contacts-filters">
+                                <select id="filter-unidade" class="cfilter" aria-label="Filtrar por unidade">
+                                    <option value="">Unidade: todas</option>
+                                    <option value="AM">Augusto Montenegro</option>
+                                    <option value="BC">Batista Campos</option>
+                                    <option value="CN">Cidade Nova</option>
+                                </select>
+                                <select id="filter-segmento" class="cfilter" aria-label="Filtrar por segmento">
+                                    <option value="">Segmento: todos</option>
+                                    <option value="Educação Infantil">Infantil</option>
+                                    <option value="Fundamental 1">Fundamental 1</option>
+                                    <option value="Fundamental 2">Fundamental 2</option>
+                                    <option value="Ensino Médio">Médio</option>
+                                    <option value="Preparatório Militar">Militar</option>
+                                    <option value="Pré-Enem">Pré-Enem / Eixo</option>
+                                </select>
+                                <select id="filter-interesse" class="cfilter" aria-label="Filtrar por interesse">
+                                    <option value="">Interesse: todos</option>
+                                    <option value="matricula">Matrícula</option>
+                                    <option value="rematricula">Rematrícula</option>
+                                    <option value="seletiva">Seletiva</option>
+                                    <option value="eixo">Eixo</option>
+                                    <option value="esporte">Esporte</option>
+                                </select>
+                                <select id="filter-temperatura" class="cfilter" aria-label="Filtrar por temperatura">
+                                    <option value="">Temperatura: todas</option>
+                                    <option value="quente">🔥 Quente</option>
+                                    <option value="morno">🟡 Morno</option>
+                                    <option value="frio">🧊 Frio</option>
+                                </select>
+                                <button type="button" id="filter-clear" class="cfilter-clear" hidden>Limpar</button>
+                            </div>
                             <div class="contacts-list" id="contacts-list-container">
                                 <!-- Contatos carregados dinamicamente -->
                                 <div class="loading-spinner">Carregando contatos...</div>

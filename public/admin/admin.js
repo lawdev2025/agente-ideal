@@ -263,6 +263,7 @@ async function startPanel() {
     document.getElementById('config-form').addEventListener('submit', saveConfigForm);
     document.getElementById('btn-clear-config').addEventListener('click', clearConfig);
     document.getElementById('contact-search').addEventListener('input', filterContacts);
+    setupContactFilters();
     document.getElementById('btn-toggle-bot').addEventListener('click', toggleBotStatus);
 
     // Composer (atendente humano assume e responde) + navegação mobile
@@ -1240,15 +1241,63 @@ async function loadContactsList() {
 let topicFilterIds = null;   // Set<wa_id> ou null
 let topicFilterLabel = null;
 
-// Renderiza a lista aplicando busca textual + filtro de assunto (se ativos).
+// Filtros da fila de conversas. Todos combinam entre si (E, não OU) e
+// convivem com a busca textual e com o drill-down de assunto do donut.
+// Guardados em memória: os refreshes de tempo real passam todos por
+// renderContactsFiltered(), então o filtro sobrevive ao polling.
+const contactFilters = { unidade: '', segmento: '', interesse: '', temperatura: '' };
+
+// Liga os selects. Atendente de unidade não escolhe unidade: o select some e
+// o filtro fica preso na dela — mesma regra que já vale no donut e em Produtos.
+function setupContactFilters() {
+    const unidadeSel = document.getElementById('filter-unidade');
+    if (window.LOCKED_UNIT) {
+        contactFilters.unidade = window.LOCKED_UNIT;
+        if (unidadeSel) unidadeSel.hidden = true;
+    }
+    [['filter-unidade', 'unidade'], ['filter-segmento', 'segmento'],
+     ['filter-interesse', 'interesse'], ['filter-temperatura', 'temperatura']
+    ].forEach(([id, key]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => {
+            contactFilters[key] = el.value;
+            renderContactsFiltered();
+        });
+    });
+    const clearBtn = document.getElementById('filter-clear');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+        ['segmento', 'interesse', 'temperatura'].forEach(k => { contactFilters[k] = ''; });
+        // Unidade só volta pra "todas" se a usuária puder escolher.
+        if (!window.LOCKED_UNIT) contactFilters.unidade = '';
+        ['filter-unidade', 'filter-segmento', 'filter-interesse', 'filter-temperatura']
+            .forEach(id => { const el = document.getElementById(id); if (el && !el.hidden) el.value = ''; });
+        renderContactsFiltered();
+    });
+}
+
+// Renderiza a lista aplicando busca textual + filtro de assunto + os 4
+// filtros da fila (unidade, segmento, interesse, temperatura).
 function renderContactsFiltered() {
     const searchInput = document.getElementById('contact-search');
     const query = searchInput ? searchInput.value.toLowerCase() : '';
     let list = allContacts;
     if (topicFilterIds) list = list.filter(c => topicFilterIds.has(c.wa_id));
+    if (contactFilters.unidade)    list = list.filter(c => c.unit_tag === contactFilters.unidade);
+    if (contactFilters.segmento)   list = list.filter(c => c.segment_tag === contactFilters.segmento);
+    if (contactFilters.interesse)  list = list.filter(c => c.tag === contactFilters.interesse);
+    if (contactFilters.temperatura) list = list.filter(c => c.temperature === contactFilters.temperatura);
     if (query) list = list.filter(c =>
         (c.wa_id && c.wa_id.toLowerCase().includes(query)) ||
         (c.name && c.name.toLowerCase().includes(query)));
+
+    // Botão "Limpar" só aparece quando há filtro ativo que dê pra limpar.
+    const clearBtn = document.getElementById('filter-clear');
+    if (clearBtn) {
+        const ativos = ['segmento', 'interesse', 'temperatura'].some(k => contactFilters[k])
+            || (!window.LOCKED_UNIT && !!contactFilters.unidade);
+        clearBtn.hidden = !ativos;
+    }
     renderContactsList(list);
 }
 
@@ -1311,11 +1360,27 @@ function tagInfo(tag) {
     }
 }
 
+// Temperatura → selo de PRIORIDADE (não é intenção, por isso não entra no
+// donut). Carimbada pelo job /api/jobs/temperature, de hora em hora.
+//   quente = conversou, recebeu link e parou → é quem vale ligar hoje
+//   morno  = conversou mas parou antes do link
+//   frio   = mandou uma mensagem e sumiu
+function tempInfo(t) {
+    switch (t) {
+        case 'quente': return { label: '🔥', title: 'Quente — recebeu link e parou. Prioridade de contato.', cls: 'temp-quente' };
+        case 'morno':  return { label: '🟡', title: 'Morno — conversou mas parou antes de receber link.', cls: 'temp-morno' };
+        case 'frio':   return { label: '🧊', title: 'Frio — mandou uma mensagem e não respondeu mais.', cls: 'temp-frio' };
+        default: return null;
+    }
+}
+
 function updateContactNode(item, contact) {
     const displayName = contact.name || contact.wa_id;
     const ti = tagInfo(contact.tag);
     const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : '';
     const utHtml = contact.unit_tag ? `<span class="utag utag-${String(contact.unit_tag).toLowerCase()}">${escapeHtml(contact.unit_tag)}</span>` : '';
+    const tp = tempInfo(contact.temperature);
+    const tempHtml = tp ? `<span class="ctemp ${tp.cls}" title="${tp.title}">${tp.label}</span>` : '';
     const badge = contact.bot_paused
         ? '<span class="bot-badge-paused"><i class="fa-solid fa-headset"></i> Humano</span>'
         : '<span class="bot-badge-active"><i class="fa-solid fa-robot"></i> Bot</span>';
@@ -1331,7 +1396,7 @@ function updateContactNode(item, contact) {
     item.innerHTML = `
         <div class="contact-avatar">${escapeHtml(contactInitials(displayName))}</div>
         <div class="contact-details">
-            <div class="contact-header"><h4>${escapeHtml(displayName)}</h4>${tagHtml}${utHtml}<span class="contact-time">${time}</span></div>
+            <div class="contact-header"><h4>${escapeHtml(displayName)}</h4>${tempHtml}${tagHtml}${utHtml}<span class="contact-time">${time}</span></div>
             <div class="contact-meta"><p class="contact-preview">${previewText}</p>${unread}${badge}</div>
         </div>`;
 }

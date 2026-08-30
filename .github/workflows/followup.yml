@@ -1,0 +1,48 @@
+# Dispara /api/jobs/temperature de hora em hora: recalcula quente/morno/frio
+# e manda os empurrões de follow-up pros contatos frios.
+#
+# Por que aqui e não no Vercel Cron: no plano Hobby o cron da Vercel só roda
+# 1x por dia, o que mata um follow-up de 1h. O Actions roda de hora em hora e,
+# neste repositório (público), é gratuito e sem limite de minutos.
+#
+# SEGREDOS necessários (Settings › Secrets and variables › Actions):
+#   APP_BASE_URL  → https://SEU-APP.vercel.app   (sem barra no final)
+#   CRON_SECRET   → o mesmo valor que está nas env vars da Vercel
+#
+# ATENÇÃO: o GitHub desativa workflows agendados depois de 60 dias sem nenhum
+# commit no repositório. Se o projeto ficar parado, reative em Actions (ou dê
+# qualquer commit). O cron diário da Vercel em vercel.json existe justamente
+# como rede de segurança pra temperatura não congelar se isso acontecer.
+name: Follow-up e temperatura
+
+on:
+  schedule:
+    # Minuto 7 de propósito: o agendador do GitHub atrasa mais quando todo
+    # mundo pede :00. Ainda assim o disparo pode variar alguns minutos — o job
+    # é idempotente, então atraso não duplica mensagem.
+    - cron: "7 * * * *"
+  workflow_dispatch: # permite rodar na mão pelo botão da aba Actions
+
+# Se uma execução atrasar e encavalar na próxima, a nova espera em vez de
+# rodar junto — duas rodadas simultâneas poderiam mandar o mesmo empurrão.
+concurrency:
+  group: followup
+  cancel-in-progress: false
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chama o job de temperatura e follow-up
+        run: |
+          if [ -z "${{ secrets.APP_BASE_URL }}" ] || [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "::error::Faltam os segredos APP_BASE_URL e/ou CRON_SECRET."
+            exit 1
+          fi
+          # --fail-with-body: erro HTTP derruba o step MAS mostra o corpo da
+          # resposta, senão um 500 vira um log vazio impossível de depurar.
+          curl --fail-with-body -sS -X POST \
+            "${{ secrets.APP_BASE_URL }}/api/jobs/temperature" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --max-time 120

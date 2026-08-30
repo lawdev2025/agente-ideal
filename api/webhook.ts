@@ -6,7 +6,7 @@ import { StateRepository } from "../src/state/repository";
 import { shouldProcessMessage } from "../src/state/dedupe";
 import { buildProfileNameMap } from "../src/webhook/contacts";
 import { classifyContactTag, unitAbbrev } from "../src/kb/contact-tags";
-import { detectUnit } from "../src/worker/intent-router";
+import { detectUnit, detectNivel } from "../src/worker/intent-router";
 import { ClaudeProvider } from "../src/llm/claude";
 import { GeminiProvider } from "../src/llm/gemini";
 import { WhatsAppClient } from "../src/whatsapp/client";
@@ -55,6 +55,28 @@ async function readRawBody(req: VercelRequest): Promise<string> {
     chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+/**
+ * Carimba no contato tudo que dá pra deduzir de UMA mensagem do cliente:
+ * intenção (tag), unidade (unit_tag), segmento (segment_tag) e o reset do
+ * follow-up. Estava duplicado no caminho novo e no legado do webhook.
+ *
+ * Nada aqui é a temperatura: ela depende do SILÊNCIO, não da mensagem, e
+ * quem calcula é o job /api/jobs/temperature. O que a mensagem faz é zerar o
+ * ciclo de empurrões — o cliente voltou a falar, então o contador recomeça.
+ */
+async function applyContactSignals(senderId: string, text: string): Promise<void> {
+  const tag = classifyContactTag(text);
+  if (tag) await stateRepo.setContactTag(senderId, tag);
+  const unitTag = unitAbbrev(detectUnit(text));
+  if (unitTag) await stateRepo.setContactUnitTag(senderId, unitTag);
+  // Segmento reaproveita o detectNivel do roteador — o mesmo que já decide a
+  // resposta de matrícula, militar incluso. Sem isso o painel só conseguia
+  // deduzir segmento relendo as mensagens na hora do render.
+  const segment = detectNivel(text);
+  if (segment) await stateRepo.setContactSegmentTag(senderId, segment);
+  await stateRepo.resetFollowup(senderId);
 }
 
 // CRM IDEAL: depois de processar a mensagem, se o bot acabou ficando PAUSADO
@@ -153,10 +175,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 await stateRepo.getOrCreateContact(senderId, nameByWaId[senderId]);
                 await stateRepo.updateLastSeen(senderId);
                 await stateRepo.appendMessage(senderId, "user", text);
-                const tag = classifyContactTag(text);
-                if (tag) await stateRepo.setContactTag(senderId, tag);
-                const unitTag = unitAbbrev(detectUnit(text));
-                if (unitTag) await stateRepo.setContactUnitTag(senderId, unitTag);
+                await applyContactSignals(senderId, text);
                 await orchestrator.processMessage(senderId, text, senderId);
                 await notifyIncoming(senderId, text, nameByWaId[senderId]);
               } catch (procErr) {
@@ -223,10 +242,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             await stateRepo.getOrCreateContact(senderId);
             await stateRepo.updateLastSeen(senderId);
             await stateRepo.appendMessage(senderId, "user", text);
-            const legacyTag = classifyContactTag(text);
-            if (legacyTag) await stateRepo.setContactTag(senderId, legacyTag);
-            const legacyUnitTag = unitAbbrev(detectUnit(text));
-            if (legacyUnitTag) await stateRepo.setContactUnitTag(senderId, legacyUnitTag);
+            await applyContactSignals(senderId, text);
             await orchestrator.processMessage(senderId, text, senderId);
             await notifyIncoming(senderId, text);
           } catch (procErr) {

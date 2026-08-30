@@ -30,6 +30,15 @@ export interface Contact {
   last_seen_at: number | null;
 }
 
+/**
+ * Códigos que o PostgREST devolve quando a COLUNA ainda não existe: PGRST204
+ * (coluna desconhecida no payload) e 42703 (coluna desconhecida num filtro).
+ * As colunas de temperatura/segmento/follow-up só passam a existir depois de
+ * public/admin/supabase-contact-temperature.sql — até lá o webhook precisa
+ * seguir funcionando normalmente, então esses dois erros são silenciados.
+ */
+const SCHEMA_MISSING = new Set(["PGRST204", "42703"]);
+
 export class StateRepository {
   async appendMessage(
     waId: string,
@@ -180,6 +189,58 @@ export class StateRepository {
       .eq("wa_id", waId);
     if (error && error.code !== "PGRST204") {
       logger.warn({ error, waId, unitTag }, "Falha ao salvar unit_tag do contato (nao critico)");
+    }
+  }
+
+  /**
+   * Grava a tag de SEGMENTO (nível escolar) do contato — "Ensino Médio",
+   * "Fundamental 2", "Preparatório Militar"… Vem do detectNivel() do
+   * intent-router, o mesmo que já decide a resposta de matrícula.
+   * Best-effort: silencia se a coluna ainda não existir (PGRST204) — basta
+   * rodar supabase-contact-temperature.sql.
+   */
+  async setContactSegmentTag(waId: string, segment: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ segment_tag: segment })
+      .eq("wa_id", waId);
+    if (error && !SCHEMA_MISSING.has(error.code ?? "")) {
+      logger.warn({ error, waId, segment }, "Falha ao salvar segment_tag (nao critico)");
+    }
+  }
+
+  /**
+   * Marca qual empurrão de follow-up já foi mandado (1 ou 2) e quando.
+   * Escrito pelo job /api/jobs/temperature depois do envio dar certo.
+   */
+  async setFollowupStage(waId: string, stage: number, at: number): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ followup_stage: stage, followup_at: at })
+      .eq("wa_id", waId);
+    if (error && !SCHEMA_MISSING.has(error.code ?? "")) {
+      logger.warn({ error, waId, stage }, "Falha ao salvar followup_stage (nao critico)");
+    }
+  }
+
+  /**
+   * Zera o follow-up quando o cliente volta a falar: se ele respondeu, o
+   * ciclo de empurrões recomeça do zero. Sem isto, quem respondesse depois do
+   * 1º empurrão e sumisse de novo nunca receberia o 2º.
+   */
+  async resetFollowup(waId: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ followup_stage: 0, followup_at: null })
+      .eq("wa_id", waId)
+      // Só escreve em quem tem empurrão pra zerar — a esmagadora maioria das
+      // mensagens cai no estágio 0 e não precisa de UPDATE nenhum.
+      .gt("followup_stage", 0);
+    if (error && !SCHEMA_MISSING.has(error.code ?? "")) {
+      logger.warn({ error, waId }, "Falha ao zerar followup (nao critico)");
     }
   }
 

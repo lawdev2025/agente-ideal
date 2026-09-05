@@ -16,6 +16,35 @@ function scopedToUnit(c: any, unit: string | null | undefined): boolean {
   return !c.unit_tag && ORPHAN_ENTRY_TAGS.has(c.tag);
 }
 
+// PostgREST corta TODA resposta em `max_rows` (padrão 1000 no Supabase) — sem
+// erro e sem aviso. Como get_contacts_inbox() devolve a fila inteira ordenada
+// por recência, o corte escondia silenciosamente as conversas mais antigas e
+// travava o contador da Central em 1000. Paginamos com .range() até vir uma
+// página incompleta: funciona qualquer que seja o teto do projeto, sem depender
+// de configuração no painel do Supabase.
+const INBOX_PAGE = 1000;
+const INBOX_MAX_PAGES = 25; // trava de segurança: 25k contatos
+
+async function fetchInboxAll(sb: any): Promise<{ data: any[] | null; error: any }> {
+  const all: any[] = [];
+  for (let page = 0; page < INBOX_MAX_PAGES; page++) {
+    const from = page * INBOX_PAGE;
+    const { data, error } = await sb
+      .rpc("get_contacts_inbox")
+      .range(from, from + INBOX_PAGE - 1);
+    if (error) return { data: null, error };
+    const batch = (data || []) as any[];
+    all.push(...batch);
+    // Página incompleta = acabou. Evita uma ida extra ao banco no caso comum.
+    if (batch.length < INBOX_PAGE) return { data: all, error: null };
+  }
+  logger.warn(
+    { loaded: all.length },
+    "Inbox atingiu INBOX_MAX_PAGES — lista pode estar truncada"
+  );
+  return { data: all, error: null };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
   if (req.method !== "GET") {
@@ -32,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // da última mensagem TODO no Postgres (LATERAL LIMIT 1 por contato, casando
     // com idx_messages_wa). Evita trazer a tabela `messages` inteira pro Node.
     // Ver public/admin/supabase-contacts-inbox-rpc.sql.
-    const { data: rpcContacts, error: rpcErr } = await sb.rpc("get_contacts_inbox");
+    const { data: rpcContacts, error: rpcErr } = await fetchInboxAll(sb);
     if (!rpcErr) {
       const list = (rpcContacts || []) as any[];
       const scoped = authUser.role === "unit"

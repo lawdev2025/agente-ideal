@@ -227,6 +227,32 @@
   ];
   let lockedUnit = null; // unidade fixa da atendente (null = admin, escolhe)
 
+  // Janela de renderização. O array `contacts` continua COMPLETO — busca,
+  // filtros e contador varrem tudo — mas o DOM só recebe as primeiras
+  // VISIBLE_STEP linhas e cresce conforme a rolagem. Sem isto, renderContacts()
+  // reconstruía uma linha (~18 nós) por contato a CADA mensagem recebida; com
+  // 2k+ contatos na campanha isso travava o celular.
+  const VISIBLE_STEP = 60;
+  let visibleCount = VISIBLE_STEP;
+  let lastItems = []; // recorte filtrado do último render, base do scroll infinito
+
+  // Volta a janela ao topo. Chamar quando o RECORTE muda (busca/filtro), não
+  // quando só chega mensagem — senão a lista pula pro início sozinha.
+  function resetContactWindow() {
+    visibleCount = VISIBLE_STEP;
+  }
+
+  // Cresce a janela SEM limpar a lista: appendChild puro preserva a posição da
+  // rolagem. Um innerHTML = "" aqui jogaria o usuário de volta pro topo.
+  function showMoreContacts() {
+    if (visibleCount >= lastItems.length) return;
+    const from = visibleCount;
+    visibleCount += VISIBLE_STEP;
+    const frag = document.createDocumentFragment();
+    for (const c of lastItems.slice(from, visibleCount)) frag.appendChild(contactRow(c));
+    $("contacts-list").appendChild(frag);
+  }
+
   function renderContacts() {
     const q = ($("search-input").value || "").toLowerCase().trim();
     const list = $("contacts-list");
@@ -251,7 +277,9 @@
     empty.textContent = (q || anyFilterActive())
       ? "Nenhuma conversa com esses filtros."
       : "Nenhuma conversa ainda.";
-    for (const c of items) list.appendChild(contactRow(c));
+    lastItems = items;
+    if (visibleCount > VISIBLE_STEP && visibleCount > items.length) resetContactWindow();
+    for (const c of items.slice(0, visibleCount)) list.appendChild(contactRow(c));
     updateListHeader();
   }
 
@@ -279,6 +307,7 @@
       if (!el) return;
       el.addEventListener("change", () => {
         queueFilters[key] = el.value;
+        resetContactWindow();
         renderContacts();
         // A faixa rola: o chip que acabou de acender pode estar fora de vista,
         // e aí a lista encolhe sem nenhum sinal visível do porquê. Traz ele
@@ -296,6 +325,7 @@
         const el = $(id);
         if (el) el.value = "";
       });
+      resetContactWindow();
       renderContacts();
     });
   }
@@ -1153,7 +1183,18 @@
     showScreen("mapa");
   });
   $("mapa-back").addEventListener("click", () => showScreen("list"));
-  $("search-input").addEventListener("input", renderContacts);
+  $("search-input").addEventListener("input", () => {
+    resetContactWindow();
+    renderContacts();
+  });
+
+  // Scroll infinito da fila: perto do fim, revela o próximo lote. Espelha o
+  // padrão já usado em #messages (loadOlderMessages), mas aqui é só DOM — os
+  // contatos já estão todos em memória, não há ida ao servidor.
+  $("contacts-list").addEventListener("scroll", () => {
+    const el = $("contacts-list");
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) showMoreContacts();
+  });
   setupQueueFilters();
 
   // Pull-to-refresh na lista: puxa pra baixo no topo -> recarrega contatos.

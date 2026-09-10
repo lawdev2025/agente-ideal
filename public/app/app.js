@@ -249,7 +249,10 @@
     const from = visibleCount;
     visibleCount += VISIBLE_STEP;
     const frag = document.createDocumentFragment();
-    for (const c of lastItems.slice(from, visibleCount)) frag.appendChild(contactRow(c));
+    // Posição LOCAL do lote (0,1,2…), não a global: as linhas reveladas pela
+    // rolagem aparecem juntas, então a cascata do medidor tem que recomeçar
+    // nelas. Com o índice global, tudo acima de 12 cairia no mesmo instante.
+    lastItems.slice(from, visibleCount).forEach((c, i) => frag.appendChild(contactRow(c, i)));
     $("contacts-list").appendChild(frag);
   }
 
@@ -279,7 +282,9 @@
       : "Nenhuma conversa ainda.";
     lastItems = items;
     if (visibleCount > VISIBLE_STEP && visibleCount > items.length) resetContactWindow();
-    for (const c of items.slice(0, visibleCount)) list.appendChild(contactRow(c));
+    // O índice vai pro contactRow porque o medidor de temperatura escalona a
+    // cascata por posição na lista.
+    items.slice(0, visibleCount).forEach((c, i) => list.appendChild(contactRow(c, i)));
     updateListHeader();
   }
 
@@ -345,19 +350,40 @@
     }
   }
 
-  // Temperatura -> selo de PRIORIDADE. Espelha tempInfo() do /admin
-  // (public/admin/admin.js); se mexer num, mexa no outro. Não é intenção,
-  // por isso não entra no donut nem vira tag.
-  //   quente = conversou, recebeu link e parou -> é quem vale ligar hoje
-  //   morno  = conversou mas parou antes do link
-  //   frio   = mandou uma mensagem e sumiu
+  // Temperatura -> medidor de PRIORIDADE (três barras). Mesma classificação do
+  // /admin, que segue com os emojis; muda só o desenho. Não é intenção, por
+  // isso não entra no donut nem vira tag.
+  //   quente = conversou, recebeu link e parou -> é quem vale ligar hoje (3)
+  //   morno  = conversou mas parou antes do link                          (2)
+  //   frio   = mandou uma mensagem e sumiu                                (1)
   function tempInfo(t) {
     switch (t) {
-      case "quente": return { label: "🔥", title: "Quente — recebeu link e parou. Prioridade de contato." };
-      case "morno": return { label: "🟡", title: "Morno — conversou mas parou antes de receber link." };
-      case "frio": return { label: "🧊", title: "Frio — mandou uma mensagem e não respondeu mais." };
+      case "quente": return { cls: "tm-quente", filled: 3, title: "Quente — recebeu link e parou. Prioridade de contato." };
+      case "morno": return { cls: "tm-morno", filled: 2, title: "Morno — conversou mas parou antes de receber link." };
+      case "frio": return { cls: "tm-frio", filled: 1, title: "Frio — mandou uma mensagem e não respondeu mais." };
       default: return null;
     }
+  }
+
+  // Qual temperatura cada contato já mostrou. A queda das barras só roda
+  // quando o contato ENTRA na lista ou MUDA de temperatura — os dois momentos
+  // em que o movimento diz alguma coisa. Sem isso, como renderContacts()
+  // recria todas as linhas, a lista choveria a cada mensagem recebida.
+  const tempVisto = new Map();
+
+  // Monta o medidor. `pos` é a posição na lista: escalona a cascata, igual ao
+  // componente original (0,06s por linha, travado em 12 pra cauda não arrastar).
+  function tempMeterHtml(c, pos) {
+    const tp = tempInfo(c.temperature);
+    if (!tp) { tempVisto.delete(c.wa_id); return ""; }
+    const novo = tempVisto.get(c.wa_id) !== c.temperature;
+    tempVisto.set(c.wa_id, c.temperature);
+    const atraso = (Math.min(pos, 12) * 0.06).toFixed(2);
+    let barras = "";
+    for (let i = 0; i < 3; i++) barras += '<i class="' + (i < tp.filled ? "on" : "") + '"></i>';
+    return '<span class="tmeter ' + tp.cls + (novo ? " tm-drop" : "") + '"' +
+      ' role="img" aria-label="Lead ' + c.temperature + '" title="' + tp.title + '"' +
+      ' style="--tm-row:' + atraso + 's">' + barras + "</span>";
   }
 
   // Variante de cor do avatar (a1..a4) determinística por wa_id.
@@ -376,7 +402,7 @@
   };
   const SWIPE_OPEN = -156; // quanto o card abre revelando as ações
 
-  function contactRow(c) {
+  function contactRow(c, pos) {
     const wrap = document.createElement("div");
     wrap.className = "card-wrap";
     wrap.dataset.wa = c.wa_id;
@@ -386,8 +412,7 @@
     const preview = c.last_message_role === "user" ? "" : c.last_message_role === "assistant" ? "✓ " : "";
     const ti = tagInfo(c.tag);
     const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
-    const tp = tempInfo(c.temperature);
-    const tempHtml = tp ? `<span class="ctemp" title="${tp.title}">${tp.label}</span>` : "";
+    const tempHtml = tempMeterHtml(c, pos || 0);
     const utHtml = c.unit_tag ? `<span class="utag utag-${String(c.unit_tag).toLowerCase()}">${escapeHtml(c.unit_tag)}</span>` : "";
     const attnHtml = c.bot_paused ? `<span class="attn-ic" title="Precisa de atendimento humano">${HEADSET_SVG}</span>` : "";
     wrap.innerHTML = `

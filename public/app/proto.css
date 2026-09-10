@@ -173,6 +173,6 @@
 @keyframes badgePulse { 0% { transform: scale(0.4); } 100% { transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .card-in, .msg-in, .list-enter { animation: none !important; }
+  .card-in, .msg-in, .list-enter, .tmeter i { animation: none !important; }
   .layer { transition: none !important; }
 }

@@ -69,6 +69,9 @@ async function readRawBody(req: VercelRequest): Promise<string> {
 async function applyContactSignals(senderId: string, text: string): Promise<void> {
   const tag = classifyContactTag(text);
   if (tag) await stateRepo.setContactTag(senderId, tag);
+  // Seletiva mora fora da tag (a tag é sobrescrita a cada mensagem). O repo só
+  // grava com o status vazio, então o "inscrito" da planilha nunca desce.
+  if (tag === "seletiva") await stateRepo.markSeletivaPendente(senderId);
   const unitTag = unitAbbrev(detectUnit(text));
   if (unitTag) await stateRepo.setContactUnitTag(senderId, unitTag);
   // Segmento reaproveita o detectNivel do roteador — o mesmo que já decide a

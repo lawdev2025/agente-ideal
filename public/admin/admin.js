@@ -641,6 +641,14 @@ async function loadDashboardStats() {
                     activeTrend.innerHTML = `<i class="fa-solid fa-users"></i> ${inactive} inativos · ${total} no total`;
                 }
                 document.getElementById('stat-escalations').textContent = s.escalations ?? 0;
+                // Seletiva: inscritos (achados na planilha) + pendentes (interesse sem inscrição).
+                const sel = s.seletiva || {};
+                const selInscritos = sel.inscritos ?? 0;
+                const selPendentes = sel.pendentes ?? 0;
+                const selEl = document.getElementById('stat-seletiva');
+                if (selEl) selEl.textContent = selInscritos + selPendentes;
+                const selTrend = document.getElementById('stat-seletiva-trend');
+                if (selTrend) selTrend.innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${selInscritos} inscritos · ${selPendentes} pendentes`;
                 document.getElementById('stat-telegram-errors').textContent = s.escalationMessages ?? 0;
                 const trendEl = document.getElementById('stat-telegram-trend');
                 if ((s.escalationMessages ?? 0) > 0) {
@@ -1245,7 +1253,13 @@ let topicFilterLabel = null;
 // convivem com a busca textual e com o drill-down de assunto do donut.
 // Guardados em memória: os refreshes de tempo real passam todos por
 // renderContactsFiltered(), então o filtro sobrevive ao polling.
-const contactFilters = { unidade: '', segmento: '', interesse: '', temperatura: '' };
+const contactFilters = { unidade: '', segmento: '', interesse: '', temperatura: '', seletiva: '' };
+
+// Seletiva: "interessados" = inscrito OU pendente; os outros casam o status.
+function matchSeletiva(status, filtro) {
+    if (filtro === 'interessados') return status === 'inscrito' || status === 'pendente';
+    return status === filtro;
+}
 
 // Liga os selects. Atendente de unidade não escolhe unidade: o select some e
 // o filtro fica preso na dela — mesma regra que já vale no donut e em Produtos.
@@ -1256,7 +1270,8 @@ function setupContactFilters() {
         if (unidadeSel) unidadeSel.hidden = true;
     }
     [['filter-unidade', 'unidade'], ['filter-segmento', 'segmento'],
-     ['filter-interesse', 'interesse'], ['filter-temperatura', 'temperatura']
+     ['filter-interesse', 'interesse'], ['filter-temperatura', 'temperatura'],
+     ['filter-seletiva', 'seletiva']
     ].forEach(([id, key]) => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1267,17 +1282,17 @@ function setupContactFilters() {
     });
     const clearBtn = document.getElementById('filter-clear');
     if (clearBtn) clearBtn.addEventListener('click', () => {
-        ['segmento', 'interesse', 'temperatura'].forEach(k => { contactFilters[k] = ''; });
+        ['segmento', 'interesse', 'temperatura', 'seletiva'].forEach(k => { contactFilters[k] = ''; });
         // Unidade só volta pra "todas" se a usuária puder escolher.
         if (!window.LOCKED_UNIT) contactFilters.unidade = '';
-        ['filter-unidade', 'filter-segmento', 'filter-interesse', 'filter-temperatura']
+        ['filter-unidade', 'filter-segmento', 'filter-interesse', 'filter-temperatura', 'filter-seletiva']
             .forEach(id => { const el = document.getElementById(id); if (el && !el.hidden) el.value = ''; });
         renderContactsFiltered();
     });
 }
 
-// Renderiza a lista aplicando busca textual + filtro de assunto + os 4
-// filtros da fila (unidade, segmento, interesse, temperatura).
+// Renderiza a lista aplicando busca textual + filtro de assunto + os 5
+// filtros da fila (unidade, segmento, interesse, temperatura, seletiva).
 function renderContactsFiltered() {
     const searchInput = document.getElementById('contact-search');
     const query = searchInput ? searchInput.value.toLowerCase() : '';
@@ -1287,6 +1302,7 @@ function renderContactsFiltered() {
     if (contactFilters.segmento)   list = list.filter(c => c.segment_tag === contactFilters.segmento);
     if (contactFilters.interesse)  list = list.filter(c => c.tag === contactFilters.interesse);
     if (contactFilters.temperatura) list = list.filter(c => c.temperature === contactFilters.temperatura);
+    if (contactFilters.seletiva)   list = list.filter(c => matchSeletiva(c.seletiva_status, contactFilters.seletiva));
     if (query) list = list.filter(c =>
         (c.wa_id && c.wa_id.toLowerCase().includes(query)) ||
         (c.name && c.name.toLowerCase().includes(query)));
@@ -1294,7 +1310,7 @@ function renderContactsFiltered() {
     // Botão "Limpar" só aparece quando há filtro ativo que dê pra limpar.
     const clearBtn = document.getElementById('filter-clear');
     if (clearBtn) {
-        const ativos = ['segmento', 'interesse', 'temperatura'].some(k => contactFilters[k])
+        const ativos = ['segmento', 'interesse', 'temperatura', 'seletiva'].some(k => contactFilters[k])
             || (!window.LOCKED_UNIT && !!contactFilters.unidade);
         clearBtn.hidden = !ativos;
     }

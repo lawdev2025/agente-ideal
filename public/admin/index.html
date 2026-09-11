@@ -142,6 +142,17 @@
 
                         <div class="metric-card glass">
                             <div class="metric-info">
+                                <p>Interessados na Seletiva</p>
+                                <h3 id="stat-seletiva">0</h3>
+                                <span class="trend info" id="stat-seletiva-trend"><i class="fa-solid fa-graduation-cap"></i> 0 inscritos · 0 pendentes</span>
+                            </div>
+                            <div class="metric-icon brand-subtle">
+                                <i class="fa-solid fa-graduation-cap"></i>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass">
+                            <div class="metric-info">
                                 <p>Alertas de Erros</p>
                                 <h3 id="stat-telegram-errors">0</h3>
                                 <span class="trend negative" id="stat-telegram-trend"><i class="fa-solid fa-circle-exclamation"></i> Telegram offline</span>
@@ -245,6 +256,12 @@
                                     <option value="quente">🔥 Quente</option>
                                     <option value="morno">🟡 Morno</option>
                                     <option value="frio">🧊 Frio</option>
+                                </select>
+                                <select id="filter-seletiva" class="cfilter" aria-label="Filtrar por Seletiva">
+                                    <option value="">Seletiva: todos</option>
+                                    <option value="interessados">Interessados</option>
+                                    <option value="inscrito">Inscritos</option>
+                                    <option value="pendente">Pendentes</option>
                                 </select>
                                 <button type="button" id="filter-clear" class="cfilter-clear" hidden>Limpar</button>
                             </div>
@@ -636,6 +653,6 @@
          As credenciais são buscadas async via /api/config em initConnection(). -->
     <script>window.__ADMIN_CONFIG__ = null;</script>
     <!-- Lógica de Controle JS -->
-    <script src="/admin/admin.js?v=7.13"></script>
+    <script src="/admin/admin.js?v=7.14"></script>
 </body>
 </html>

@@ -211,6 +211,25 @@ export class StateRepository {
   }
 
   /**
+   * Marca o contato como PENDENTE na Seletiva quando ele demonstra interesse.
+   * Só escreve com o status vazio: nunca rebaixa um "inscrito" (carimbado por
+   * scripts/seletiva-import.ts) nem reescreve a data de quem já era pendente.
+   * Best-effort: silencia se a coluna ainda não existir (PGRST204/42703) —
+   * basta rodar supabase-contact-seletiva.sql.
+   */
+  async markSeletivaPendente(waId: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ seletiva_status: "pendente", seletiva_at: Date.now() })
+      .eq("wa_id", waId)
+      .is("seletiva_status", null);
+    if (error && !SCHEMA_MISSING.has(error.code ?? "")) {
+      logger.warn({ error, waId }, "Falha ao marcar seletiva pendente (nao critico)");
+    }
+  }
+
+  /**
    * Marca qual empurrão de follow-up já foi mandado (1 ou 2) e quando.
    * Escrito pelo job /api/jobs/temperature depois do envio dar certo.
    */

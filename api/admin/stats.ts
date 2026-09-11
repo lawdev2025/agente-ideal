@@ -54,6 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { count: escalationMessages },
       uniqueUsersRes,
       subjectsRes,
+      { count: seletivaInscritos },
+      { count: seletivaPendentes },
     ] = await Promise.all([
       scopeMsgs(sb.from("messages").select("*", { count: "exact", head: true })),
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true })),
@@ -71,6 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Para usuários de unidade, as RPCs são globais — pulamos o caminho rápido.
       sb.rpc("stats_unique_users_7d"),
       sb.rpc("stats_subjects"),
+      // Seletiva (supabase-contact-seletiva.sql). Sem a coluna o count volta
+      // com erro e null → 0, sem derrubar o dashboard.
+      scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "inscrito")),
+      scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "pendente")),
     ]);
 
     const inactiveContacts = (totalContacts ?? 0) - (activeContacts ?? 0);
@@ -178,6 +184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       msgCounts,
       subjects,
       learning,
+      seletiva: { inscritos: seletivaInscritos ?? 0, pendentes: seletivaPendentes ?? 0 },
     };
     // Grava no cache indexado por escopo.
     statsCache.set(scopeKey, { at: Date.now(), payload });

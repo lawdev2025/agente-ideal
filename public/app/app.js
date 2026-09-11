@@ -220,11 +220,17 @@
   // Combinam entre si com E, e convivem com a busca textual. Ficam em
   // memória: todo refresh (realtime, polling, pull-to-refresh) passa por
   // renderContacts(), então o filtro sobrevive sozinho.
-  const queueFilters = { unidade: "", segmento: "", interesse: "", temperatura: "" };
+  const queueFilters = { unidade: "", segmento: "", interesse: "", temperatura: "", seletiva: "" };
   const FILTER_CHIPS = [
     ["f-unidade", "unidade"], ["f-segmento", "segmento"],
     ["f-interesse", "interesse"], ["f-temperatura", "temperatura"],
+    ["f-seletiva", "seletiva"],
   ];
+  // Seletiva: "interessados" = inscrito OU pendente; os outros casam o status.
+  function matchSeletiva(status, filtro) {
+    if (filtro === "interessados") return status === "inscrito" || status === "pendente";
+    return status === filtro;
+  }
   let lockedUnit = null; // unidade fixa da atendente (null = admin, escolhe)
 
   // Janela de renderização. O array `contacts` continua COMPLETO — busca,
@@ -265,6 +271,7 @@
       if (queueFilters.segmento && c.segment_tag !== queueFilters.segmento) return false;
       if (queueFilters.interesse && c.tag !== queueFilters.interesse) return false;
       if (queueFilters.temperatura && c.temperature !== queueFilters.temperatura) return false;
+      if (queueFilters.seletiva && !matchSeletiva(c.seletiva_status, queueFilters.seletiva)) return false;
       if (!q) return true;
       return (
         displayName(c).toLowerCase().includes(q) ||
@@ -291,7 +298,7 @@
   // Há filtro de fila ligado que o botão "Limpar" consiga desligar? A unidade
   // travada da atendente não conta: não é escolha dela, não dá pra limpar.
   function anyFilterActive() {
-    const dela = ["segmento", "interesse", "temperatura"].some((k) => queueFilters[k]);
+    const dela = ["segmento", "interesse", "temperatura", "seletiva"].some((k) => queueFilters[k]);
     return dela || (!lockedUnit && !!queueFilters.unidade);
   }
 

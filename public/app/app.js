@@ -409,6 +409,17 @@
   };
   const SWIPE_OPEN = -156; // quanto o card abre revelando as ações
 
+  // Selos da fila: intenção + status da Seletiva (seletiva_status, carimbado
+  // pela planilha ou pelo webhook). Com status, o selo combinado substitui o
+  // "Seletiva" solto da intenção, pra não repetir a palavra na linha.
+  function tagsHtml(c) {
+    const sel = c.seletiva_status === "inscrito" || c.seletiva_status === "pendente" ? c.seletiva_status : null;
+    const ti = tagInfo(c.tag);
+    const intent = ti && !(sel && c.tag === "seletiva") ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
+    const selHtml = sel ? `<span class="itag itag-sel-${sel}">Seletiva · ${sel}</span>` : "";
+    return intent + selHtml;
+  }
+
   function contactRow(c, pos) {
     const wrap = document.createElement("div");
     wrap.className = "card-wrap";
@@ -417,8 +428,7 @@
     const n = unread[c.wa_id] || 0;
     const av = avatarVariant(c.wa_id);
     const preview = c.last_message_role === "user" ? "" : c.last_message_role === "assistant" ? "✓ " : "";
-    const ti = tagInfo(c.tag);
-    const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
+    const tagHtml = tagsHtml(c);
     const tempHtml = tempMeterHtml(c, pos || 0);
     const utHtml = c.unit_tag ? `<span class="utag utag-${String(c.unit_tag).toLowerCase()}">${escapeHtml(c.unit_tag)}</span>` : "";
     const attnHtml = c.bot_paused ? `<span class="attn-ic" title="Precisa de atendimento humano">${HEADSET_SVG}</span>` : "";

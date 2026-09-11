@@ -2141,6 +2141,11 @@ html.dark .itag-rematricula { color: var(--accent-green); }
 html.dark .itag-seletiva    { color: #FBBF24; }
 html.dark .itag-eixo        { color: #9D8CFF; }
 html.dark .itag-esporte     { color: #6FA8F5; }
+/* Status da Seletiva: inscrito (achado na planilha) e pendente (interesse sem inscrição) */
+.itag-sel-inscrito { background: rgba(31,157,85,.13);  color: var(--badge-ok-text); }
+.itag-sel-pendente { background: rgba(245,158,11,.15); color: #92400E; }
+html.dark .itag-sel-inscrito { color: var(--accent-green); }
+html.dark .itag-sel-pendente { color: #FBBF24; }
 /* Selo de UNIDADE (AM/BC/CN) — discreto, ao lado da tag de intenção */
 .utag {
     flex-shrink: 0; font-family: 'Quicksand', sans-serif; font-weight: 700;

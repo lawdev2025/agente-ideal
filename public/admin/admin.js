@@ -1390,10 +1390,19 @@ function tempInfo(t) {
     }
 }
 
+// Selos da lista: intenção + status da Seletiva (seletiva_status). Com status,
+// o selo combinado substitui o "Seletiva" solto da intenção, pra não repetir.
+function tagsHtml(contact) {
+    const sel = contact.seletiva_status === 'inscrito' || contact.seletiva_status === 'pendente' ? contact.seletiva_status : null;
+    const ti = tagInfo(contact.tag);
+    const intent = ti && !(sel && contact.tag === 'seletiva') ? `<span class="itag ${ti.cls}">${ti.label}</span>` : '';
+    const selHtml = sel ? `<span class="itag itag-sel-${sel}">Seletiva · ${sel}</span>` : '';
+    return intent + selHtml;
+}
+
 function updateContactNode(item, contact) {
     const displayName = contact.name || contact.wa_id;
-    const ti = tagInfo(contact.tag);
-    const tagHtml = ti ? `<span class="itag ${ti.cls}">${ti.label}</span>` : '';
+    const tagHtml = tagsHtml(contact);
     const utHtml = contact.unit_tag ? `<span class="utag utag-${String(contact.unit_tag).toLowerCase()}">${escapeHtml(contact.unit_tag)}</span>` : '';
     const tp = tempInfo(contact.temperature);
     const tempHtml = tp ? `<span class="ctemp ${tp.cls}" title="${tp.title}">${tp.label}</span>` : '';

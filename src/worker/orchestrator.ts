@@ -279,6 +279,17 @@ export class MessageOrchestrator {
         return;
       }
 
+      // Seletiva: perguntamos a unidade e o cliente seguiu no assunto SEM dizer
+      // qual ("me manda o link", "não sei ainda"). Regra do colégio: pergunta
+      // uma vez e não insiste — manda o link e ele escolhe a unidade na página.
+      // Sem isto "me manda o link" caía no link de VISITA e "não sei" no LLM,
+      // que repetia a pergunta. Outro assunto ("quanto custa?") segue o fluxo.
+      if (pendingAsk === "seletiva" && isSeletivaUnitSkip(userMessage)) {
+        await this.sendSeletivaLinkSemUnidade(conversationId, studentId, userMessage);
+        await this.recordTurnOutcome(userMessage, true);
+        return;
+      }
+
       // RESPOSTAS DIRETAS (school_faq): info que o dono cadastrou no painel com
       // gatilho + resposta exata. Se a mensagem bate num gatilho, devolvemos a
       // resposta VERBATIM — sem LLM, que não pode omitir nem negar. Avaliado
@@ -938,7 +949,20 @@ export class MessageOrchestrator {
     unit: string | undefined,
     conversationHistory: ConversationMessage[]
   ): Promise<void> {
-    const resolvedUnit = unit ?? this.findRecentUnit(conversationHistory);
+    // Só a unidade dita pelo CLIENTE vale: o menu da própria pergunta ("🏫
+    // *Batista Campos*…") fazia a segunda mensagem sobre a Seletiva sair com
+    // Batista Campos escolhida sozinha.
+    const resolvedUnit = unit ?? this.findRecentUnitFromUser(conversationHistory);
+
+    // Já perguntamos a unidade e o cliente voltou à Seletiva sem dizer qual →
+    // não insiste: manda o link (sem repetir arte e calendário).
+    if (
+      !resolvedUnit &&
+      conversationHistory.some((m) => m.role === "assistant" && SELETIVA_ASKED_UNIT.test(m.content))
+    ) {
+      await this.sendSeletivaLinkSemUnidade(conversationId, studentId, userMessage);
+      return;
+    }
 
     // Arte da campanha ANTES do texto, como na rematrícula (o texto passa dos
     // 1024 caracteres que a Cloud API aceita em caption). Best-effort: se a
@@ -961,6 +985,23 @@ export class MessageOrchestrator {
       conversationId,
       studentId,
       `Cliente interessado na SELETIVA IDEAL 2027${resolvedUnit ? ` (${resolvedUnit})` : " (unidade ainda não informada)"}. Mensagem: "${userMessage}"`
+    );
+  }
+
+  // Link da Seletiva SEM unidade: o cliente não disse qual depois de
+  // perguntarmos. Avisa o time como lead de Seletiva sem unidade.
+  private async sendSeletivaLinkSemUnidade(
+    conversationId: string,
+    studentId: string,
+    userMessage: string
+  ): Promise<void> {
+    logger.info({ studentId }, "Seletiva sem unidade — link enviado sem insistir");
+    await this.stateRepository.appendMessage(conversationId, "assistant", SELETIVA_REPLY_SEM_UNIDADE);
+    await this.whatsappClient.sendMessage(studentId, SELETIVA_REPLY_SEM_UNIDADE);
+    await this.softNotifyTeam(
+      conversationId,
+      studentId,
+      `Cliente interessado na SELETIVA IDEAL 2027 não informou a unidade — link enviado. Mensagem: "${userMessage}"`
     );
   }
 
@@ -1526,6 +1567,35 @@ const SELETIVA_ASK_UNIT_REPLY =
   "🏫 *Batista Campos*\n" +
   "🏫 *Augusto Montenegro*\n" +
   "🏫 *Cidade Nova (Ananindeua)*";
+
+// Frase-marca da pergunta de unidade da Seletiva (SELETIVA_ASK_UNIT_REPLY e o
+// fecho da resposta de conteúdo). A mesma do detectPendingUnitAsk.
+const SELETIVA_ASKED_UNIT = /qual unidade voc[êe] quer fazer a \*?Seletiva/i;
+
+// Cliente não disse a unidade depois de perguntarmos → não insistimos: link e
+// orientação pra escolher a unidade na própria página. NÃO pode conter a
+// frase-marca acima, senão a próxima mensagem cairia de novo neste fluxo.
+const SELETIVA_REPLY_SEM_UNIDADE =
+  "Claro! 😊 A inscrição na *Seletiva Ideal 2027* é rapidinha, por aqui:\n" +
+  `👉 ${SELETIVA_LANDING_URL}\n` +
+  "Na página você escolhe a *unidade* onde quer fazer a prova e preenche os dados.\n\n" +
+  "Qualquer dúvida, é só me chamar!";
+
+// Resposta SEM unidade à pergunta "em qual unidade?" que ainda é sobre a
+// inscrição: pede o link, cita seletiva/inscrição, adia a escolha ("não sei",
+// "qualquer uma") ou é curta ("sim", "quero"). Agradecimento/despedida não
+// entra (não reenviamos link pra "obrigado"), nem pergunta de outro assunto.
+const SELETIVA_CONTINUA =
+  /(\blink\b|\bsite\b|p[áa]gina|selet[a-zçãáéíóú]*|inscri|inscrev|\bmand[ae]\b|\benvi[ae]\b|n[ãa]o\s+sei|qualquer|tanto\s+faz|\bdepois\b|decid)/i;
+const AGRADECE_OU_DESPEDE =
+  /(obrigad|valeu|\btchau\b|at[ée]\s+(logo|mais)|boa\s+noite|bom\s+dia|boa\s+tarde)/i;
+
+export function isSeletivaUnitSkip(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t || AGRADECE_OU_DESPEDE.test(t)) return false;
+  if (SELETIVA_CONTINUA.test(t)) return true;
+  return t.split(/\s+/).length <= 3 && !t.includes("?");
+}
 
 // Convite de fim de mensagem: toda resposta de MATRÍCULA termina oferecendo a
 // Seletiva (é o gancho de desconto que puxa o lead pra campanha). Frase curta e

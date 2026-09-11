@@ -294,6 +294,49 @@ describe("Orchestrator: conteúdo da prova da Seletiva → edital", () => {
   });
 });
 
+// Regra do colégio: pergunta a unidade UMA vez e não insiste. Se o cliente
+// seguir na Seletiva sem dizer qual, recebe o link e escolhe a unidade na página.
+describe("Orchestrator: Seletiva sem unidade → não insiste, manda o link", () => {
+  const ASK_UNIT =
+    "🏆 *SELETIVA IDEAL 2027*\n\nPra eu te mandar o link de inscrição certinho, em qual unidade você quer fazer a *Seletiva*?\n" +
+    "🏫 *Batista Campos*\n🏫 *Augusto Montenegro*\n🏫 *Cidade Nova (Ananindeua)*";
+  const history = [
+    { role: "user", content: "quero saber da seletiva" },
+    { role: "assistant", content: ASK_UNIT },
+  ];
+  const sentOf = (m: ReturnType<typeof buildMocks>) =>
+    (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+
+  for (const msg of ["me manda o link", "tem link?", "ainda não sei", "qualquer uma", "quero fazer a seletiva"]) {
+    it(`'${msg}' depois da pergunta → link, sem repetir a pergunta`, async () => {
+      const m = buildMocks({ history });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", msg, "u1");
+      const sent = sentOf(m);
+      expect(sent).toContain("https://grupoideal.com.br/seletivas2027/");
+      expect(sent).not.toMatch(/qual unidade voc[êe] quer fazer/i);
+      expect(sent).not.toMatch(/quillbooking/); // não é o link de visita
+      expect(sent).not.toMatch(/Perfeito, unidade/); // o menu do bot não vira unidade escolhida
+      expect(m.llm.generateMessage).not.toHaveBeenCalled();
+      expect(m.stateRepo.setContactUnitTag).not.toHaveBeenCalled();
+    });
+  }
+
+  it("outro assunto depois da pergunta é respondido pelo fluxo normal", async () => {
+    const m = buildMocks({ history });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quanto custa a mensalidade?", "u1");
+    expect(sentOf(m)).not.toContain("seletivas2027");
+  });
+
+  it("'obrigado' depois da pergunta não reenvia link", async () => {
+    const m = buildMocks({ history });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "obrigado", "u1");
+    expect(sentOf(m)).not.toContain("seletivas2027");
+  });
+});
+
 describe("Orchestrator: greeting de boas-vindas (Grupo Ideal)", () => {
   it("primeira mensagem responde com saudação do Grupo Ideal", async () => {
     const m = buildMocks({ history: [] });

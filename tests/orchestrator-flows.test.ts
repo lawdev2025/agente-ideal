@@ -205,6 +205,95 @@ describe("Orchestrator: confirmação de pagamento da inscrição da Seletiva", 
   });
 });
 
+// Conteúdo da prova da Seletiva → EDITAL, que fica na página da Seletiva logo
+// abaixo dos botões de inscrição. Reproduz o print: a frase cita série e não
+// "seletiva", então caía em matrícula e o bot respondia "Fundamental 1".
+describe("Orchestrator: conteúdo da prova da Seletiva → edital", () => {
+  const PRINT =
+    "Irei fazer ideal regular estou no 9 ano devo estudar os conteúdos do 9 ano ou do 1 ano do ensino médio que é a qual quero entrar";
+  const sentOf = (m: ReturnType<typeof buildMocks>) =>
+    (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+
+  const dispara = [
+    PRINT,
+    "o que cai na seletiva?",
+    "qual o conteúdo da prova de bolsa?",
+    "quais assuntos vão cair na prova?",
+    "onde vejo o edital?",
+    "o que devo estudar pra seletiva?",
+  ];
+  for (const msg of dispara) {
+    it(`'${msg.slice(0, 42)}…' → edital`, async () => {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", msg, "u1");
+      const sent = sentOf(m);
+      expect(sent).toMatch(/edital/i);
+      expect(sent).toMatch(/abaixo dos bot[õo]es de inscri[çc][ãa]o/i);
+      expect(sent).toContain("https://grupoideal.com.br/seletivas2027/");
+      expect(sent).not.toMatch(/Fundamental 1/);
+      expect(m.llm.generateMessage).not.toHaveBeenCalled();
+      expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
+    });
+  }
+
+  const naoDispara = [
+    "quanto custa o 9 ano?",
+    "quais matérias tem no ensino médio?",
+    "quero estudar no Ideal",
+    "o que cai no enem?",
+  ];
+  for (const msg of naoDispara) {
+    it(`'${msg}' NÃO cai no edital`, async () => {
+      const m = buildMocks({
+        history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+      });
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", msg, "u1");
+      expect(sentOf(m)).not.toMatch(/edital/i);
+    });
+  }
+
+  it("com a unidade conhecida, fecha com o telefone da secretaria dela", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "quero a seletiva na Batista Campos" },
+        { role: "assistant", content: "Claro!" },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "o que cai na prova?", "u1");
+    const sent = sentOf(m);
+    expect(sent).toContain("Batista Campos");
+    expect(sent).toContain("(91) 3323-5000");
+  });
+
+  it("sem unidade, pergunta a unidade — e responder só 'Batista' manda o link dela", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", PRINT, "u1");
+    const reply = sentOf(m);
+    expect(reply).toMatch(/qual unidade voc[êe] quer fazer a \*?Seletiva/i);
+
+    const m2 = buildMocks({
+      history: [
+        { role: "user", content: PRINT },
+        { role: "assistant", content: reply },
+      ],
+    });
+    const orch2 = new MessageOrchestrator(m2.llm, m2.stateRepo, m2.whatsapp, m2.escalation);
+    await orch2.processMessage("u1", "Batista", "u1");
+    const sent2 = sentOf(m2);
+    expect(sent2).toContain("https://grupoideal.com.br/seletivas2027/");
+    expect(sent2).toContain("Batista Campos");
+    expect(m2.stateRepo.setContactUnitTag).toHaveBeenCalledWith("u1", "BC");
+  });
+});
+
 describe("Orchestrator: greeting de boas-vindas (Grupo Ideal)", () => {
   it("primeira mensagem responde com saudação do Grupo Ideal", async () => {
     const m = buildMocks({ history: [] });

@@ -8,6 +8,7 @@ import { config } from "../config";
 import { routeIntent, RoutedIntent, detectUnit, detectNivel } from "./intent-router";
 import { matchDirectResponse } from "../kb/direct-responses";
 import { unitAbbrev } from "../kb/contact-tags";
+import { isSeletivaContentQuestion } from "../kb/seletiva-conteudo";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 
@@ -164,6 +165,24 @@ export class MessageOrchestrator {
           conversationId,
           studentId,
           `Cliente perguntou sobre PAGAMENTO/CONFIRMAÇÃO da inscrição da Seletiva${unit ? ` (${unit})` : ""}. Mensagem: "${userMessage}"`
+        );
+        return;
+      }
+
+      // CONTEÚDO da prova da Seletiva ("devo estudar o 9º ou o 1º ano?", "o que
+      // cai?") → está no EDITAL, na página da Seletiva abaixo dos botões de
+      // inscrição. Vem ANTES do guard de preço e do roteador: a frase cita série
+      // e cairia em matrícula ("Fundamental 1…"). Ver kb/seletiva-conteudo.ts.
+      if (isSeletivaContentQuestion(userMessage)) {
+        const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
+        logger.info({ studentId, unit }, "Conteúdo da prova da Seletiva — edital");
+        const reply = buildSeletivaConteudoReply(unit);
+        await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+        await this.whatsappClient.sendMessage(studentId, reply);
+        await this.softNotifyTeam(
+          conversationId,
+          studentId,
+          `Cliente perguntou o CONTEÚDO da prova da Seletiva${unit ? ` (${unit})` : ""}. Mensagem: "${userMessage}"`
         );
         return;
       }
@@ -1667,6 +1686,28 @@ function buildSeletivaInscricaoStatusReply(unit?: string): string {
     `${abertura}${botao}:\n` +
     `👉 ${SELETIVA_LANDING_URL}\n\n` +
     "O pagamento leva até *24h* pra aparecer lá. ⏳\n\n" +
+    fecho
+  );
+}
+
+// Conteúdo da prova → EDITAL. O bot não resume o conteúdo nem escolhe a série
+// pelo cliente: o edital é a fonte oficial. Leva o link da página (o edital fica
+// logo abaixo dos botões de inscrição) mesmo sem unidade — a pergunta é sobre o
+// conteúdo, não sobre se inscrever — e, sem unidade, fecha perguntando qual com
+// a MESMA frase-marca do SELETIVA_ASK_UNIT_REPLY, pra resposta "Batista" cair no
+// follow-up da Seletiva e gravar o unit_tag.
+function buildSeletivaConteudoReply(unit?: string): string {
+  const fecho = unit
+    ? `Qualquer dúvida, fala com a secretaria da *${unit}* pelo ` +
+      `*${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}*. 😊`
+    : "E pra eu te orientar na inscrição: em qual unidade você quer fazer a *Seletiva*?\n" +
+      "🏫 *Batista Campos*\n" +
+      "🏫 *Augusto Montenegro*\n" +
+      "🏫 *Cidade Nova (Ananindeua)*";
+  return (
+    "📚 O *conteúdo da prova* da *Seletiva Ideal 2027* está todo no *edital*.\n\n" +
+    "Ele fica na página da Seletiva, logo *abaixo dos botões de inscrição*:\n" +
+    `👉 ${SELETIVA_LANDING_URL}\n\n` +
     fecho
   );
 }

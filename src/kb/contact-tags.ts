@@ -14,6 +14,8 @@
  * anterior). A ORDEM importa: "rematrícula" contém "matrícula", e seletiva/
  * eixo/esporte vêm antes de matrícula para não serem engolidos.
  */
+import { isSeletivaContentQuestion } from "./seletiva-conteudo";
+
 export type ContactTag = "matricula" | "rematricula" | "seletiva" | "eixo" | "esporte";
 
 function norm(s: string): string {
@@ -38,6 +40,10 @@ export function classifyContactTag(text: string): ContactTag | null {
   // mensagem escapar da campanha. Espelha SELETIVA_KEYWORDS no intent-router.
   if (/(\bselet[a-z]*|processo seletivo|prova de bolsa|provas de bolsa|concurso de bolsa|teste de selecao|prova de selecao|aulao)/.test(t))
     return "seletiva";
+  // Pergunta de conteúdo da prova ("devo estudar o 9º ou o 1º ano?") é da
+  // Seletiva mesmo sem citar o nome — cita série e cairia em matrícula abaixo.
+  // Recebe o texto ORIGINAL: o detector já trata os acentos.
+  if (isSeletivaContentQuestion(text)) return "seletiva";
 
   if (/(rematricul|renovac|renova matric|ja sou aluno|sou aluno do|aluno antigo|ja estudo|ja estuda|filho ja estuda|filha ja estuda|voltar a estudar)/.test(t))
     return "rematricula";

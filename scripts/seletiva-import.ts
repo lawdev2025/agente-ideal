@@ -83,6 +83,9 @@ async function main() {
   for (const file of files) {
     let sheets;
     try { sheets = readSheets(file); } catch (e: any) { console.error(`⚠ ${e.message}`); continue; }
+    // Arquivo que abre mas não rende nenhuma aba passava CALADO (foi assim com
+    // um .xlsx de tags <x:row>): o resumo só mostrava "1 aba" para 2 arquivos.
+    const abasAntes = abas;
     for (const { name, rows } of sheets) {
       if (rows.length < 2) continue;
       const { headerRow, columns } = pickPhoneColumns(rows, coluna);
@@ -98,6 +101,7 @@ async function main() {
       console.log(`📄 ${name}: [${nomes}] · ${fmt(linhas)} linhas com telefone · +${fmt(planilhaKeys.size - antes)} novos`);
       abas++;
     }
+    if (abas === abasAntes) console.log(`⚠ ${file}: nenhuma aba com telefone lida — formato inesperado (salve de novo como .xlsx ou .csv)`);
   }
 
   // 2. Contatos do CRM (paginado: sem isso para em 1000).

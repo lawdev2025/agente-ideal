@@ -256,6 +256,43 @@ describe("Orchestrator: conteúdo da prova da Seletiva → edital", () => {
     });
   }
 
+  const PDF_REGULAR = "EDITAL-SELETIVA-IDEAL-2027.pdf";
+  const PDF_JR = "EDITAL-SELETIVA-IDEAL-JR-2027.pdf";
+  const PDF_MILITAR = "Edital-Ideal-Militar-2027.pdf";
+  const run = async (msg: string) => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", msg, "u1");
+    return sentOf(m);
+  };
+
+  it("o print (9º → 1º do Médio) recebe a regra da série anterior e o edital regular", async () => {
+    const sent = await run(PRINT);
+    expect(sent).toMatch(/s[ée]rie anterior/i);
+    expect(sent).toContain(PDF_REGULAR);
+    expect(sent).not.toContain(PDF_JR);
+  });
+
+  it("série do 2º ao 5º ano recebe o edital do Ideal Jr", async () => {
+    const sent = await run("o que cai na prova do 4º ano?");
+    expect(sent).toContain(PDF_JR);
+    expect(sent).not.toContain(PDF_REGULAR);
+  });
+
+  it("turma militar recebe o edital militar (sem a regra da série anterior)", async () => {
+    const sent = await run("o que cai na seletiva das turmas militares?");
+    expect(sent).toContain(PDF_MILITAR);
+    expect(sent).not.toMatch(/s[ée]rie anterior/i);
+  });
+
+  it("sem série, manda os editais regular e Jr", async () => {
+    const sent = await run("o que cai na seletiva?");
+    expect(sent).toContain(PDF_REGULAR);
+    expect(sent).toContain(PDF_JR);
+  });
+
   it("com a unidade conhecida, fecha com o telefone da secretaria dela", async () => {
     const m = buildMocks({
       history: [

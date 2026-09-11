@@ -8,7 +8,12 @@ import { config } from "../config";
 import { routeIntent, RoutedIntent, detectUnit, detectNivel } from "./intent-router";
 import { matchDirectResponse } from "../kb/direct-responses";
 import { unitAbbrev } from "../kb/contact-tags";
-import { isSeletivaContentQuestion } from "../kb/seletiva-conteudo";
+import {
+  isSeletivaContentQuestion,
+  pickSeletivaEditais,
+  SELETIVA_EDITAIS,
+  SeletivaEdital,
+} from "../kb/seletiva-conteudo";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 
@@ -176,7 +181,18 @@ export class MessageOrchestrator {
       if (isSeletivaContentQuestion(userMessage)) {
         const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
         logger.info({ studentId, unit }, "Conteúdo da prova da Seletiva — edital");
-        const reply = buildSeletivaConteudoReply(unit);
+        // Edital pela série da mensagem; sem série, pela dos últimos turnos do
+        // cliente; sem nada, os dois editais da Seletiva (regular + Jr).
+        const recentUserText = conversationHistory
+          .filter((m) => m.role === "user")
+          .slice(-4)
+          .map((m) => m.content)
+          .join("\n");
+        const editais =
+          pickSeletivaEditais(userMessage) ??
+          pickSeletivaEditais(recentUserText) ??
+          (["regular", "jr"] as SeletivaEdital[]);
+        const reply = buildSeletivaConteudoReply(unit, editais);
         await this.stateRepository.appendMessage(conversationId, "assistant", reply);
         await this.whatsappClient.sendMessage(studentId, reply);
         await this.softNotifyTeam(
@@ -1760,13 +1776,29 @@ function buildSeletivaInscricaoStatusReply(unit?: string): string {
   );
 }
 
-// Conteúdo da prova → EDITAL. O bot não resume o conteúdo nem escolhe a série
-// pelo cliente: o edital é a fonte oficial. Leva o link da página (o edital fica
-// logo abaixo dos botões de inscrição) mesmo sem unidade — a pergunta é sobre o
-// conteúdo, não sobre se inscrever — e, sem unidade, fecha perguntando qual com
-// a MESMA frase-marca do SELETIVA_ASK_UNIT_REPLY, pra resposta "Batista" cair no
-// follow-up da Seletiva e gravar o unit_tag.
-function buildSeletivaConteudoReply(unit?: string): string {
+// Conteúdo da prova → EDITAL. Diz a regra do próprio edital (item 4.1: a prova
+// cobre a série ANTERIOR à que o aluno vai cursar em 2027), manda o PDF da faixa
+// de série e a página (o edital fica logo abaixo dos botões de inscrição). Não
+// resume o Anexo I: ele é a fonte oficial. Vai mesmo sem unidade — a pergunta é
+// sobre conteúdo — e, sem unidade, fecha perguntando qual com a MESMA
+// frase-marca do SELETIVA_ASK_UNIT_REPLY, pra "Batista" cair no follow-up.
+function buildSeletivaConteudoReply(unit: string | undefined, editais: SeletivaEdital[]): string {
+  const soMilitar = editais.length === 1 && editais[0] === "militar";
+  const soJr = editais.length === 1 && editais[0] === "jr";
+  // O edital Militar não traz a regra da série anterior: só apontamos o edital.
+  const abertura = soMilitar
+    ? "📚 O *conteúdo da prova* das turmas militares da *Seletiva Ideal 2027* está no *edital*:\n"
+    : "📚 Na *Seletiva Ideal 2027*, a prova cobre o conteúdo da *série anterior* à que o aluno vai cursar em 2027 — " +
+      (soJr
+        ? "por exemplo, quem vai para o *3º ano* estuda o conteúdo do *2º ano*."
+        : "por exemplo, quem vai para o *1º ano do Ensino Médio* estuda o conteúdo do *9º ano*.") +
+      "\n\nA lista completa está no *Anexo I* do edital — é só procurar a série que o aluno vai cursar em 2027:\n";
+  const links = editais
+    .map((e) => `📄 Edital ${SELETIVA_EDITAIS[e].label}: ${SELETIVA_EDITAIS[e].url}`)
+    .join("\n");
+  const pagina = editais.length > 1
+    ? "Os editais também ficam na página da Seletiva, logo *abaixo dos botões de inscrição*:\n"
+    : "O edital também fica na página da Seletiva, logo *abaixo dos botões de inscrição*:\n";
   const fecho = unit
     ? `Qualquer dúvida, fala com a secretaria da *${unit}* pelo ` +
       `*${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}*. 😊`
@@ -1774,12 +1806,7 @@ function buildSeletivaConteudoReply(unit?: string): string {
       "🏫 *Batista Campos*\n" +
       "🏫 *Augusto Montenegro*\n" +
       "🏫 *Cidade Nova (Ananindeua)*";
-  return (
-    "📚 O *conteúdo da prova* da *Seletiva Ideal 2027* está todo no *edital*.\n\n" +
-    "Ele fica na página da Seletiva, logo *abaixo dos botões de inscrição*:\n" +
-    `👉 ${SELETIVA_LANDING_URL}\n\n` +
-    fecho
-  );
+  return abertura + links + "\n\n" + pagina + `👉 ${SELETIVA_LANDING_URL}\n\n` + fecho;
 }
 
 // Resposta de pagamento/2ª chamada com a unidade conhecida → telefone dela.

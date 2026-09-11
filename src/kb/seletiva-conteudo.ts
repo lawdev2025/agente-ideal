@@ -11,6 +11,7 @@
  * Usado pelo orquestrador (resposta fixa) e pela tag de contato (vira
  * "seletiva", o que marca o contato como pendente na campanha).
  */
+import { isMilitarInterest } from "../worker/intent-router";
 
 // Sinais que sozinhos já são pergunta de conteúdo/edital.
 const CONTEUDO_DIRETO =
@@ -36,4 +37,56 @@ export function isSeletivaContentQuestion(text: string): boolean {
   if (CONTEUDO.test(t) && (CONTEXTO_PROVA.test(t) || CONTEXTO_SERIE.test(t))) return true;
   if (ASSUNTO_OU_MATERIA.test(t) && CONTEXTO_PROVA.test(t)) return true;
   return DEVE_ESTUDAR.test(t) && CONTEXTO_SERIE.test(t);
+}
+
+/**
+ * Os três editais publicados na página da Seletiva (lidos em 09/2026):
+ *   - regular → vagas do 6º ano à 3ª série do Ensino Médio
+ *   - jr      → vagas do 2º ao 5º ano (Fundamental Anos Iniciais)
+ *   - militar → turmas militares (9º ano Militar ao Convênio)
+ * Nos editais regular e Jr a prova cobre a SÉRIE ANTERIOR à que o aluno vai
+ * cursar em 2027 (item 4.1), e o Anexo I separa o conteúdo por série
+ * pretendida. O Militar não traz essa regra de conteúdo — só o edital.
+ */
+export type SeletivaEdital = "regular" | "jr" | "militar";
+
+export const SELETIVA_EDITAIS: Record<SeletivaEdital, { label: string; url: string }> = {
+  regular: {
+    label: "do 6º ano ao Ensino Médio",
+    url: "https://grupoideal.com.br/wp-content/uploads/2026/08/EDITAL-SELETIVA-IDEAL-2027.pdf",
+  },
+  jr: {
+    label: "do 2º ao 5º ano (Ideal Jr)",
+    url: "https://grupoideal.com.br/wp-content/uploads/2026/08/EDITAL-SELETIVA-IDEAL-JR-2027.pdf",
+  },
+  militar: {
+    label: "das turmas militares",
+    url: "https://grupoideal.com.br/wp-content/uploads/2026/08/Edital-Ideal-Militar-2027.pdf",
+  },
+};
+
+// 2º, 4º e 5º ano do Fundamental → Jr. "3º ano" sozinho fica de fora de
+// propósito: tanto é o 3º ano do Fundamental quanto o "terceirão" do Médio, e a
+// ambiguidade manda os dois editais. O lookahead descarta "2º ano do Médio".
+const SERIE_JR =
+  /(\b(?:[245]\s*[ºo°]?\s*ano|(?:segundo|quarto|quinto)\s+ano|(?:quarta|quinta)\s+s[ée]rie|3\s*[ºo°]?\s*ano\s+do\s+fundamental|terceiro\s+ano\s+do\s+fundamental)\b(?!\s+(?:do\s+|de\s+)?(?:ensino\s+)?m[ée]dio)|fundamental\s*(?:1|i)\b|anos\s+iniciais)/i;
+
+// 6º ao 9º ano e Ensino Médio → edital regular.
+const SERIE_REGULAR =
+  /(\b(?:[6-9]\s*[ºo°]?\s*ano|(?:sexto|s[ée]timo|oitavo|nono)\s+ano|(?:sexta|s[ée]tima|oitava|nona)\s+s[ée]rie)\b|\bm[ée]dio\b|\b[1-3]\s*[ªa]\s*s[ée]rie\b|fundamental\s*(?:2|ii)\b|anos\s+finais)/i;
+
+/**
+ * Qual(is) edital(is) mandar pela série citada. null = o texto não cita série
+ * nem turma militar (o chamador tenta o histórico e, sem nada, manda regular +
+ * Jr). Citou as duas faixas → os dois.
+ */
+export function pickSeletivaEditais(text: string): SeletivaEdital[] | null {
+  const t = text || "";
+  if (isMilitarInterest(t)) return ["militar"];
+  const jr = SERIE_JR.test(t);
+  const regular = SERIE_REGULAR.test(t);
+  if (jr && regular) return ["regular", "jr"];
+  if (jr) return ["jr"];
+  if (regular) return ["regular"];
+  return null;
 }

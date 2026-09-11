@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isSeletivaContentQuestion } from "../src/kb/seletiva-conteudo";
+import { isSeletivaContentQuestion, pickSeletivaEditais } from "../src/kb/seletiva-conteudo";
 import { classifyContactTag } from "../src/kb/contact-tags";
 
 const PRINT =
@@ -29,6 +29,26 @@ describe("isSeletivaContentQuestion: pergunta de conteúdo da prova", () => {
     "boa noite",
   ];
   for (const t of nao) it(`'${t}' → não`, () => expect(isSeletivaContentQuestion(t)).toBe(false));
+});
+
+describe("pickSeletivaEditais: edital pela série citada", () => {
+  const casos: Array<[string, ReturnType<typeof pickSeletivaEditais>]> = [
+    [PRINT, ["regular"]],
+    ["vai pro 7º ano", ["regular"]],
+    ["ela vai cursar a 2ª série do médio", ["regular"]],
+    ["2º ano do ensino médio", ["regular"]],
+    ["meu filho vai pro 4º ano", ["jr"]],
+    ["quinto ano", ["jr"]],
+    ["fundamental 1", ["jr"]],
+    ["está no 5º ano e vai pro 6º ano", ["regular", "jr"]],
+    ["turmas militares", ["militar"]],
+    ["quero a EsPCEx", ["militar"]],
+    ["o que cai na seletiva?", null],
+    ["3 ano", null], // Fundamental ou terceirão: ambíguo
+  ];
+  for (const [t, esperado] of casos) {
+    it(`'${t.slice(0, 50)}' → ${JSON.stringify(esperado)}`, () => expect(pickSeletivaEditais(t)).toEqual(esperado));
+  }
 });
 
 describe("classifyContactTag: conteúdo da prova é Seletiva", () => {

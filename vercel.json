@@ -1,52 +1,99 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/admin", "destination": "/admin/index.html" },
-    { "source": "/app", "destination": "/app/index.html" },
-    { "source": "/mapa", "destination": "/mapa/index.html" },
-    { "source": "/webhook", "destination": "/api/webhook" }
+    {
+      "source": "/admin",
+      "destination": "/admin/index.html"
+    },
+    {
+      "source": "/app",
+      "destination": "/app/index.html"
+    },
+    {
+      "source": "/mapa",
+      "destination": "/mapa/index.html"
+    },
+    {
+      "source": "/webhook",
+      "destination": "/api/webhook"
+    }
   ],
   "redirects": [
-    { "source": "/", "destination": "/admin", "permanent": false }
+    {
+      "source": "/",
+      "destination": "/admin",
+      "permanent": false
+    }
   ],
   "functions": {
-    "api/webhook.ts": { "maxDuration": 30 },
-    "api/jobs/[job].ts": { "maxDuration": 60 }
+    "api/webhook.ts": {
+      "maxDuration": 30
+    },
+    "api/jobs/[job].ts": {
+      "maxDuration": 60
+    },
+    "api/admin/analytics/[tipo].ts": {
+      "maxDuration": 60
+    }
   },
   "crons": [
-    { "path": "/api/jobs/classify-topics", "schedule": "0 3 * * *" },
-    { "path": "/api/jobs/temperature", "schedule": "0 4 * * *" }
+    {
+      "path": "/api/jobs/classify-topics",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/jobs/temperature",
+      "schedule": "0 4 * * *"
+    }
   ],
   "headers": [
     {
       "source": "/admin(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
       ]
     },
     {
       "source": "/app",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
       ]
     },
     {
       "source": "/app/index.html",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
       ]
     },
     {
       "source": "/app/sw.js",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-        { "key": "Service-Worker-Allowed", "value": "/app/" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Service-Worker-Allowed",
+          "value": "/app/"
+        }
       ]
     },
     {
       "source": "/app/manifest.webmanifest",
       "headers": [
-        { "key": "Content-Type", "value": "application/manifest+json" }
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        }
       ]
     }
   ]

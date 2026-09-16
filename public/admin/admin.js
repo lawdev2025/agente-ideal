@@ -453,6 +453,8 @@ async function loadTemplates() {
         }
         if (d.erro) { alvo.innerHTML = `<p class="tpl-vazio">${escapeHtml(d.erro)}</p>`; return; }
         const lista = d.templates || [];
+        templatesCarregados = lista;
+        montarFormCampanha();
         if (!lista.length) { alvo.innerHTML = '<p class="tpl-vazio">Nenhum modelo criado ainda.</p>'; return; }
         alvo.innerHTML = lista.map(renderTemplateCard).join('');
     } catch (e) {
@@ -485,16 +487,22 @@ function renderTemplateCard(t) {
 
 // Públicos por tag. O segundo número é quem está FORA da janela de 24h — esses
 // só recebem via template (pago). Quem está dentro recebe texto livre, de graça.
+// A chave casa com PUBLICOS no backend (api/admin/analytics/[tipo].ts): a tela
+// e o disparo precisam falar do MESMO público, senão a contagem mente.
 const TEMPLATE_AUDIENCIAS = [
-    ['Seletiva · pendentes', q => q.eq('seletiva_status', 'pendente')],
-    ['Seletiva · inscritos', q => q.eq('seletiva_status', 'inscrito')],
-    ['Seletiva · todos os interessados', q => q.not('seletiva_status', 'is', null)],
-    ['Tag Matrícula', q => q.eq('tag', 'matricula')],
-    ['Tag Rematrícula', q => q.eq('tag', 'rematricula')],
-    ['Tag Eixo', q => q.eq('tag', 'eixo')],
-    ['Tag Esporte', q => q.eq('tag', 'esporte')],
-    ['Todos os contatos', q => q],
+    ['seletiva-pendentes', 'Seletiva · pendentes', q => q.eq('seletiva_status', 'pendente')],
+    ['seletiva-inscritos', 'Seletiva · inscritos', q => q.eq('seletiva_status', 'inscrito')],
+    ['seletiva-interessados', 'Seletiva · todos os interessados', q => q.not('seletiva_status', 'is', null)],
+    ['tag-matricula', 'Tag Matrícula', q => q.eq('tag', 'matricula')],
+    ['tag-rematricula', 'Tag Rematrícula', q => q.eq('tag', 'rematricula')],
+    ['tag-eixo', 'Tag Eixo', q => q.eq('tag', 'eixo')],
+    ['tag-esporte', 'Tag Esporte', q => q.eq('tag', 'esporte')],
+    ['todos', 'Todos os contatos', q => q],
 ];
+
+// Contagem do público escolhido, pra confirmação antes de gastar.
+const campanhaContagens = {};
+let templatesCarregados = [];
 
 async function contarPublico(aplicar) {
     if (!_sb) return { total: 0, fora: 0 };
@@ -514,8 +522,9 @@ async function loadTemplateAudience() {
     if (!_sb) { alvo.innerHTML = '<p class="tpl-vazio">Sem conexão com o banco.</p>'; return; }
     alvo.innerHTML = '<p class="tpl-vazio">Carregando…</p>';
     try {
-        const linhas = await Promise.all(TEMPLATE_AUDIENCIAS.map(async ([rotulo, aplicar]) => {
+        const linhas = await Promise.all(TEMPLATE_AUDIENCIAS.map(async ([chave, rotulo, aplicar]) => {
             const { total, fora } = await contarPublico(aplicar);
+            campanhaContagens[chave] = { total, fora };
             return `
               <div class="pub-linha">
                 <span class="pub-nome">${escapeHtml(rotulo)}</span>
@@ -524,9 +533,122 @@ async function loadTemplateAudience() {
               </div>`;
         }));
         alvo.innerHTML = linhas.join('');
+        montarFormCampanha();
     } catch (e) {
         alvo.innerHTML = '<p class="tpl-vazio">Não consegui contar os contatos.</p>';
     }
+}
+
+// ── Disparo de campanha ───────────────────────────────────────────────────────
+// O envio anda em LOTES tocados por esta tela: o plano Hobby da Vercel não tem
+// cron de minuto e a função morre em 60s. O estado fica no banco, então fechar a
+// aba só pausa — reabrir e disparar de novo continua de onde parou.
+
+function montarFormCampanha() {
+    const selPublico = document.getElementById('camp-publico');
+    const selTemplate = document.getElementById('camp-template');
+    if (!selPublico || !selTemplate) return;
+
+    selPublico.innerHTML = TEMPLATE_AUDIENCIAS.map(([chave, rotulo]) => {
+        const c = campanhaContagens[chave] || { total: 0 };
+        return `<option value="${chave}">${escapeHtml(rotulo)} (${c.total})</option>`;
+    }).join('');
+
+    const aprovados = templatesCarregados.filter(t => t.status === 'APPROVED');
+    selTemplate.innerHTML = aprovados.length
+        ? aprovados.map(t => `<option value="${escapeHtml(t.nome)}">${escapeHtml(t.nome)} · ${escapeHtml(t.idioma)}</option>`).join('')
+        : '<option value="">Nenhum modelo aprovado ainda</option>';
+
+    selTemplate.onchange = atualizarPreviaCampanha;
+    selPublico.onchange = atualizarPreviaCampanha;
+    const btnTeste = document.getElementById('camp-btn-teste');
+    const btnDisparar = document.getElementById('camp-btn-disparar');
+    if (btnTeste) btnTeste.onclick = enviarTesteCampanha;
+    if (btnDisparar) btnDisparar.onclick = dispararCampanha;
+    atualizarPreviaCampanha();
+}
+
+function templateSelecionado() {
+    const nome = (document.getElementById('camp-template') || {}).value || '';
+    return templatesCarregados.find(t => t.nome === nome) || null;
+}
+
+function atualizarPreviaCampanha() {
+    const previa = document.getElementById('camp-previa');
+    if (!previa) return;
+    const t = templateSelecionado();
+    const chave = (document.getElementById('camp-publico') || {}).value || '';
+    const c = campanhaContagens[chave] || { total: 0 };
+    if (!t) { previa.textContent = 'Crie e aprove um modelo na Meta para poder disparar.'; return; }
+    // US$ 0,06 é a ordem de grandeza da tarifa de marketing no Brasil; o valor
+    // exato sai na fatura da Meta.
+    const custo = (c.total * 0.06).toFixed(2);
+    previa.innerHTML = `Vai enviar <b>${c.total}</b> mensagens usando <b>${escapeHtml(t.nome)}</b>. `
+        + `Custo estimado: <b>US$ ${custo}</b> (marketing; utilidade dentro de 24h é grátis).`;
+}
+
+async function enviarTesteCampanha() {
+    const t = templateSelecionado();
+    const numero = (document.getElementById('camp-teste-numero') || {}).value.trim();
+    const status = document.getElementById('camp-status');
+    const caixa = document.getElementById('camp-progresso');
+    if (!t) return alert('Escolha um modelo aprovado.');
+    if (!numero) return alert('Informe o número do teste, com DDI e DDD.');
+    caixa.hidden = false;
+    status.textContent = 'Enviando teste…';
+    const r = await fetch(BACKEND_URL + '/api/admin/analytics/campanha', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeader()),
+        body: JSON.stringify({ acao: 'teste', template: t.nome, idioma: t.idioma, numero }),
+    }).then(x => x.json()).catch(() => ({ ok: false, erro: 'Falha de rede.' }));
+    status.textContent = r.ok ? 'Teste enviado. Confira o WhatsApp desse número.' : ('Falhou: ' + (r.erro || 'erro'));
+}
+
+async function dispararCampanha() {
+    const t = templateSelecionado();
+    const selPublico = document.getElementById('camp-publico');
+    const chave = selPublico.value;
+    const rotulo = selPublico.options[selPublico.selectedIndex].textContent;
+    const c = campanhaContagens[chave] || { total: 0 };
+    if (!t) return alert('Escolha um modelo aprovado.');
+    if (!c.total) return alert('Esse público está vazio.');
+    const custo = (c.total * 0.06).toFixed(2);
+    if (!confirm(`Enviar "${t.nome}" para ${c.total} contatos (${rotulo})?\n\nCusto estimado: US$ ${custo}. Isso é cobrado pela Meta.`)) return;
+
+    const caixa = document.getElementById('camp-progresso');
+    const status = document.getElementById('camp-status');
+    const fill = document.getElementById('camp-barra-fill');
+    const botao = document.getElementById('camp-btn-disparar');
+    caixa.hidden = false;
+    botao.disabled = true;
+    status.textContent = 'Montando a fila…';
+
+    const post = (corpo) => fetch(BACKEND_URL + '/api/admin/analytics/campanha', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeader()),
+        body: JSON.stringify(corpo),
+    }).then(x => x.json());
+
+    try {
+        const criada = await post({ acao: 'criar', template: t.nome, idioma: t.idioma, publico: chave, corpo: t.corpo });
+        if (criada.error) { status.textContent = criada.error; botao.disabled = false; return; }
+        const total = criada.total;
+        let enviados = 0, falhas = 0;
+        while (true) {
+            const lote = await post({ acao: 'lote', campanhaId: criada.campanhaId });
+            if (lote.error) { status.textContent = lote.error; break; }
+            if (lote.pausado) { status.textContent = lote.motivo; break; }
+            enviados += lote.enviados || 0;
+            falhas += lote.falhas || 0;
+            const feito = enviados + falhas;
+            fill.style.width = Math.round((feito / total) * 100) + '%';
+            status.textContent = `${enviados} enviadas, ${falhas} falhas, de ${total}.`;
+            if (lote.concluida || feito >= total) { status.textContent = `Campanha concluída: ${enviados} enviadas, ${falhas} falhas.`; break; }
+        }
+    } catch (e) {
+        status.textContent = 'Erro no disparo. Reabra a aba e dispare de novo: a fila continua de onde parou.';
+    }
+    botao.disabled = false;
 }
 
 // ── Usuários: CRUD ────────────────────────────────────────────────────────────

@@ -211,6 +211,24 @@ export class StateRepository {
   }
 
   /**
+   * Descadastro de marketing: o cliente respondeu SAIR/PARAR a uma campanha.
+   * Daqui pra frente ele fica de fora de qualquer disparo (o filtro do público
+   * exclui optout_marketing). Nao afeta o atendimento: o bot segue respondendo.
+   * Best-effort: silencia se a coluna ainda nao existir (rode
+   * public/admin/supabase-campanhas.sql).
+   */
+  async setOptoutMarketing(waId: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ optout_marketing: true })
+      .eq("wa_id", waId);
+    if (error && !SCHEMA_MISSING.has(error.code ?? "")) {
+      logger.warn({ error, waId }, "Falha ao marcar optout de marketing (nao critico)");
+    }
+  }
+
+  /**
    * Marca o contato como PENDENTE na Seletiva quando ele demonstra interesse.
    * Só escreve com o status vazio: nunca rebaixa um "inscrito" (carimbado por
    * scripts/seletiva-import.ts) nem reescreve a data de quem já era pendente.

@@ -461,6 +461,32 @@
                             </div>
                             <div id="templates-audience" class="templates-audience">Carregando…</div>
                         </div>
+                        <div class="chart-card glass campanha-card">
+                            <div class="chart-header">
+                                <h3><i class="fa-solid fa-paper-plane"></i> Disparar campanha</h3>
+                                <p>Manda um modelo aprovado para um público. Só admin. Cada envio é pago.</p>
+                            </div>
+                            <div class="campanha-form">
+                                <label>Modelo
+                                    <select id="camp-template"><option value="">Carregando…</option></select>
+                                </label>
+                                <label>Público
+                                    <select id="camp-publico"></select>
+                                </label>
+                                <label>Testar antes em um número
+                                    <input id="camp-teste-numero" type="text" placeholder="5591988887777" />
+                                </label>
+                                <div class="campanha-acoes">
+                                    <button type="button" id="camp-btn-teste" class="btn-secundario">Enviar teste</button>
+                                    <button type="button" id="camp-btn-disparar" class="btn-perigo">Disparar para o público</button>
+                                </div>
+                            </div>
+                            <p id="camp-previa" class="camp-previa"></p>
+                            <div id="camp-progresso" class="camp-progresso" hidden>
+                                <div class="camp-barra"><span id="camp-barra-fill"></span></div>
+                                <p id="camp-status">—</p>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -679,6 +705,6 @@
          As credenciais são buscadas async via /api/config em initConnection(). -->
     <script>window.__ADMIN_CONFIG__ = null;</script>
     <!-- Lógica de Controle JS -->
-    <script src="/admin/admin.js?v=7.19"></script>
+    <script src="/admin/admin.js?v=7.20"></script>
 </body>
 </html>

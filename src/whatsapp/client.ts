@@ -111,6 +111,53 @@ export class WhatsAppClient {
     }
   }
 
+  /**
+   * Mensagem de TEMPLATE (modelo aprovado pela Meta). É o único jeito de falar
+   * com quem está fora da janela de 24h — e a única mensagem PAGA: uma
+   * cobrança por destinatário entregue. Usada só pelas campanhas do /admin.
+   *
+   * `variaveis` preenche os {{1}}, {{2}}… do corpo, na ordem. Template sem
+   * variável manda lista vazia.
+   */
+  async sendTemplate(
+    to: string,
+    template: string,
+    idioma: string,
+    variaveis: string[] = []
+  ): Promise<{ messageId: string }> {
+    if (config.whatsapp.dryRun) {
+      logger.info({ to, template, dryRun: true }, "WhatsApp template (DRY_RUN - not actually sent)");
+      return { messageId: "dry-run-" + Date.now() };
+    }
+
+    const components = variaveis.length
+      ? [{ type: "body", parameters: variaveis.map((v) => ({ type: "text", text: v })) }]
+      : [];
+
+    try {
+      const response = await this.client.post(`/messages`, {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizeBrazilMobile(to),
+        type: "template",
+        template: {
+          name: template,
+          language: { code: idioma },
+          ...(components.length ? { components } : {}),
+        },
+      });
+      const messageId = response.data.messages?.[0]?.id || "unknown";
+      logger.info({ to, template, messageId }, "WhatsApp template sent");
+      return { messageId };
+    } catch (error: any) {
+      // A Meta explica a recusa no corpo (sem cartão, template não aprovado,
+      // número inválido). Repassamos a mensagem pra campanha registrar o motivo.
+      const detalhe = error?.response?.data?.error?.message || error?.message || "erro desconhecido";
+      logger.error({ to, template, detalhe }, "Erro ao enviar template");
+      throw new Error(detalhe);
+    }
+  }
+
   async sendImage(
     to: string,
     imageUrl: string,

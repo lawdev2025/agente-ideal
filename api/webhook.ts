@@ -66,7 +66,15 @@ async function readRawBody(req: VercelRequest): Promise<string> {
  * quem calcula é o job /api/jobs/temperature. O que a mensagem faz é zerar o
  * ciclo de empurrões — o cliente voltou a falar, então o contador recomeça.
  */
+// Resposta de descadastro a uma campanha. Curta e explicita: "sair"/"parar"
+// soltos numa frase longa nao contam (o cliente pode estar falando de outra
+// coisa, tipo "vou sair mais cedo").
+const OPTOUT_MARKETING = /^\s*(sair|parar|pare|stop|cancelar|descadastrar|remover|nao quero mais|não quero mais)[\s.!]*$/i;
+
 async function applyContactSignals(senderId: string, text: string): Promise<void> {
+  if (OPTOUT_MARKETING.test(text || "")) {
+    await stateRepo.setOptoutMarketing(senderId);
+  }
   const tag = classifyContactTag(text);
   if (tag) await stateRepo.setContactTag(senderId, tag);
   // Seletiva mora fora da tag (a tag é sobrescrita a cada mensagem). O repo só

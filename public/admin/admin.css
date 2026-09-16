@@ -1832,12 +1832,12 @@ html.dark .glass {
     font-family: inherit;
 }
 .unit-chip:hover {
-    border-color: var(--brand);
+    border-color: var(--brand-color);
     color: var(--text-primary);
 }
 .unit-chip.active {
-    background: var(--brand);
-    border-color: var(--brand);
+    background: var(--brand-color);
+    border-color: var(--brand-color);
     color: #fff;
 }
 
@@ -2572,7 +2572,7 @@ html.dark .utag-cn { color: #E0A23C; }
     cursor: pointer;
 }
 .contacts-filters .cfilter:focus-visible {
-    outline: 2px solid var(--brand);
+    outline: 2px solid var(--brand-color);
     outline-offset: 1px;
 }
 .contacts-filters .cfilter[hidden] { display: none; }
@@ -2604,12 +2604,12 @@ html.dark .utag-cn { color: #E0A23C; }
 .templates-list, .templates-audience { display: flex; flex-direction: column; gap: 12px; max-height: 62vh; overflow-y: auto; }
 .tpl-vazio { color: var(--text-secondary); font-size: 14px; padding: 8px 0; }
 
-.tpl-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; }
+.tpl-card { border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; }
 .tpl-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .tpl-linha { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .tpl-meta, .tpl-botao {
     font-size: 11px; padding: 2px 8px; border-radius: 999px;
-    border: 1px solid var(--border); color: var(--text-secondary);
+    border: 1px solid var(--border-color); color: var(--text-secondary);
 }
 .tpl-botao { border-style: dashed; }
 .tpl-corpo { font-size: 13px; line-height: 1.45; white-space: pre-wrap; margin: 0; }
@@ -2622,7 +2622,7 @@ html.dark .utag-cn { color: #E0A23C; }
 /* Público por tag: nome à esquerda, total e "precisam de modelo" à direita. */
 .pub-linha {
     display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px;
-    padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md);
 }
 .pub-nome  { font-size: 13px; }
 .pub-total { font-size: 18px; font-weight: 700; }
@@ -2633,3 +2633,24 @@ html.dark .utag-cn { color: #E0A23C; }
     .pub-linha { grid-template-columns: 1fr auto; }
     .pub-fora { grid-column: 1 / -1; }
 }
+
+/* Disparo de campanha (aba Modelos) */
+.campanha-card { grid-column: 1 / -1; }
+.campanha-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.campanha-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+.campanha-form select, .campanha-form input {
+    min-width: 220px; padding: 9px 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color); background: transparent; color: inherit; font-size: 13px;
+}
+.campanha-acoes { display: flex; gap: 10px; }
+.btn-secundario, .btn-perigo {
+    padding: 10px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border-color); background: transparent; color: inherit;
+}
+.btn-perigo { background: var(--brand-color); border-color: var(--brand-color); color: #fff; }
+.btn-perigo:disabled { opacity: .6; cursor: not-allowed; }
+.camp-previa { font-size: 13px; color: var(--text-secondary); margin: 14px 0 0; }
+.camp-progresso { margin-top: 12px; }
+.camp-barra { height: 8px; border-radius: 999px; background: var(--border-color); overflow: hidden; }
+.camp-barra span { display: block; height: 100%; width: 0; background: var(--brand-color); transition: width .3s ease; }
+#camp-status { font-size: 13px; margin: 8px 0 0; }

@@ -443,7 +443,7 @@ async function loadTemplates() {
     alvo.innerHTML = '<p class="tpl-vazio">Carregando…</p>';
     loadTemplateAudience(); // roda em paralelo, não depende da Meta
     try {
-        const r = await fetch(BACKEND_URL + '/api/admin/templates', { headers: authHeader() });
+        const r = await fetch(BACKEND_URL + '/api/admin/analytics/templates', { headers: authHeader() });
         if (r.status === 403) { alvo.innerHTML = '<p class="tpl-vazio">Sem permissão: esta aba é só do admin.</p>'; return; }
         if (!r.ok) { alvo.innerHTML = '<p class="tpl-vazio">Não consegui falar com o servidor.</p>'; return; }
         const d = await r.json();

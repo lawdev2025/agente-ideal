@@ -834,36 +834,58 @@ function clearTopicFilter() {
 // DONUT — 3 VISÕES ALTERNÁVEIS (Intenções | Unidades | Segmento)
 // =====================================================================
 
-// Interesse em carreira/prova militar — ESPELHO de isMilitarInterest() em
-// src/worker/intent-router.ts (o painel é browser puro, não importa o worker;
-// se mexer lá, mexa aqui). Militar não tem tag própria: é um NÍVEL, aparece só
-// na visão "Segmento" do donut.
-//
-// Três estágios, cada um com um peso diferente na sequência do donut:
-//   1. PROVA NOMEADA (EsPCEx, EFOMM, CIABA, EPCAr, EEAR, EsFCEx, AMAN,
-//      Escola/Colégio Naval, CFO/CFN) — inequívoco, vale acima de qualquer
-//      série citada na mesma mensagem.
-//   2. SIGLA CURTA + CONTEXTO — ITA, IME, AFA, ESA, EAM só contam se a
-//      mensagem também tiver palavra de estudo/prova. Sem isso, "esa" (typo de
-//      "essa") e "ita" (pedaço de nome próprio) inflariam a fatia.
-//   3. GENÉRICO (militar, cívico-militar, Marinha, Exército, Aeronáutica,
-//      Forças Armadas) — forte, mas não diz a série: perde para Fundamental.
-const MILITAR_PROVAS_RE = /(espcex|esp\s?cex|efomm|ciaba|epcar|eear|esfcex|\baman\b|escola\s+naval|col[ée]gio\s+naval|escola\s+preparat[óo]ria\s+de\s+cadetes|\bcfo\b|\bcfn\b)/i;
-const MILITAR_GENERIC_RE = /(\bmilitar(es|izad[oa]s?|ismo)?\b|c[íi]vico[-\s]?militar|for[çc]as?\s+armadas|\bmarinha\b|aeron[áa]utica|ex[ée]rcito)/i;
-const MILITAR_SIGLA_RE = /\b(ita|ime|afa|esa|eam)\b/i;
-const MILITAR_CONTEXT_RE = /\b(prova|provas|concurso|concursos|vestibular|preparat[óo]ri[oa]|preparar|passar|aprova[çc][ãa]o|aprovar|classifica|curso|cursinho|turma|carreira|estudar|simulado|olimp[íi]ada|exatas|engenharia|intensivo|extensivo|terceir[ãa]o|3[ºo°]?\s*ano)\b/i;
+// PostgREST corta TODO select em 1000 linhas (max_rows) — sem erro e sem aviso.
+// O donut lia só as 1000 primeiras linhas de `contacts` e mostrava menos
+// contatos do que existem: com 1.382 contatos, "Matrícula" aparecia como 457 em
+// vez de 622. Contagem agora vem do banco (count exact, head), que não tem teto
+// e trafega só o número. Mesma raiz do teto de 1000 conversas na Central.
+async function countContactsBy(column, value) {
+    if (!_sb) return 0;
+    const { count } = await _sb.from('contacts').select('*', { count: 'exact', head: true }).eq(column, value);
+    return count || 0;
+}
 
-// Estágios 1 e 2 — vencem a série citada na mensagem.
-function isMilitarProva(text) {
-    const t = (text || '').trim();
-    if (!t) return false;
-    if (MILITAR_PROVAS_RE.test(t)) return true;
-    return MILITAR_SIGLA_RE.test(t) && MILITAR_CONTEXT_RE.test(t);
+async function countsByColumn(column, keys) {
+    const counts = {};
+    await Promise.all(keys.map(async (k) => { counts[k] = await countContactsBy(column, k); }));
+    return counts;
 }
-// Estágio 3 — perde para Infantil/Fundamental.
-function isMilitarGeneric(text) {
-    return MILITAR_GENERIC_RE.test((text || '').trim());
+
+// Lê a tabela inteira em páginas de 1000 (o teto do PostgREST) em vez de parar
+// calada na primeira página. `tweak` aplica filtro/ordenação na query da página.
+async function pagedSelect(table, columns, tweak) {
+    if (!_sb) return [];
+    const PAGE = 1000;
+    const out = [];
+    for (let from = 0; ; from += PAGE) {
+        let q = _sb.from(table).select(columns).range(from, from + PAGE - 1);
+        if (tweak) q = tweak(q);
+        const { data, error } = await q;
+        if (error) return out;
+        const batch = data || [];
+        out.push(...batch);
+        if (batch.length < PAGE) return out;
+    }
 }
+
+// IDs para o drill-down: paginado, senão o filtro da fila parava nos mesmos 1000.
+async function contactIdsBy(column, value) {
+    if (!_sb) return null;
+    const rows = await pagedSelect('contacts', 'wa_id', (q) => q.eq(column, value));
+    return rows.map(r => r.wa_id).filter(Boolean);
+}
+
+// Rótulo do donut → valor que o webhook grava em contacts.segment_tag
+// (detectNivel do intent-router). Os mesmos valores do filtro "Segmento".
+const SEGMENT_TAG_POR_ROTULO = {
+    Infantil: 'Educação Infantil',
+    'Fundamental I': 'Fundamental 1',
+    'Fundamental II': 'Fundamental 2',
+    'Médio': 'Ensino Médio',
+    Militar: 'Preparatório Militar',
+    Eixo: 'Pré-Enem',
+};
+
 const DONUT_CONFIGS = {
     intencoes: {
         subtitle: 'Distribuição por intenção de matrícula',
@@ -875,40 +897,26 @@ const DONUT_CONFIGS = {
             esporte:          '#10B981',
         },
         labels: { matricula: 'Matrícula', rematricula: 'Rematrícula', seletiva: 'Seletiva', eixo: 'Eixo', esporte: 'Esporte' },
-        fetch: async () => {
-            if (!_sb) return {};
-            const { data } = await _sb.from('contacts').select('tag');
-            const counts = { matricula: 0, rematricula: 0, seletiva: 0, eixo: 0, esporte: 0 };
-            (data || []).forEach(r => { const k = r.tag; if (k && k in counts) counts[k]++; });
-            return counts;
-        },
+        fetch: async () => countsByColumn('tag', ['matricula', 'rematricula', 'seletiva', 'eixo', 'esporte']),
         drilldown: async (label) => {
             if (!_sb) return null;
             const rawKey = Object.entries(DONUT_CONFIGS.intencoes.labels).find(([, v]) => v === label)?.[0] || label;
-            const { data } = await _sb.from('contacts').select('wa_id').eq('tag', rawKey);
-            return (data || []).map(r => r.wa_id).filter(Boolean);
+            return contactIdsBy('tag', rawKey);
         }
     },
     unidades: {
         subtitle: 'Distribuição por unidade de interesse',
         colors: { AM: '#C8202E', BC: '#F59E0B', CN: '#3B82F6' },
         labels: { AM: 'Augusto Montenegro', BC: 'Batista Campos', CN: 'Cidade Nova' },
-        fetch: async () => {
-            if (!_sb) return {};
-            const { data } = await _sb.from('contacts').select('unit_tag');
-            const counts = { AM: 0, BC: 0, CN: 0 };
-            (data || []).forEach(r => { const k = r.unit_tag; if (k && k in counts) counts[k]++; });
-            return counts;
-        },
+        fetch: async () => countsByColumn('unit_tag', ['AM', 'BC', 'CN']),
         drilldown: async (label) => {
             if (!_sb) return null;
             const rawKey = Object.entries(DONUT_CONFIGS.unidades.labels).find(([, v]) => v === label)?.[0] || label;
-            const { data } = await _sb.from('contacts').select('wa_id').eq('unit_tag', rawKey);
-            return (data || []).map(r => r.wa_id).filter(Boolean);
+            return contactIdsBy('unit_tag', rawKey);
         }
     },
     segmento: {
-        subtitle: 'Nível escolar detectado nas conversas',
+        subtitle: 'Nível escolar por contato',
         colors: {
             Infantil:         '#EC4899',
             'Fundamental I':  '#F59E0B',
@@ -919,29 +927,20 @@ const DONUT_CONFIGS = {
             'Eixo':           '#3B82F6',
         },
         labels: null,
+        // Antes reclassificava as mensagens de cliente no navegador: além do teto
+        // de 1000 linhas (de 6.451 mensagens), contava MENSAGEM e não contato, e
+        // divergia do filtro "Segmento" da fila. Agora lê o segment_tag que o
+        // webhook carimba no contato — mesma fonte do filtro.
         fetch: async () => {
-            if (!_sb) return {};
-            const { data: msgs } = await _sb.from('messages').select('content').eq('role', 'user');
-            const counts = { Infantil: 0, 'Fundamental I': 0, 'Fundamental II': 0, Médio: 0, Militar: 0, Eixo: 0 };
-            (msgs || []).forEach(m => {
-                const t = (m.content || '').toLowerCase();
-                // Sequência espelha NIVEL_PATTERNS do intent-router (src/worker/
-                // intent-router.ts): prova militar → Infantil → Fundamental →
-                // militar genérico → Eixo → Médio. O nome da prova vence a
-                // série ("3º ano, quero a EsPCEx" é militar); o "militar" solto
-                // não ("6º ano do colégio militar" é Fundamental II).
-                if (isMilitarProva(t))                                                            counts['Militar']++;
-                else if (/infantil|maternal|ber[cç][aá]rio|jardim/.test(t))                       counts['Infantil']++;
-                else if (/fundamental\s*1|fundamental\s*i(?!i)|anos iniciais|1[º°o]\s*(ao|-)?\s*5/.test(t)) counts['Fundamental I']++;
-                else if (/fundamental\s*2|fundamental\s*ii|anos finais|6[º°o]\s*(ao|-)?\s*9/.test(t)) counts['Fundamental II']++;
-                else if (isMilitarGeneric(t))                                                     counts['Militar']++;
-                else if (/\beixo\b|vestibular|pre.?enem|\benem\b|cursinho|preparat/.test(t))      counts['Eixo']++;
-                else if (/ensino m[eé]dio|\bm[eé]dio\b|colegial|2[º°o]\s*grau/.test(t))          counts['Médio']++;
-                // mensagens sem segmento identificado são ignoradas (não criam fatia)
-            });
+            const counts = {};
+            const pares = Object.entries(SEGMENT_TAG_POR_ROTULO);
+            await Promise.all(pares.map(async ([rotulo, tag]) => { counts[rotulo] = await countContactsBy('segment_tag', tag); }));
             return counts;
         },
-        drilldown: null
+        drilldown: async (label) => {
+            const tag = SEGMENT_TAG_POR_ROTULO[label];
+            return tag ? contactIdsBy('segment_tag', tag) : null;
+        }
     }
 };
 
@@ -1215,8 +1214,8 @@ async function loadContactsList() {
             .from('messages')
             .select('wa_id, created_at')
             .order('created_at', { ascending: false });
-        const { data: existing } = await _sb.from('contacts').select('wa_id');
-        const existingSet = new Set((existing || []).map(c => c.wa_id));
+        const existing = await pagedSelect('contacts', 'wa_id');
+        const existingSet = new Set(existing.map(c => c.wa_id));
         const seen = new Set();
         const orphans = [];
         for (const m of msgRows || []) {
@@ -1230,12 +1229,8 @@ async function loadContactsList() {
             await _sb.from('contacts').insert(orphans);
         }
 
-        const { data: contacts, error } = await _sb
-            .from('contacts')
-            .select('*')
-            .order('last_seen_at', { ascending: false, nullsFirst: false });
-        if (error) throw error;
-        allContacts = contacts || [];
+        allContacts = await pagedSelect('contacts', '*', (q) =>
+            q.order('last_seen_at', { ascending: false, nullsFirst: false }));
         renderContactsFiltered();
     } catch (err) {
         console.error('Erro ao carregar contatos:', err);
@@ -1889,10 +1884,7 @@ async function refreshContactsList() {
     // Fallback: Supabase
     if (fetchedContacts.length === 0 && _sb) {
         try {
-            const { data: contacts, error } = await _sb.from('contacts').select('*');
-            if (!error) {
-                fetchedContacts = contacts || [];
-            }
+            fetchedContacts = await pagedSelect('contacts', '*');
         } catch (err) {
             // Falha silenciosa em background
         }

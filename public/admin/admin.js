@@ -437,13 +437,28 @@ const TEMPLATE_STATUS = {
     DISABLED: { rotulo: 'Desativado', cls: 'tpl-erro' },
 };
 
-async function loadTemplates() {
+// Enquanto houver modelo EM ANÁLISE, a aba recarrega sozinha: a Meta costuma
+// responder em minutos e ninguém deve ficar apertando F5 pra saber.
+let tplPollTimer = null;
+
+function agendarPollTemplates(temPendente) {
+    if (tplPollTimer) { clearTimeout(tplPollTimer); tplPollTimer = null; }
+    if (!temPendente) return;
+    tplPollTimer = setTimeout(() => {
+        if (currentTab === 'templates') loadTemplates({ fresh: true });
+    }, 20000);
+}
+
+async function loadTemplates(opts) {
     const alvo = document.getElementById('templates-list');
     if (!alvo) return;
-    alvo.innerHTML = '<p class="tpl-vazio">Carregando…</p>';
+    const fresh = opts && opts.fresh;
+    if (!fresh) alvo.innerHTML = '<p class="tpl-vazio">Carregando…</p>';
+    montarFormNovoTemplate();
     loadTemplateAudience(); // roda em paralelo, não depende da Meta
     try {
-        const r = await fetch(BACKEND_URL + '/api/admin/analytics/templates', { headers: authHeader() });
+        const url = BACKEND_URL + '/api/admin/analytics/templates' + (fresh ? '?fresh=1' : '');
+        const r = await fetch(url, { headers: authHeader() });
         if (r.status === 403) { alvo.innerHTML = '<p class="tpl-vazio">Sem permissão: esta aba é só do admin.</p>'; return; }
         if (!r.ok) { alvo.innerHTML = '<p class="tpl-vazio">Não consegui falar com o servidor.</p>'; return; }
         const d = await r.json();
@@ -455,8 +470,13 @@ async function loadTemplates() {
         const lista = d.templates || [];
         templatesCarregados = lista;
         montarFormCampanha();
+        const pendentes = lista.filter(t => t.status === 'PENDING' || t.status === 'IN_APPEAL');
+        agendarPollTemplates(pendentes.length > 0);
         if (!lista.length) { alvo.innerHTML = '<p class="tpl-vazio">Nenhum modelo criado ainda.</p>'; return; }
-        alvo.innerHTML = lista.map(renderTemplateCard).join('');
+        const aviso = pendentes.length
+            ? `<p class="tpl-analise">⏳ ${pendentes.length} modelo(s) em análise na Meta. Esta lista se atualiza sozinha a cada 20s.</p>`
+            : '';
+        alvo.innerHTML = aviso + lista.map(renderTemplateCard).join('');
     } catch (e) {
         alvo.innerHTML = '<p class="tpl-vazio">Não consegui carregar os modelos.</p>';
     }
@@ -566,6 +586,41 @@ function montarFormCampanha() {
     if (btnTeste) btnTeste.onclick = enviarTesteCampanha;
     if (btnDisparar) btnDisparar.onclick = dispararCampanha;
     atualizarPreviaCampanha();
+}
+
+// Formulário de criação: manda pra Meta e já mostra o modelo em análise.
+function montarFormNovoTemplate() {
+    const toggle = document.getElementById('tpl-novo-toggle');
+    const form = document.getElementById('tpl-novo-form');
+    if (!toggle || !form || form.dataset.pronto) return;
+    form.dataset.pronto = '1';
+    toggle.onclick = () => { form.hidden = !form.hidden; };
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById('tpl-novo-msg');
+        const corpo = {
+            nome: document.getElementById('tpl-nome').value.trim(),
+            categoria: document.getElementById('tpl-categoria').value,
+            corpo: document.getElementById('tpl-corpo').value.trim(),
+            botaoTexto: document.getElementById('tpl-botao-texto').value.trim(),
+            botaoUrl: document.getElementById('tpl-botao-url').value.trim(),
+        };
+        msg.textContent = 'Enviando…';
+        try {
+            const r = await fetch(BACKEND_URL + '/api/admin/analytics/templates', {
+                method: 'POST',
+                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeader()),
+                body: JSON.stringify(corpo),
+            }).then(x => x.json());
+            if (r.erro) { msg.textContent = r.erro; return; }
+            msg.textContent = 'Enviado! Agora é aguardar a análise da Meta.';
+            form.reset();
+            form.hidden = true;
+            loadTemplates({ fresh: true });
+        } catch (err) {
+            msg.textContent = 'Falha de rede ao criar o modelo.';
+        }
+    };
 }
 
 function templateSelecionado() {

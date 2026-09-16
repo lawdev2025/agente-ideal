@@ -98,7 +98,9 @@ async function handleTemplates(req: VercelRequest, res: VercelResponse) {
   }
 
   const cached = templatesCache;
-  if (cached && Date.now() - cached.at < TEMPLATES_TTL_MS) {
+  // fresh=1: a tela usa enquanto acompanha uma análise, pra não ficar 60s
+  // mostrando "em análise" depois de a Meta já ter aprovado.
+  if (cached && !req.query.fresh && Date.now() - cached.at < TEMPLATES_TTL_MS) {
     res.setHeader("X-Cache", "HIT");
     res.status(200).json(cached.payload);
     return;
@@ -203,6 +205,55 @@ function novoClienteWhatsApp(): WhatsAppClient {
     config.whatsapp.phoneNumberId,
     config.whatsapp.businessAccountId
   );
+}
+
+// Cria um modelo e manda pra análise da Meta. Só admin: modelo aprovado é o
+// que habilita disparo pago. A Meta responde com o status inicial (quase sempre
+// PENDING) e a tela passa a acompanhar sozinha.
+async function handleCriarTemplate(req: VercelRequest, res: VercelResponse) {
+  if (!requireAdmin(req, res)) return;
+  const token = config.whatsapp.managementToken;
+  const waba = config.whatsapp.wabaId;
+  if (!token || !waba) {
+    res.status(200).json({ erro: "Faltam WHATSAPP_MANAGEMENT_TOKEN e WHATSAPP_WABA_ID." });
+    return;
+  }
+  const b: any = req.body || {};
+  const nome = String(b.nome || "").trim().toLowerCase();
+  const corpo = String(b.corpo || "").trim();
+  const categoria = String(b.categoria || "MARKETING").toUpperCase();
+  const idioma = String(b.idioma || "pt_BR");
+  // A Meta só aceita minúsculas, números e _ no nome; erra aqui e a resposta
+  // vem como erro genérico de parâmetro.
+  if (!/^[a-z0-9_]{3,60}$/.test(nome)) {
+    res.status(200).json({ erro: "Nome inválido: use só letras minúsculas, números e _ (3 a 60)." });
+    return;
+  }
+  if (corpo.length < 10) {
+    res.status(200).json({ erro: "Escreva o texto da mensagem." });
+    return;
+  }
+
+  const components: any[] = [{ type: "BODY", text: corpo }];
+  const botaoTexto = String(b.botaoTexto || "").trim();
+  const botaoUrl = String(b.botaoUrl || "").trim();
+  if (botaoTexto && botaoUrl) {
+    components.push({ type: "BUTTONS", buttons: [{ type: "URL", text: botaoTexto, url: botaoUrl }] });
+  }
+
+  const r = await fetch(`${GRAPH}/${waba}/message_templates`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: nome, language: idioma, category: categoria, components }),
+  });
+  const body: any = await r.json();
+  if (!r.ok) {
+    logger.warn({ erro: body?.error }, "Falha ao criar template na Meta");
+    res.status(200).json({ erro: body?.error?.error_user_msg || body?.error?.message || "A Meta recusou o modelo." });
+    return;
+  }
+  templatesCache = null; // a lista precisa mostrar o novo agora, não em 60s
+  res.status(200).json({ ok: true, id: body.id, status: body.status || "PENDING" });
 }
 
 async function handleCampanha(req: VercelRequest, res: VercelResponse) {
@@ -356,7 +407,9 @@ async function handleCampanhaStatus(req: VercelRequest, res: VercelResponse) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
   // POST só existe para campanha (criar/disparar/testar); o resto é leitura.
-  const metodoOk = req.method === "GET" || (req.method === "POST" && req.query.tipo === "campanha");
+  const tipoReq = String(req.query.tipo || "");
+  const metodoOk =
+    req.method === "GET" || (req.method === "POST" && (tipoReq === "campanha" || tipoReq === "templates"));
   if (!metodoOk) {
     res.status(405).json({ error: "Method not allowed" });
     return;
@@ -368,7 +421,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return await handleCampanhaStatus(req, res);
     }
     if (tipo === "topics") return await handleTopics(req, res);
-    if (tipo === "templates") return await handleTemplates(req, res);
+    if (tipo === "templates") {
+      if (req.method === "POST") return await handleCriarTemplate(req, res);
+      return await handleTemplates(req, res);
+    }
     res.status(404).json({ error: "Not found" });
   } catch (error) {
     logger.error({ error, tipo }, "Erro em GET /api/admin/analytics/[tipo]");

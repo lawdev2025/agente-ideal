@@ -452,6 +452,31 @@
                                 <h3><i class="fa-solid fa-comment-dots"></i> Modelos de mensagem</h3>
                                 <p>Templates da conta Colégio Ideal e o status na Meta</p>
                             </div>
+                            <button type="button" id="tpl-novo-toggle" class="btn-secundario tpl-novo-toggle">+ Criar modelo</button>
+                            <form id="tpl-novo-form" class="tpl-novo-form" hidden>
+                                <label>Nome (sem espaços)
+                                    <input id="tpl-nome" type="text" placeholder="convite_seletiva" />
+                                </label>
+                                <label>Categoria
+                                    <select id="tpl-categoria">
+                                        <option value="MARKETING">Marketing (promoção, convite)</option>
+                                        <option value="UTILITY">Utilidade (aviso, confirmação)</option>
+                                    </select>
+                                </label>
+                                <label class="tpl-largo">Mensagem
+                                    <textarea id="tpl-corpo" rows="5" placeholder="Escreva a mensagem que o cliente vai receber…"></textarea>
+                                </label>
+                                <label>Botão (opcional)
+                                    <input id="tpl-botao-texto" type="text" placeholder="Fazer inscrição" />
+                                </label>
+                                <label>Link do botão
+                                    <input id="tpl-botao-url" type="text" placeholder="https://grupoideal.com.br/seletivas2027/" />
+                                </label>
+                                <div class="tpl-novo-acoes">
+                                    <button type="submit" class="btn-perigo">Enviar para aprovação</button>
+                                    <span id="tpl-novo-msg"></span>
+                                </div>
+                            </form>
                             <div id="templates-list" class="templates-list">Carregando…</div>
                         </div>
                         <div class="chart-card glass">
@@ -705,6 +730,6 @@
          As credenciais são buscadas async via /api/config em initConnection(). -->
     <script>window.__ADMIN_CONFIG__ = null;</script>
     <!-- Lógica de Controle JS -->
-    <script src="/admin/admin.js?v=7.21"></script>
+    <script src="/admin/admin.js?v=7.22"></script>
 </body>
 </html>

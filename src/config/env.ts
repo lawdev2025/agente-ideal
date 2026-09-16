@@ -12,6 +12,13 @@ const EnvSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().min(1),
   WHATSAPP_DRY_RUN: z.enum(['0', '1']).default('0').transform(v => v === '1'),
 
+  // Gerenciamento de TEMPLATES no /admin. Token separado do de envio, com o
+  // escopo whatsapp_business_management: se este vencer ou for revogado, o bot
+  // continua mandando mensagem normalmente. Vazio = a aba avisa que falta
+  // configurar, em vez de quebrar.
+  WHATSAPP_MANAGEMENT_TOKEN: z.string().default(''),
+  WHATSAPP_WABA_ID: z.string().default(''),
+
   // LLM provider selection — "claude" (default) or "gemini"
   LLM_PROVIDER: z.enum(['claude', 'gemini']).default('claude'),
 

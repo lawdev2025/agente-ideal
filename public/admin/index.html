@@ -66,6 +66,10 @@
                         <i class="fa-solid fa-sliders"></i>
                         <span>Configurações</span>
                     </li>
+                    <li data-tab="templates" id="nav-templates" style="display:none">
+                        <i class="fa-solid fa-comment-dots"></i>
+                        <span>Modelos</span>
+                    </li>
                     <li data-tab="usuarios" id="nav-usuarios" style="display:none">
                         <i class="fa-solid fa-users"></i> <span>Usuários</span>
                     </li>
@@ -438,6 +442,28 @@
                 </section>
 
                 <!-- 5. Aba Usuários (visível apenas para admin) -->
+                <!-- Modelos de mensagem (templates) — SOMENTE ADMIN. Mandar
+                     template é a única mensagem paga do WhatsApp, por isso a aba
+                     não aparece para atendente de unidade (e o backend recusa). -->
+                <section class="tab-content" id="tab-templates">
+                    <div class="templates-grid">
+                        <div class="chart-card glass">
+                            <div class="chart-header">
+                                <h3><i class="fa-solid fa-comment-dots"></i> Modelos de mensagem</h3>
+                                <p>Templates da conta Colégio Ideal e o status na Meta</p>
+                            </div>
+                            <div id="templates-list" class="templates-list">Carregando…</div>
+                        </div>
+                        <div class="chart-card glass">
+                            <div class="chart-header">
+                                <h3><i class="fa-solid fa-users-viewfinder"></i> Para quem dá pra mandar</h3>
+                                <p>Cada contato é uma cobrança. "Precisam de modelo" são os que estão fora da janela de 24h.</p>
+                            </div>
+                            <div id="templates-audience" class="templates-audience">Carregando…</div>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="tab-content" id="tab-usuarios">
                   <div class="users-toolbar">
                     <button id="btn-new-user" class="btn">+ Novo usuário</button>
@@ -653,6 +679,6 @@
          As credenciais são buscadas async via /api/config em initConnection(). -->
     <script>window.__ADMIN_CONFIG__ = null;</script>
     <!-- Lógica de Controle JS -->
-    <script src="/admin/admin.js?v=7.17"></script>
+    <script src="/admin/admin.js?v=7.18"></script>
 </body>
 </html>

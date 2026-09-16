@@ -87,6 +87,7 @@ function applyRoleUI() {
   setTab('dashboard', isAdmin);
   setTab('banco', isAdmin);
   setTab('config', isAdmin);
+  setTab('templates', isAdmin);
   setTab('usuarios', isAdmin);
 
   // Atualiza nome e iniciais no rodapé da sidebar
@@ -404,6 +405,7 @@ function activateTab(tab) {
         mapa: { title: 'Mapa Demográfico', subtitle: 'Distribuição dos alunos por bairro em Belém e Ananindeua' },
         banco: { title: 'Banco de Dados', subtitle: 'Edite, adicione ou exclua informações da base de conhecimento da escola' },
         config: { title: 'Configurações de Conexão', subtitle: 'Gerencie as chaves de integração do Supabase' },
+        templates: { title: 'Modelos de Mensagem', subtitle: 'Templates aprovados pela Meta e público disponível por tag' },
         usuarios: { title: 'Usuários', subtitle: 'Gerencie os usuários e permissões do painel admin' }
     };
     document.getElementById('tab-title').textContent = titles[tab].title;
@@ -418,7 +420,113 @@ function activateTab(tab) {
     if (tab === 'dashboard') return loadDashboardStats();
     if (tab === 'conversas') return loadConversationsTab();
     if (tab === 'banco') { loadDatabaseTable(); loadIntentLearning(); return; }
+    if (tab === 'templates') return loadTemplates();
     if (tab === 'usuarios') return loadUsers();
+}
+
+// ── Modelos de mensagem (templates) ───────────────────────────────────────────
+// Só admin chega aqui: a aba some pelo applyRoleUI, activateTab redireciona e o
+// backend responde 403. Mandar template é a única mensagem PAGA do WhatsApp.
+
+const TEMPLATE_STATUS = {
+    APPROVED: { rotulo: 'Aprovado', cls: 'tpl-ok' },
+    PENDING: { rotulo: 'Em análise', cls: 'tpl-espera' },
+    IN_APPEAL: { rotulo: 'Em recurso', cls: 'tpl-espera' },
+    REJECTED: { rotulo: 'Rejeitado', cls: 'tpl-erro' },
+    PAUSED: { rotulo: 'Pausado', cls: 'tpl-erro' },
+    DISABLED: { rotulo: 'Desativado', cls: 'tpl-erro' },
+};
+
+async function loadTemplates() {
+    const alvo = document.getElementById('templates-list');
+    if (!alvo) return;
+    alvo.innerHTML = '<p class="tpl-vazio">Carregando…</p>';
+    loadTemplateAudience(); // roda em paralelo, não depende da Meta
+    try {
+        const r = await fetch(BACKEND_URL + '/api/admin/templates', { headers: authHeader() });
+        if (r.status === 403) { alvo.innerHTML = '<p class="tpl-vazio">Sem permissão: esta aba é só do admin.</p>'; return; }
+        if (!r.ok) { alvo.innerHTML = '<p class="tpl-vazio">Não consegui falar com o servidor.</p>'; return; }
+        const d = await r.json();
+        if (d.configured === false) {
+            alvo.innerHTML = '<p class="tpl-vazio">Falta configurar o acesso à Meta (WHATSAPP_MANAGEMENT_TOKEN e WHATSAPP_WABA_ID).</p>';
+            return;
+        }
+        if (d.erro) { alvo.innerHTML = `<p class="tpl-vazio">${escapeHtml(d.erro)}</p>`; return; }
+        const lista = d.templates || [];
+        if (!lista.length) { alvo.innerHTML = '<p class="tpl-vazio">Nenhum modelo criado ainda.</p>'; return; }
+        alvo.innerHTML = lista.map(renderTemplateCard).join('');
+    } catch (e) {
+        alvo.innerHTML = '<p class="tpl-vazio">Não consegui carregar os modelos.</p>';
+    }
+}
+
+function renderTemplateCard(t) {
+    const st = TEMPLATE_STATUS[t.status] || { rotulo: t.status || '—', cls: 'tpl-espera' };
+    const botoes = (t.botoes || []).map(b => `<span class="tpl-botao">${escapeHtml(b)}</span>`).join('');
+    const motivo = t.motivoRejeicao
+        ? `<p class="tpl-motivo">Motivo da rejeição: ${escapeHtml(t.motivoRejeicao)}</p>` : '';
+    const vars = t.variaveis ? `<span class="tpl-meta">${t.variaveis} variável(is)</span>` : '';
+    return `
+      <div class="tpl-card">
+        <div class="tpl-topo">
+          <strong>${escapeHtml(t.nome)}</strong>
+          <span class="tpl-status ${st.cls}">${st.rotulo}</span>
+        </div>
+        <div class="tpl-linha">
+          <span class="tpl-meta">${escapeHtml(t.categoria || '—')}</span>
+          <span class="tpl-meta">${escapeHtml(t.idioma || '—')}</span>
+          ${vars}
+        </div>
+        <p class="tpl-corpo">${escapeHtml(t.corpo || '(sem corpo)')}</p>
+        ${botoes ? `<div class="tpl-linha">${botoes}</div>` : ''}
+        ${motivo}
+      </div>`;
+}
+
+// Públicos por tag. O segundo número é quem está FORA da janela de 24h — esses
+// só recebem via template (pago). Quem está dentro recebe texto livre, de graça.
+const TEMPLATE_AUDIENCIAS = [
+    ['Seletiva · pendentes', q => q.eq('seletiva_status', 'pendente')],
+    ['Seletiva · inscritos', q => q.eq('seletiva_status', 'inscrito')],
+    ['Seletiva · todos os interessados', q => q.not('seletiva_status', 'is', null)],
+    ['Tag Matrícula', q => q.eq('tag', 'matricula')],
+    ['Tag Rematrícula', q => q.eq('tag', 'rematricula')],
+    ['Tag Eixo', q => q.eq('tag', 'eixo')],
+    ['Tag Esporte', q => q.eq('tag', 'esporte')],
+    ['Todos os contatos', q => q],
+];
+
+async function contarPublico(aplicar) {
+    if (!_sb) return { total: 0, fora: 0 };
+    const corte = Date.now() - 24 * 60 * 60 * 1000;
+    const base = () => aplicar(_sb.from('contacts').select('*', { count: 'exact', head: true }));
+    // Sem last_seen_at (veio da planilha, nunca falou) também está fora da janela.
+    const [a, b] = await Promise.all([
+        base(),
+        base().or(`last_seen_at.lt.${corte},last_seen_at.is.null`),
+    ]);
+    return { total: a.count || 0, fora: b.count || 0 };
+}
+
+async function loadTemplateAudience() {
+    const alvo = document.getElementById('templates-audience');
+    if (!alvo) return;
+    if (!_sb) { alvo.innerHTML = '<p class="tpl-vazio">Sem conexão com o banco.</p>'; return; }
+    alvo.innerHTML = '<p class="tpl-vazio">Carregando…</p>';
+    try {
+        const linhas = await Promise.all(TEMPLATE_AUDIENCIAS.map(async ([rotulo, aplicar]) => {
+            const { total, fora } = await contarPublico(aplicar);
+            return `
+              <div class="pub-linha">
+                <span class="pub-nome">${escapeHtml(rotulo)}</span>
+                <span class="pub-total">${total}</span>
+                <span class="pub-fora">${fora} precisam de modelo</span>
+              </div>`;
+        }));
+        alvo.innerHTML = linhas.join('');
+    } catch (e) {
+        alvo.innerHTML = '<p class="tpl-vazio">Não consegui contar os contatos.</p>';
+    }
 }
 
 // ── Usuários: CRUD ────────────────────────────────────────────────────────────

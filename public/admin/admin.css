@@ -2598,3 +2598,38 @@ html.dark .utag-cn { color: #E0A23C; }
     line-height: 1.7;
     cursor: help;
 }
+
+/* ── Modelos de mensagem (aba Templates, só admin) ───────────────────────── */
+.templates-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+.templates-list, .templates-audience { display: flex; flex-direction: column; gap: 12px; max-height: 62vh; overflow-y: auto; }
+.tpl-vazio { color: var(--text-secondary); font-size: 14px; padding: 8px 0; }
+
+.tpl-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; }
+.tpl-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.tpl-linha { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tpl-meta, .tpl-botao {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-secondary);
+}
+.tpl-botao { border-style: dashed; }
+.tpl-corpo { font-size: 13px; line-height: 1.45; white-space: pre-wrap; margin: 0; }
+.tpl-motivo { font-size: 12px; color: var(--badge-err-text); margin: 8px 0 0; }
+.tpl-status { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.tpl-ok     { background: rgba(31,157,85,.13);  color: var(--badge-ok-text); }
+.tpl-espera { background: rgba(245,158,11,.15); color: var(--badge-warn-text); }
+.tpl-erro   { background: var(--brand-subtle);  color: var(--badge-err-text); }
+
+/* Público por tag: nome à esquerda, total e "precisam de modelo" à direita. */
+.pub-linha {
+    display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.pub-nome  { font-size: 13px; }
+.pub-total { font-size: 18px; font-weight: 700; }
+.pub-fora  { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+
+@media (max-width: 900px) {
+    .templates-grid { grid-template-columns: 1fr; }
+    .pub-linha { grid-template-columns: 1fr auto; }
+    .pub-fora { grid-column: 1 / -1; }
+}

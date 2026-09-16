@@ -23,6 +23,10 @@ export interface Config {
     accessToken: string;
     appSecret: string;
     businessAccountId: string;
+    /** Conta do WhatsApp Business (WABA) — onde vivem os templates. */
+    wabaId: string;
+    /** Token só-gerenciamento usado pela aba de templates do /admin. */
+    managementToken: string;
     dryRun: boolean;
   };
   webhook: {
@@ -68,6 +72,8 @@ export const config: Config = {
     accessToken: rawConfig.WHATSAPP_ACCESS_TOKEN,
     appSecret: rawConfig.WHATSAPP_APP_SECRET,
     businessAccountId: rawConfig.WHATSAPP_PHONE_NUMBER_ID, // Using phone number ID as business account ID
+    wabaId: rawConfig.WHATSAPP_WABA_ID,
+    managementToken: rawConfig.WHATSAPP_MANAGEMENT_TOKEN,
     dryRun: rawConfig.WHATSAPP_DRY_RUN,
   },
   webhook: {

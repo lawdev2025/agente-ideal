@@ -845,6 +845,34 @@ async function countContactsBy(column, value) {
     return count || 0;
 }
 
+// A Seletiva NÃO cabe na `tag`: a tag guarda a intenção da ÚLTIMA mensagem e é
+// sobrescrita (quem falou da Seletiva e depois perguntou a mensalidade vira
+// "matricula"), enquanto contacts.seletiva_status (inscrito/pendente) só sobe e
+// inclui quem veio da planilha e nunca falou no WhatsApp. Por isso o donut
+// mostrava 257 na fatia Seletiva enquanto o card mostrava 530 interessados.
+// Agora a fatia Seletiva vem do status, e as outras descontam quem já está nela
+// — senão o mesmo contato apareceria em duas fatias.
+async function countIntencao(tag) {
+    if (!_sb) return 0;
+    const { count } = await _sb.from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('tag', tag).is('seletiva_status', null);
+    return count || 0;
+}
+
+async function countSeletivaInteressados() {
+    if (!_sb) return 0;
+    const { count: comStatus } = await _sb.from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .not('seletiva_status', 'is', null);
+    // Cinto de segurança: tag de Seletiva sem status (gravação do status falhou)
+    // continua na fatia em vez de sumir do painel.
+    const { count: soTag } = await _sb.from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('tag', 'seletiva').is('seletiva_status', null);
+    return (comStatus || 0) + (soTag || 0);
+}
+
 async function countsByColumn(column, keys) {
     const counts = {};
     await Promise.all(keys.map(async (k) => { counts[k] = await countContactsBy(column, k); }));
@@ -888,7 +916,7 @@ const SEGMENT_TAG_POR_ROTULO = {
 
 const DONUT_CONFIGS = {
     intencoes: {
-        subtitle: 'Distribuição por intenção de matrícula',
+        subtitle: 'Intenção do contato (Seletiva = inscritos + pendentes)',
         colors: {
             matricula:        '#C8202E',
             rematricula:      '#E86A73',
@@ -897,11 +925,23 @@ const DONUT_CONFIGS = {
             esporte:          '#10B981',
         },
         labels: { matricula: 'Matrícula', rematricula: 'Rematrícula', seletiva: 'Seletiva', eixo: 'Eixo', esporte: 'Esporte' },
-        fetch: async () => countsByColumn('tag', ['matricula', 'rematricula', 'seletiva', 'eixo', 'esporte']),
+        fetch: async () => {
+            const counts = {};
+            const outras = ['matricula', 'rematricula', 'eixo', 'esporte'];
+            await Promise.all(outras.map(async (k) => { counts[k] = await countIntencao(k); }));
+            counts.seletiva = await countSeletivaInteressados();
+            return counts;
+        },
         drilldown: async (label) => {
             if (!_sb) return null;
             const rawKey = Object.entries(DONUT_CONFIGS.intencoes.labels).find(([, v]) => v === label)?.[0] || label;
-            return contactIdsBy('tag', rawKey);
+            if (rawKey === 'seletiva') {
+                const comStatus = await pagedSelect('contacts', 'wa_id', (q) => q.not('seletiva_status', 'is', null));
+                const soTag = await pagedSelect('contacts', 'wa_id', (q) => q.eq('tag', 'seletiva').is('seletiva_status', null));
+                return [...new Set([...comStatus, ...soTag].map(r => r.wa_id).filter(Boolean))];
+            }
+            const rows = await pagedSelect('contacts', 'wa_id', (q) => q.eq('tag', rawKey).is('seletiva_status', null));
+            return rows.map(r => r.wa_id).filter(Boolean);
         }
     },
     unidades: {

@@ -580,11 +580,17 @@ function atualizarPreviaCampanha() {
     const chave = (document.getElementById('camp-publico') || {}).value || '';
     const c = campanhaContagens[chave] || { total: 0 };
     if (!t) { previa.textContent = 'Crie e aprove um modelo na Meta para poder disparar.'; return; }
-    // US$ 0,06 é a ordem de grandeza da tarifa de marketing no Brasil; o valor
-    // exato sai na fatura da Meta.
-    const custo = (c.total * 0.06).toFixed(2);
-    previa.innerHTML = `Vai enviar <b>${c.total}</b> mensagens usando <b>${escapeHtml(t.nome)}</b>. `
-        + `Custo estimado: <b>US$ ${custo}</b> (marketing; utilidade dentro de 24h é grátis).`;
+    // Ordem de grandeza da tarifa no Brasil por categoria (o valor exato sai na
+    // fatura da Meta). Utilidade é ~8x mais barata que marketing, então mostrar
+    // preço de marketing para um modelo de utilidade assusta à toa.
+    const TARIFA = { MARKETING: 0.06, UTILITY: 0.008, AUTHENTICATION: 0.03 };
+    const tarifa = TARIFA[t.categoria] || 0.06;
+    const custo = (c.total * tarifa).toFixed(2);
+    const gratis = t.categoria === 'UTILITY'
+        ? ' Quem falou com o bot nas últimas 24h não é cobrado.'
+        : '';
+    previa.innerHTML = `Vai enviar <b>${c.total}</b> mensagens usando <b>${escapeHtml(t.nome)}</b> `
+        + `(${escapeHtml(t.categoria || '—')}). Custo estimado: <b>US$ ${custo}</b>.${gratis}`;
 }
 
 async function enviarTesteCampanha() {

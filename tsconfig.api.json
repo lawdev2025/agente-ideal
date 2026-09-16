@@ -1,0 +1,13 @@
+{
+  "//": "Checagem de tipos das rotas em api/. O tsconfig principal tem rootDir=src e por isso NUNCA olhou para a API — foi assim que um `new WhatsAppClient()` sem argumentos chegou em produção e quebrou o envio. Roda no build junto com o principal.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["api/**/*", "src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}

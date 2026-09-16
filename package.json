@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.api.json",
     "dev": "vercel dev",
     "test": "vitest",
     "test:run": "vitest run",

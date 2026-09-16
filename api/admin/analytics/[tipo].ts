@@ -197,6 +197,14 @@ async function enviadosNasUltimas24h(sb: any): Promise<number> {
   return count || 0;
 }
 
+function novoClienteWhatsApp(): WhatsAppClient {
+  return new WhatsAppClient(
+    config.whatsapp.accessToken,
+    config.whatsapp.phoneNumberId,
+    config.whatsapp.businessAccountId
+  );
+}
+
 async function handleCampanha(req: VercelRequest, res: VercelResponse) {
   const user = requireAdmin(req, res);
   if (!user) return;
@@ -213,7 +221,7 @@ async function handleCampanha(req: VercelRequest, res: VercelResponse) {
       return;
     }
     try {
-      const r = await new WhatsAppClient().sendTemplate(String(numero), String(template), String(idioma));
+      const r = await novoClienteWhatsApp().sendTemplate(String(numero), String(template), String(idioma));
       res.status(200).json({ ok: true, messageId: r.messageId });
     } catch (e: any) {
       res.status(200).json({ ok: false, erro: e?.message || "Falha no envio." });
@@ -299,7 +307,7 @@ async function handleCampanha(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const wa = new WhatsAppClient();
+    const wa = novoClienteWhatsApp();
     const repo = new StateRepository();
     let enviados = 0;
     let falhas = 0;

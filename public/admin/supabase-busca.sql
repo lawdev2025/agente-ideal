@@ -9,27 +9,27 @@
 -- Roda no banco, e não no navegador, porque são 15 mil mensagens: mandar
 -- tudo pro celular da atendente a cada tecla não se sustenta.
 --
--- unaccent: "volei" tem que achar "vôlei". Sem a extensão a busca ainda
--- funciona (a API cai no LIKE simples), só fica sensível a acento.
---
 -- Rode UMA VEZ no SQL Editor do Supabase. É idempotente.
 -- =====================================================================
 
-CREATE EXTENSION IF NOT EXISTS unaccent;
-
--- IMMUTABLE: unaccent() é STABLE por padrão (depende do dicionário), o que
--- impede o índice abaixo. O wrapper promete que não muda, que é verdade pro
--- dicionário padrão e é o jeito recomendado de indexar texto sem acento.
+-- Tira o acento com translate(), e NÃO com a extensão unaccent.
+--
+-- A primeira versão deste arquivo usava unaccent e falhava no Supabase com
+-- "function unaccent(unknown, text) does not exist": a extensão fica no schema
+-- `extensions`, e a forma de dois argumentos ainda exige cast pra regdictionary.
+-- translate() é built-in, IMMUTABLE por definição e não depende de schema nem
+-- de dicionário. Português tem um conjunto pequeno e fechado de acentos, então
+-- não se perde nada — e some uma dependência que só dava dor de cabeça.
+--
+-- As duas listas precisam ter o MESMO número de caracteres (24 aqui).
 CREATE OR REPLACE FUNCTION sem_acento(texto TEXT)
 RETURNS TEXT AS $$
-  SELECT unaccent('unaccent', texto)
+  SELECT translate(
+    lower(texto),
+    'áàâãäéèêëíìîïóòôõöúùûüçñ',
+    'aaaaaeeeeiiiiooooouuuucn'
+  )
 $$ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE;
-
--- Índice de trigrama: sem ele o LIKE '%termo%' varre as 15 mil mensagens a
--- cada tecla digitada.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX IF NOT EXISTS idx_messages_busca
-  ON messages USING gin (sem_acento(lower(content)) gin_trgm_ops);
 
 -- Devolve só os wa_id — a lista de contatos já está carregada na tela, que
 -- cruza com esse conjunto. Mandar as mensagens de volta seria trafegar
@@ -44,5 +44,17 @@ RETURNS TABLE(wa_id TEXT) AS $$
   SELECT DISTINCT m.wa_id
   FROM messages m
   WHERE m.role = 'user'
-    AND sem_acento(lower(m.content)) LIKE '%' || sem_acento(lower(termo)) || '%'
+    AND sem_acento(m.content) LIKE '%' || sem_acento(termo) || '%'
 $$ LANGUAGE sql STABLE;
+
+-- Sem índice de propósito: são ~7 mil mensagens de cliente, que o Postgres
+-- varre em poucos milissegundos, e a tela ainda espera 250ms depois da última
+-- tecla. Índice de trigrama (pg_trgm) só vale a pena se a tabela crescer uma
+-- ordem de grandeza — aí é só criar, sem mexer em código:
+--   CREATE EXTENSION IF NOT EXISTS pg_trgm;
+--   CREATE INDEX idx_messages_busca
+--     ON messages USING gin (sem_acento(content) gin_trgm_ops);
+
+-- O PostgREST guarda um cache do schema: sem isto, a função recém-criada pode
+-- demorar a aparecer e a API cai no LIKE sensível a acento sem motivo.
+NOTIFY pgrst, 'reload schema';

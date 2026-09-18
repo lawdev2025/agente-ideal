@@ -118,21 +118,35 @@ export class WhatsAppClient {
    *
    * `variaveis` preenche os {{1}}, {{2}}… do corpo, na ordem. Template sem
    * variável manda lista vazia.
+   *
+   * `imagemUrl` é obrigatória para modelo com cabeçalho de imagem: a imagem
+   * aprovada pela Meta serve só de exemplo, cada envio precisa mandar a URL
+   * de novo. Ela tem que ser pública (o servidor da Meta é quem baixa) — no
+   * nosso caso é o bucket whatsapp-media do Supabase. Mandar sem a imagem
+   * num modelo desses faz a Meta recusar a mensagem inteira.
    */
   async sendTemplate(
     to: string,
     template: string,
     idioma: string,
-    variaveis: string[] = []
+    variaveis: string[] = [],
+    imagemUrl?: string | null
   ): Promise<{ messageId: string }> {
     if (config.whatsapp.dryRun) {
       logger.info({ to, template, dryRun: true }, "WhatsApp template (DRY_RUN - not actually sent)");
       return { messageId: "dry-run-" + Date.now() };
     }
 
-    const components = variaveis.length
-      ? [{ type: "body", parameters: variaveis.map((v) => ({ type: "text", text: v })) }]
-      : [];
+    const components: any[] = [];
+    if (imagemUrl) {
+      components.push({
+        type: "header",
+        parameters: [{ type: "image", image: { link: imagemUrl } }],
+      });
+    }
+    if (variaveis.length) {
+      components.push({ type: "body", parameters: variaveis.map((v) => ({ type: "text", text: v })) });
+    }
 
     try {
       const response = await this.client.post(`/messages`, {

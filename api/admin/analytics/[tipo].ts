@@ -78,6 +78,136 @@ const GRAPH = "https://graph.facebook.com/v22.0";
 const TEMPLATES_TTL_MS = 60_000;
 let templatesCache: { at: number; payload: unknown } | null = null;
 
+// ── imagem do cabeçalho ──────────────────────────────────────────────────────
+// Modelo com imagem precisa da foto DUAS vezes e em lugares diferentes:
+//
+//   1. na criação, como exemplo pra Meta analisar — vai como "handle", um
+//      código que só a Resumable Upload API devolve (URL não serve);
+//   2. em cada envio, como URL pública que o servidor da Meta baixa na hora.
+//
+// Por isso o arquivo sobe pros dois: Meta (exemplo) e bucket do Supabase
+// (fonte do disparo). O nome do modelo é a chave — templates/<nome>.<ext> —
+// o que evita uma tabela só pra guardar esse de-para.
+const BUCKET_MIDIA = "whatsapp-media";
+const PASTA_TEMPLATES = "templates";
+const IMG_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png" };
+// A Vercel corta o corpo do request em 4.5MB e base64 infla ~33%: o limite
+// real de arquivo fica perto de 3MB. A tela trava em 2MB antes de chegar aqui.
+const IMG_MAX_BYTES = 3_000_000;
+
+let midiaCache: { at: number; mapa: Record<string, string> } | null = null;
+let appIdCache: string | null = null;
+
+function limparCacheTemplates() {
+  templatesCache = null;
+  midiaCache = null;
+}
+
+// O App ID só é exigido pela Resumable Upload API. Em vez de pedir mais uma
+// variável de ambiente (e o deploy quebrar quando alguém esquecer), lemos do
+// próprio token de gestão.
+async function descobrirAppId(token: string): Promise<string | null> {
+  if (appIdCache) return appIdCache;
+  const t = encodeURIComponent(token);
+  const r = await fetch(`${GRAPH}/debug_token?input_token=${t}&access_token=${t}`);
+  const body: any = await r.json();
+  const id = body?.data?.app_id;
+  if (!id) {
+    logger.warn({ erro: body?.error }, "Não consegui descobrir o App ID da Meta pelo token");
+    return null;
+  }
+  appIdCache = String(id);
+  return appIdCache;
+}
+
+// Upload em duas etapas da Meta: abre a sessão, manda os bytes, recebe o
+// handle. Note o "OAuth <token>" — este endpoint não aceita "Bearer".
+async function subirExemploParaMeta(
+  buffer: Buffer,
+  mime: string,
+  nomeArquivo: string,
+  token: string
+): Promise<string | null> {
+  const appId = await descobrirAppId(token);
+  if (!appId) return null;
+  const qs = `file_name=${encodeURIComponent(nomeArquivo)}&file_length=${buffer.length}&file_type=${encodeURIComponent(mime)}`;
+  const abertura = await fetch(`${GRAPH}/${appId}/uploads?${qs}`, {
+    method: "POST",
+    headers: { Authorization: `OAuth ${token}` },
+  });
+  const sessao: any = await abertura.json();
+  if (!sessao?.id) {
+    logger.warn({ erro: sessao?.error }, "Falha ao abrir sessão de upload na Meta");
+    return null;
+  }
+  const envio = await fetch(`${GRAPH}/${sessao.id}`, {
+    method: "POST",
+    headers: { Authorization: `OAuth ${token}`, file_offset: "0", "Content-Type": "application/octet-stream" },
+    body: new Uint8Array(buffer),
+  });
+  const resultado: any = await envio.json();
+  if (!resultado?.h) {
+    logger.warn({ erro: resultado?.error }, "Falha ao enviar a imagem de exemplo pra Meta");
+    return null;
+  }
+  return String(resultado.h);
+}
+
+async function guardarImagemDoTemplate(nome: string, buffer: Buffer, mime: string): Promise<string | null> {
+  const caminho = `${PASTA_TEMPLATES}/${nome}.${IMG_EXT[mime]}`;
+  const sb = getSupabase();
+  const { error } = await sb.storage
+    .from(BUCKET_MIDIA)
+    .upload(caminho, buffer, { contentType: mime, upsert: true });
+  if (error) {
+    logger.error({ error, nome }, "Upload da imagem do modelo pro Storage falhou");
+    return null;
+  }
+  midiaCache = null;
+  return sb.storage.from(BUCKET_MIDIA).getPublicUrl(caminho).data.publicUrl;
+}
+
+async function imagensDosTemplates(): Promise<Record<string, string>> {
+  if (midiaCache && Date.now() - midiaCache.at < TEMPLATES_TTL_MS) return midiaCache.mapa;
+  const mapa: Record<string, string> = {};
+  try {
+    const sb = getSupabase();
+    const { data } = await sb.storage.from(BUCKET_MIDIA).list(PASTA_TEMPLATES, { limit: 500 });
+    for (const arquivo of data || []) {
+      const nome = arquivo.name.replace(/\.[^.]+$/, "");
+      mapa[nome] = sb.storage
+        .from(BUCKET_MIDIA)
+        .getPublicUrl(`${PASTA_TEMPLATES}/${arquivo.name}`).data.publicUrl;
+    }
+  } catch (e) {
+    logger.warn({ e }, "Não consegui listar as imagens dos modelos no Storage");
+  }
+  midiaCache = { at: Date.now(), mapa };
+  return mapa;
+}
+
+// URL que vai no disparo. Preferimos a nossa cópia; se o modelo foi criado
+// fora deste painel (direto no Business Manager), caímos no link do exemplo
+// que a própria Meta devolve — não é eterno, mas é melhor que falhar o envio.
+async function resolverImagemDoTemplate(nome: string): Promise<string | null> {
+  const mapa = await imagensDosTemplates();
+  if (mapa[nome]) return mapa[nome];
+  const token = config.whatsapp.managementToken;
+  const waba = config.whatsapp.wabaId;
+  if (!token || !waba) return null;
+  try {
+    const r = await fetch(`${GRAPH}/${waba}/message_templates?name=${encodeURIComponent(nome)}&fields=components`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body: any = await r.json();
+    const comps = body?.data?.[0]?.components || [];
+    const header = comps.find((c: any) => c.type === "HEADER" && c.format === "IMAGE");
+    return header?.example?.header_handle?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 function contarVariaveis(texto: string): number {
   const achadas = new Set((texto.match(/\{\{\s*\d+\s*\}\}/g) || []).map((v) => v.replace(/\s/g, "")));
   return achadas.size;
@@ -123,9 +253,12 @@ async function handleTemplates(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  const imagens = await imagensDosTemplates();
   const templates = (body.data || []).map((t: any) => {
     const comps = t.components || [];
     const corpo = comps.find((c: any) => c.type === "BODY")?.text || "";
+    const header = comps.find((c: any) => c.type === "HEADER");
+    const temImagem = header?.format === "IMAGE";
     const botoes = comps
       .filter((c: any) => c.type === "BUTTONS")
       .flatMap((c: any) => (c.buttons || []).map((b: any) => b.text))
@@ -137,6 +270,12 @@ async function handleTemplates(req: VercelRequest, res: VercelResponse) {
       categoria: t.category,
       idioma: t.language,
       corpo,
+      temImagem,
+      // Miniatura da tela: a nossa cópia, ou o exemplo que a Meta guardou
+      // (modelos criados fora daqui).
+      imagemUrl: temImagem
+        ? imagens[t.name] || header?.example?.header_handle?.[0] || null
+        : null,
       botoes,
       variaveis: contarVariaveis(corpo),
       qualidade: t.quality_score?.score || null,
@@ -234,7 +373,43 @@ async function handleCriarTemplate(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const components: any[] = [{ type: "BODY", text: corpo }];
+  const components: any[] = [];
+
+  // Cabeçalho de imagem (opcional). Sobe pra Meta como exemplo da análise e
+  // pro Storage como a imagem que cada disparo vai usar. Se qualquer um dos
+  // dois falhar, paramos antes de criar o modelo: modelo aprovado sem imagem
+  // no bucket é uma armadilha — só quebra na hora do disparo pago.
+  const imagemBase64 = String(b.imagemBase64 || "");
+  if (imagemBase64) {
+    const mime = String(b.imagemTipo || "").toLowerCase().trim();
+    if (!IMG_EXT[mime]) {
+      res.status(200).json({ erro: "A imagem precisa ser JPG ou PNG." });
+      return;
+    }
+    const bruto = imagemBase64.includes(",") ? imagemBase64.split(",").pop() || "" : imagemBase64;
+    const buffer = Buffer.from(bruto, "base64");
+    if (!buffer.length) {
+      res.status(200).json({ erro: "Não consegui ler a imagem. Tente escolher o arquivo de novo." });
+      return;
+    }
+    if (buffer.length > IMG_MAX_BYTES) {
+      res.status(200).json({ erro: "Imagem grande demais. Use um arquivo de até 2MB." });
+      return;
+    }
+    const handle = await subirExemploParaMeta(buffer, mime, `${nome}.${IMG_EXT[mime]}`, token);
+    if (!handle) {
+      res.status(200).json({ erro: "A Meta não aceitou a imagem de exemplo. Tente outro arquivo." });
+      return;
+    }
+    const guardada = await guardarImagemDoTemplate(nome, buffer, mime);
+    if (!guardada) {
+      res.status(200).json({ erro: "Não consegui guardar a imagem. Confira o bucket whatsapp-media no Supabase." });
+      return;
+    }
+    components.push({ type: "HEADER", format: "IMAGE", example: { header_handle: [handle] } });
+  }
+
+  components.push({ type: "BODY", text: corpo });
   const botaoTexto = String(b.botaoTexto || "").trim();
   const botaoUrl = String(b.botaoUrl || "").trim();
   if (botaoTexto && botaoUrl) {
@@ -252,7 +427,7 @@ async function handleCriarTemplate(req: VercelRequest, res: VercelResponse) {
     res.status(200).json({ erro: body?.error?.error_user_msg || body?.error?.message || "A Meta recusou o modelo." });
     return;
   }
-  templatesCache = null; // a lista precisa mostrar o novo agora, não em 60s
+  limparCacheTemplates(); // a lista precisa mostrar o novo agora, não em 60s
   res.status(200).json({ ok: true, id: body.id, status: body.status || "PENDING" });
 }
 
@@ -272,7 +447,10 @@ async function handleCampanha(req: VercelRequest, res: VercelResponse) {
       return;
     }
     try {
-      const r = await novoClienteWhatsApp().sendTemplate(String(numero), String(template), String(idioma));
+      const imagem = await resolverImagemDoTemplate(String(template));
+      const r = await novoClienteWhatsApp().sendTemplate(
+        String(numero), String(template), String(idioma), [], imagem
+      );
       res.status(200).json({ ok: true, messageId: r.messageId });
     } catch (e: any) {
       res.status(200).json({ ok: false, erro: e?.message || "Falha no envio." });
@@ -300,6 +478,9 @@ async function handleCampanha(req: VercelRequest, res: VercelResponse) {
         idioma: String(idioma),
         publico: String(publico),
         corpo: corpo ? String(corpo) : null,
+        // Resolvida uma vez na criação: a campanha anda em lotes por horas e
+        // não pode depender do bucket responder a cada mensagem.
+        imagem_url: await resolverImagemDoTemplate(String(template)),
         total: ids.length,
         status: "ativa",
       })
@@ -328,7 +509,7 @@ async function handleCampanha(req: VercelRequest, res: VercelResponse) {
     }
     const { data: camp } = await sb
       .from("campanhas")
-      .select("id, template, idioma, corpo, status")
+      .select("id, template, idioma, corpo, status, imagem_url")
       .eq("id", campanhaId)
       .single();
     if (!camp) {
@@ -364,7 +545,9 @@ async function handleCampanha(req: VercelRequest, res: VercelResponse) {
     let falhas = 0;
     for (const alvo of fila) {
       try {
-        const r = await wa.sendTemplate(alvo.wa_id, (camp as any).template, (camp as any).idioma);
+        const r = await wa.sendTemplate(
+          alvo.wa_id, (camp as any).template, (camp as any).idioma, [], (camp as any).imagem_url
+        );
         await sb
           .from("campanha_envios")
           .update({ status: "enviado", message_id: r.messageId, enviado_em: Date.now(), erro: null })

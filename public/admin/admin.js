@@ -499,6 +499,7 @@ function renderTemplateCard(t) {
           <span class="tpl-meta">${escapeHtml(t.idioma || '—')}</span>
           ${vars}
         </div>
+        ${t.imagemUrl ? `<img class="tpl-card-imagem" src="${escapeHtml(t.imagemUrl)}" alt="Imagem do modelo" loading="lazy" />` : ''}
         <p class="tpl-corpo">${escapeHtml(t.corpo || '(sem corpo)')}</p>
         ${botoes ? `<div class="tpl-linha">${botoes}</div>` : ''}
         ${motivo}
@@ -588,6 +589,21 @@ function montarFormCampanha() {
     atualizarPreviaCampanha();
 }
 
+// 2MB: é o teto confortável do corpo do request da Vercel depois do base64
+// inflar ~33%. Barramos aqui pra pessoa saber antes de esperar o upload.
+const TPL_IMAGEM_MAX = 2 * 1024 * 1024;
+
+// O arquivo vai como base64 no mesmo JSON do resto do formulário: é uma foto
+// pequena e uma requisição só, sem precisar de multipart na serverless.
+function lerImagemComoBase64(file) {
+    return new Promise((resolve, reject) => {
+        const leitor = new FileReader();
+        leitor.onload = () => resolve(String(leitor.result));
+        leitor.onerror = () => reject(new Error('Não consegui ler o arquivo.'));
+        leitor.readAsDataURL(file);
+    });
+}
+
 // Formulário de criação: manda pra Meta e já mostra o modelo em análise.
 function montarFormNovoTemplate() {
     const toggle = document.getElementById('tpl-novo-toggle');
@@ -595,6 +611,24 @@ function montarFormNovoTemplate() {
     if (!toggle || !form || form.dataset.pronto) return;
     form.dataset.pronto = '1';
     toggle.onclick = () => { form.hidden = !form.hidden; };
+
+    const campoImagem = document.getElementById('tpl-imagem');
+    const previaImagem = document.getElementById('tpl-imagem-previa');
+    if (campoImagem) {
+        campoImagem.onchange = () => {
+            const file = campoImagem.files && campoImagem.files[0];
+            previaImagem.hidden = true;
+            if (!file) return;
+            if (file.size > TPL_IMAGEM_MAX) {
+                alert('Imagem grande demais (máx. 2MB). Escolha um arquivo menor.');
+                campoImagem.value = '';
+                return;
+            }
+            previaImagem.src = URL.createObjectURL(file);
+            previaImagem.hidden = false;
+        };
+    }
+
     form.onsubmit = async (e) => {
         e.preventDefault();
         const msg = document.getElementById('tpl-novo-msg');
@@ -605,6 +639,17 @@ function montarFormNovoTemplate() {
             botaoTexto: document.getElementById('tpl-botao-texto').value.trim(),
             botaoUrl: document.getElementById('tpl-botao-url').value.trim(),
         };
+        const file = campoImagem && campoImagem.files && campoImagem.files[0];
+        if (file) {
+            msg.textContent = 'Preparando a imagem…';
+            try {
+                corpo.imagemBase64 = await lerImagemComoBase64(file);
+                corpo.imagemTipo = file.type;
+            } catch (err) {
+                msg.textContent = 'Não consegui ler a imagem. Escolha o arquivo de novo.';
+                return;
+            }
+        }
         msg.textContent = 'Enviando…';
         try {
             const r = await fetch(BACKEND_URL + '/api/admin/analytics/templates', {
@@ -615,6 +660,7 @@ function montarFormNovoTemplate() {
             if (r.erro) { msg.textContent = r.erro; return; }
             msg.textContent = 'Enviado! Agora é aguardar a análise da Meta.';
             form.reset();
+            if (previaImagem) previaImagem.hidden = true;
             form.hidden = true;
             loadTemplates({ fresh: true });
         } catch (err) {

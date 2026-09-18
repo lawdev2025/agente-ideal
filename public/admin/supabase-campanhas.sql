@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS campanhas (
   status      TEXT   NOT NULL DEFAULT 'ativa'  -- ativa | concluida | cancelada
 );
 
+-- Modelo com cabeçalho de imagem: cada mensagem precisa mandar a URL pública
+-- da foto de novo (a que a Meta aprovou é só exemplo). Fica na campanha, e não
+-- resolvida a cada lote, porque o disparo pode durar dias.
+ALTER TABLE campanhas ADD COLUMN IF NOT EXISTS imagem_url TEXT;
+
 -- Uma linha por destinatário: é o que dá retomada, relatório e a trava de
 -- não enviar duas vezes (UNIQUE campanha_id + wa_id).
 CREATE TABLE IF NOT EXISTS campanha_envios (

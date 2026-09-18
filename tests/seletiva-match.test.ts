@@ -5,6 +5,7 @@ import {
   pickPhoneColumns,
   isSeletivaInterestMessage,
   decideSeletivaUpdates,
+  leadWaId,
 } from "../src/kb/seletiva-match";
 
 // A chave é DDD + últimos 8 dígitos: é o que sobra igual entre o wa_id da Meta
@@ -132,5 +133,27 @@ describe("decideSeletivaUpdates", () => {
   it("conta inscritos da planilha que nunca falaram no WhatsApp", () => {
     expect(r.planilhaSemWhatsApp).toBe(1); // 9100000000
     expect(r.inscritosNoCrm).toBe(3); // 3 contatos batem com a planilha
+  });
+  // Quem está na planilha e não tem contato nenhum no CRM: é a lista que o
+  // --criar-leads transforma em contato pra a campanha alcançar.
+  it("entrega as chaves da planilha sem contato, não só a contagem", () => {
+    expect(r.semContato).toEqual(["9100000000"]);
+  });
+});
+
+describe("leadWaId", () => {
+  // O wa_id precisa sair no MESMO formato que a Meta manda no webhook
+  // (55 + DDD + 8 dígitos, sem o 9). Sair diferente cria uma segunda linha
+  // pra mesma pessoa no dia em que ela responder.
+  it("monta o wa_id de 12 dígitos a partir da chave", () => {
+    expect(leadWaId("9188887777")).toBe("559188887777");
+  });
+  it("recusa chave que não tem 10 dígitos", () => {
+    expect(leadWaId("918888777")).toBeNull();
+    expect(leadWaId("")).toBeNull();
+  });
+  it("casa de volta com phoneKey — o contato criado bate com a planilha", () => {
+    const wa = leadWaId("9188887777")!;
+    expect(phoneKey(wa)).toBe("9188887777");
   });
 });

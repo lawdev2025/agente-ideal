@@ -9,6 +9,9 @@
  *   sem planilhas → lê tudo de data/seletiva/ (fora do git: dado pessoal)
  *   --dry-run     → mostra o resumo sem gravar nada
  *   --coluna=zap  → força as colunas de telefone pelo trecho do nome
+ *   --criar-leads → cria contato pra quem está na planilha e não tem linha no
+ *                   CRM, já como inscrito, pra a campanha alcançar essa gente.
+ *                   Criar contato NÃO manda mensagem nem gasta nada.
  *
  * Imprime SÓ o resumo — nenhuma linha de planilha, nenhum telefone. É isso
  * que deixa o comando rápido quando quem roda é o Claude: ele lê 10 linhas
@@ -24,6 +27,7 @@ import {
   pickPhoneColumns,
   isSeletivaInterestMessage,
   decideSeletivaUpdates,
+  leadWaId,
   type SeletivaContact,
 } from "../src/kb/seletiva-match";
 
@@ -66,6 +70,7 @@ async function pageAll<T>(build: (from: number, to: number) => PromiseLike<{ dat
 async function main() {
   const argv = process.argv.slice(2);
   const dryRun = argv.includes("--dry-run");
+  const criarLeads = argv.includes("--criar-leads");
   const coluna = argv.find((a) => a.startsWith("--coluna="))?.slice("--coluna=".length);
   const targets = argv.filter((a) => !a.startsWith("--"));
   const files = expandFiles(targets);
@@ -140,6 +145,32 @@ async function main() {
 
   // 4. Decide e grava em lote.
   const d = decideSeletivaUpdates(contacts, planilhaKeys, interessados);
+
+  // 4b. Inscritos da planilha que não têm contato nenhum: viram contato agora,
+  // senão nenhuma campanha os alcança (o público lê a tabela contacts). Entram
+  // como "inscrito", no mesmo público dos outros. last_seen_at fica nulo — é
+  // o que marca "nunca falou no WhatsApp" no painel.
+  const novosLeads = criarLeads
+    ? d.semContato.map(leadWaId).filter((w): w is string => Boolean(w))
+    : [];
+  let leadsCriados = 0;
+  if (criarLeads && !dryRun && novosLeads.length) {
+    const now = Date.now();
+    for (let i = 0; i < novosLeads.length; i += CHUNK) {
+      const linhas = novosLeads.slice(i, i + CHUNK).map((wa_id) => ({
+        wa_id,
+        seletiva_status: "inscrito",
+        seletiva_at: now,
+      }));
+      // ignoreDuplicates: rodar o comando duas vezes não pode explodir na
+      // chave primária nem sobrescrever contato que já conversa com o bot.
+      const { error, count } = await sb.from("contacts")
+        .upsert(linhas, { onConflict: "wa_id", ignoreDuplicates: true, count: "exact" });
+      if (error) throw error;
+      leadsCriados += count ?? linhas.length;
+    }
+  }
+
   if (!dryRun) {
     const now = Date.now();
     for (let i = 0; i < d.toInscrito.length; i += CHUNK) {
@@ -176,6 +207,13 @@ async function main() {
   console.log(`   Pendentes: ${fmt(pendentes)} (novos agora: ${fmt(d.toPendente.length)})`);
   console.log(`   Interessados na Seletiva (inscritos + pendentes): ${fmt(inscritos + pendentes)}`);
   console.log(`   Inscritos na planilha que nunca falaram no WhatsApp: ${fmt(d.planilhaSemWhatsApp)}`);
+  if (criarLeads) {
+    console.log(
+      dryRun
+        ? `   → --criar-leads criaria ${fmt(novosLeads.length)} contato(s) como inscrito (DRY-RUN: nada gravado)`
+        : `   → contatos criados agora como inscrito: ${fmt(leadsCriados)} (de ${fmt(novosLeads.length)} telefones)`
+    );
+  }
 }
 
 main().catch((e) => {

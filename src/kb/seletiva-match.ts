@@ -34,6 +34,18 @@ export function phoneKey(raw: unknown): string | null {
   return null;
 }
 
+/**
+ * Chave de telefone → wa_id de um contato que ainda não existe.
+ *
+ * Sai com 12 dígitos (55 + DDD + 8, SEM o 9) de propósito: é o formato que a
+ * Meta manda no webhook, e 1.422 dos 1.472 contatos do CRM estão assim. Criar
+ * com 13 dígitos faria uma segunda linha nascer pra mesma pessoa no dia em que
+ * ela respondesse. Na hora do envio o 9 volta (normalizeBrazilMobile).
+ */
+export function leadWaId(key: string): string | null {
+  return /^\d{10}$/.test(key) ? "55" + key : null;
+}
+
 /** Célula pode trazer mais de um telefone: "(91) 9888-7777 / 9999-1111". */
 export function extractPhoneKeys(cell: unknown): string[] {
   const parts = String(cell ?? "").split(/\s*(?:\/|;|,|\||\bou\b|\be\b)\s*/i);
@@ -142,8 +154,11 @@ export function decideSeletivaUpdates(
     if (!c.seletiva_status && interessados.has(c.wa_id)) toPendente.push(c.wa_id);
   }
 
-  let planilhaSemWhatsApp = 0;
-  for (const k of planilhaKeys) if (!matched.has(k)) planilhaSemWhatsApp++;
+  // Telefone que está na planilha e não tem contato nenhum no CRM. Só contar
+  // não bastava: é essa lista que vira contato com --criar-leads, pra a
+  // campanha conseguir alcançar quem se inscreveu mas nunca falou no WhatsApp.
+  const semContato: string[] = [];
+  for (const k of planilhaKeys) if (!matched.has(k)) semContato.push(k);
 
-  return { toInscrito, toPendente, inscritosNoCrm, planilhaSemWhatsApp };
+  return { toInscrito, toPendente, inscritosNoCrm, semContato, planilhaSemWhatsApp: semContato.length };
 }

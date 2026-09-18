@@ -60,6 +60,51 @@ describe("classifyContactTag: prioridade (eixo/esporte/rematrícula antes de mat
   });
 });
 
+// Fugas achadas varrendo as 6.894 mensagens de cliente do histórico real.
+describe("classifyContactTag: esporte que estava escapando", () => {
+  it("'planos esportivos' → esporte (só 'esporte' e 'esportiva' casavam)", () => {
+    expect(classifyContactTag("se tem planos esportivos junto com o ensino medio")).toBe("esporte");
+  });
+  for (const frase of ["atividade esportiva", "quais esportes vocês têm", "projeto esportivo"]) {
+    it(`'${frase}' → esporte`, () => expect(classifyContactTag(frase)).toBe("esporte"));
+  }
+
+  // Modalidade explícita ganha da Seletiva: a Seletiva Ideal é prova de bolsa,
+  // não tem vôlei. Quem fala "seletiva do vôlei" quer a escolinha.
+  it("'seletiva do volei' → esporte, não seletiva", () => {
+    expect(classifyContactTag("quero saber sobre a seletiva do volei")).toBe("esporte");
+  });
+  it("'peneira de futsal' → esporte", () => {
+    expect(classifyContactTag("tem peneira de futsal?")).toBe("esporte");
+  });
+
+  // Sem modalidade, Seletiva continua ganhando — é a campanha, não pode
+  // ser roubada por palavra genérica.
+  it("'seletiva de bolsas' continua seletiva", () => {
+    expect(classifyContactTag("seletiva de bolsas")).toBe("seletiva");
+  });
+  it("'quero fazer a seletiva' continua seletiva", () => {
+    expect(classifyContactTag("quero fazer a seletiva")).toBe("seletiva");
+  });
+
+  // Vocabulário novo: ninguém citou no histórico ainda, mas são modalidades
+  // que a escolinha oferece e que cairiam em matrícula por causa do "valor".
+  for (const frase of ["quanto custa o ballet?", "tem aula de tênis?", "valor da ginástica rítmica", "tem taekwondo?"]) {
+    it(`'${frase}' → esporte`, () => expect(classifyContactTag(frase)).toBe("esporte"));
+  }
+
+  // Ruído que NÃO pode virar esporte (apareceu no histórico real).
+  it("'modalidade eixo' continua eixo", () => {
+    expect(classifyContactTag("qual valor de mensalidade da modalidade eixo?")).toBe("eixo");
+  });
+  it("alugar a quadra não é escolinha", () => {
+    expect(classifyContactTag("vcs alugam a quadra para publico externo?")).not.toBe("esporte");
+  });
+  it("estágio em educação física não é escolinha", () => {
+    expect(classifyContactTag("voces contratam para estagio em educacao fisica?")).not.toBe("esporte");
+  });
+});
+
 describe("classifyContactTag: sem sinal → null (mantém tag anterior)", () => {
   for (const c of ["oi", "bom dia", "obrigado", ""]) {
     it(`'${c}' → null`, () => expect(classifyContactTag(c)).toBeNull());

@@ -45,6 +45,52 @@ async function fetchInboxAll(sb: any): Promise<{ data: any[] | null; error: any 
   return { data: all, error: null };
 }
 
+// Busca no HISTÓRICO. A lista já traz só a última mensagem de cada conversa,
+// então buscar no navegador só achava quem tinha o termo nela: das 777
+// conversas que citaram "bolsa", a busca antiga encontrava 342.
+//
+// Devolve só os wa_id: a tela já tem os contatos carregados e cruza com esse
+// conjunto. Sem a função no banco (supabase-busca.sql não rodado) cai no LIKE
+// direto — funciona igual, só sensível a acento.
+const BUSCA_MIN = 3;
+const BUSCA_PAGE = 1000;
+const BUSCA_MAX_PAGES = 25;
+
+// Pagina até vir página incompleta. O .limit() NÃO resolve: o PostgREST corta
+// toda resposta em max_rows (1000 no Supabase) sem erro e sem aviso — medido
+// aqui, "bolsa" voltava 418 conversas em vez de 777. Mesmo motivo do
+// fetchInboxAll acima.
+async function paginar(build: (de: number, ate: number) => any): Promise<string[]> {
+  const ids = new Set<string>();
+  for (let p = 0; p < BUSCA_MAX_PAGES; p++) {
+    const de = p * BUSCA_PAGE;
+    const { data, error } = await build(de, de + BUSCA_PAGE - 1);
+    if (error) throw error;
+    const lote = (data || []) as any[];
+    for (const r of lote) if (r?.wa_id) ids.add(String(r.wa_id));
+    if (lote.length < BUSCA_PAGE) break;
+  }
+  return [...ids];
+}
+
+async function buscarNoHistorico(sb: any, termo: string): Promise<string[]> {
+  try {
+    return await paginar((de, ate) => sb.rpc("buscar_conversas", { termo }).range(de, ate));
+  } catch (error) {
+    logger.warn({ error }, "buscar_conversas indisponível — usando LIKE (rode public/admin/supabase-busca.sql)");
+  }
+  // % e _ são curingas do LIKE: sem escapar, buscar "100%" viraria "qualquer
+  // coisa" e a tela mostraria a lista inteira como se tudo casasse.
+  const seguro = termo.replace(/[\\%_]/g, (c) => "\\" + c);
+  // role=user igual à função SQL: procura no que o CLIENTE escreveu. Buscar
+  // também no texto do bot devolvia 528 conversas pra "escolinha" quando só 3
+  // pessoas perguntaram — o resto era a resposta padrão.
+  return paginar((de, ate) =>
+    sb.from("messages").select("wa_id").eq("role", "user")
+      .ilike("content", `%${seguro}%`).order("id").range(de, ate)
+  );
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
   if (req.method !== "GET") {
@@ -56,6 +102,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const sb = getSupabase();
+
+    // ?busca=termo → só os wa_id que casam, sem remontar a lista inteira.
+    const termo = String(req.query.busca || "").trim();
+    if (termo) {
+      if (termo.length < BUSCA_MIN) {
+        res.status(200).json({ waIds: [], curto: true });
+        return;
+      }
+      res.status(200).json({ waIds: await buscarNoHistorico(sb, termo) });
+      return;
+    }
 
     // Caminho rápido: a RPC get_contacts_inbox() faz backfill de órfãos + preview
     // da última mensagem TODO no Postgres (LATERAL LIMIT 1 por contato, casando

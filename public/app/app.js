@@ -262,10 +262,18 @@
     $("contacts-list").appendChild(frag);
   }
 
+  // Conversas que casaram no HISTÓRICO, respondidas pelo servidor. A lista só
+  // carrega a última mensagem de cada conversa, então sem isto quem perguntou
+  // "aulas de vôlei" e depois recebeu a saudação do bot ficava invisível.
+  // Chave = termo já buscado, pra saber se o resultado ainda vale.
+  let buscaServidor = { termo: "", waIds: null };
+
   function renderContacts() {
     const q = ($("search-input").value || "").toLowerCase().trim();
     const list = $("contacts-list");
     list.innerHTML = "";
+    const noHistorico =
+      buscaServidor.termo === q && buscaServidor.waIds ? buscaServidor.waIds : null;
     const items = sortedContacts().filter((c) => {
       if (queueFilters.unidade && c.unit_tag !== queueFilters.unidade) return false;
       if (queueFilters.segmento && c.segment_tag !== queueFilters.segmento) return false;
@@ -276,7 +284,8 @@
       return (
         displayName(c).toLowerCase().includes(q) ||
         String(c.wa_id).includes(q) ||
-        String(c.last_message || "").toLowerCase().includes(q)
+        String(c.last_message || "").toLowerCase().includes(q) ||
+        (noHistorico ? noHistorico.has(c.wa_id) : false)
       );
     });
     syncFilterChips();
@@ -1225,9 +1234,41 @@
     showScreen("mapa");
   });
   $("mapa-back").addEventListener("click", () => showScreen("list"));
+  // Busca em duas ondas: o filtro local pinta a tela na hora (nome, número,
+  // última mensagem) e o servidor completa com quem só bate no histórico.
+  // 250ms de espera porque são 15 mil mensagens — uma ida por tecla digitada
+  // seria desperdício; a onda local já dá a sensação de resposta imediata.
+  let buscaTimer = null;
+  let buscaSeq = 0;
+
+  async function buscarNoHistorico(termo) {
+    const seq = ++buscaSeq;
+    try {
+      const r = await authedFetch("/api/admin/contacts?busca=" + encodeURIComponent(termo));
+      if (!r.ok) return;
+      const d = await r.json();
+      // Resposta atrasada de um termo que o usuário já trocou não pode
+      // sobrescrever a busca atual.
+      if (seq !== buscaSeq) return;
+      buscaServidor = { termo, waIds: new Set(d.waIds || []) };
+      resetContactWindow();
+      renderContacts();
+    } catch (e) {
+      /* sem rede: fica só a busca local, que já está na tela */
+    }
+  }
+
   $("search-input").addEventListener("input", () => {
     resetContactWindow();
     renderContacts();
+    const termo = ($("search-input").value || "").toLowerCase().trim();
+    if (buscaTimer) clearTimeout(buscaTimer);
+    if (termo.length < 3) {
+      buscaSeq++; // invalida resposta em voo
+      buscaServidor = { termo: "", waIds: null };
+      return;
+    }
+    buscaTimer = setTimeout(() => buscarNoHistorico(termo), 250);
   });
 
   // Scroll infinito da fila: perto do fim, revela o próximo lote. Espelha o

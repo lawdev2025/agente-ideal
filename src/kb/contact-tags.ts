@@ -25,9 +25,18 @@ function norm(s: string): string {
     .replace(/[̀-ͯ]/g, "");
 }
 
+// Modalidade ESPORTIVA explícita. Fica separado porque ganha até da Seletiva:
+// a Seletiva Ideal é prova de bolsa, não tem vôlei nem futsal — quem escreve
+// "seletiva do vôlei" ou "peneira de futsal" quer a escolinha, e sem isto
+// virava lead de bolsa (caso real achado no histórico).
+const MODALIDADE =
+  /(\bvolei|voleibol|futebol|futsal|basquete|handebol|natacao|\bjudo\b|jiu.?jitsu|karate|taekwondo|tae.?kwon|muay|\bboxe\b|capoeira|ginastica|\bballet\b|\bbale\b|\bdanca|\btenis\b|atletismo|patinacao|\bskate\b|\bsurf|peteca|\bxadrez\b)/;
+
 export function classifyContactTag(text: string): ContactTag | null {
   const t = norm(text);
   if (!t.trim()) return null;
+
+  if (MODALIDADE.test(t)) return "esporte";
 
   // Seletiva Ideal 2027 vem PRIMEIRO: é uma campanha própria e as frases dela
   // contêm palavras que cairiam em matrícula ("inscrição", "prova") ou em
@@ -51,8 +60,11 @@ export function classifyContactTag(text: string): ContactTag | null {
   if (/(\beixo\b|pre.?vestibular|pre.?enem|\bvestibular\b|\bcursinho\b|terceirao|pre.?universitario|\benem\b)/.test(t))
     return "eixo";
 
-  if (/(escolinha|\besporte|\besportiva|futebol|futsal|natacao|\bjudo\b|jiu.?jitsu|\bdanca\b|\bvolei|basquete|handebol|\btreino\b|modalidade|karate|ginastica|capoeira|muay)/.test(t))
-    return "esporte";
+  // Resto do vocabulário de escolinha: sem modalidade no nome, então fica
+  // DEPOIS de eixo/rematrícula. "\besport" cobre esporte/esportes/esportivo/
+  // esportiva/esportivos — antes só casava "esporte" e "esportiva", e
+  // "planos esportivos" virava matrícula.
+  if (/(escolinha|\besport|\btreino\b|modalidade|peneira)/.test(t)) return "esporte";
 
   // Matrícula EXPLÍCITA: o cliente fala em matricular / vaga / estudar.
   if (/(matricul|inscric|inscrev|novo aluno|nova aluna|quero estudar|quero matricular|ingressar|fazer matricula|interesse em estudar|colocar meu filho|colocar minha filha|estudar no colegio|estudar ai|tem vaga)/.test(t))

@@ -156,13 +156,14 @@ export class MessageOrchestrator {
       // ANTES do guard de preço porque "pagamento de taxa" contém "taxa" e
       // cairia no fluxo de valores — mas aqui a intenção é PROCESSO (como/onde
       // pagar, 2ª chamada), não o valor em si.
-      // Confirmação de pagamento da INSCRIÇÃO da Seletiva → área do candidato
-      // (auto-serviço). Vem ANTES do fluxo de pagamento porque "pagamento da
-      // inscrição" casa com os dois, e aqui o assunto é mais específico: quem
-      // pergunta isso não precisa da secretaria, precisa do próprio link.
+      // Confirmação de pagamento da INSCRIÇÃO da Seletiva → leva o comprovante
+      // no dia da prova (e, se ainda não pagou, o link da loja). Vem ANTES do
+      // fluxo de pagamento porque "pagamento da inscrição" casa com os dois, e
+      // aqui o assunto é mais específico: quem pergunta isso não precisa da
+      // secretaria, já tem a resposta.
       if (isSeletivaInscricaoPaymentQuestion(userMessage)) {
         const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
-        logger.info({ studentId, unit }, "Confirmação de inscrição da Seletiva — área do candidato");
+        logger.info({ studentId, unit }, "Confirmação de inscrição da Seletiva — comprovante no dia da prova");
         const reply = buildSeletivaInscricaoStatusReply(unit);
         await this.stateRepository.appendMessage(conversationId, "assistant", reply);
         await this.whatsappClient.sendMessage(studentId, reply);
@@ -218,7 +219,7 @@ export class MessageOrchestrator {
       // escalação, sem intermediário "coordenação te chama".
       if (isPriceOrMaterialQuestion(userMessage)) {
         logger.info({ studentId }, "Price/material question — sending presential reply");
-        const reply = buildPresentialValuesReply(detectUnit(userMessage));
+        const reply = buildPresentialValuesReply(detectUnit(userMessage), userMessage);
         await this.stateRepository.appendMessage(conversationId, "assistant", reply);
         await this.whatsappClient.sendMessage(studentId, reply);
         return;
@@ -680,7 +681,7 @@ export class MessageOrchestrator {
     const deflected = isDeflectionReply(reply);
     if (deflected) {
       reply = isPriceOrMaterialQuestion(userMessage)
-        ? buildPresentialValuesReply(detectUnit(userMessage))
+        ? buildPresentialValuesReply(detectUnit(userMessage), userMessage)
         : buildSecretariaRedirectReply(detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory));
       logger.warn({ tema: isPriceOrMaterialQuestion(userMessage) ? "preço" : "outro" }, "LLM produced deflection text — overriding");
     }
@@ -792,7 +793,7 @@ export class MessageOrchestrator {
     const deflected = isDeflectionReply(reply);
     if (deflected) {
       reply = isPriceOrMaterialQuestion(userMessage)
-        ? buildPresentialValuesReply(detectUnit(userMessage))
+        ? buildPresentialValuesReply(detectUnit(userMessage), userMessage)
         : buildSecretariaRedirectReply(detectUnit(userMessage) ?? this.findRecentUnit(conversationHistory));
       logger.warn({ tema: isPriceOrMaterialQuestion(userMessage) ? "preço" : "outro" }, "LLM produced deflection text — overriding");
     }
@@ -1316,7 +1317,7 @@ function buildVisitReplyWithUnit(unit: string): string {
 // daquela unidade + o telefone da secretaria (pra dúvidas de documentos/vaga).
 function buildTransferReplyWithUnit(unit: string): string {
   const link = VISIT_LINKS[unit] ?? VISIT_LINKS["Batista Campos"];
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  const phone = secretariaContato(unit);
   return (
     `Que ótimo que você quer vir pro *Colégio Ideal*! 🎉 A transferência é bem tranquila.\n\n` +
     `Na unidade *${unit}*, agende uma visita que a gente te explica tudo:\n` +
@@ -1372,31 +1373,56 @@ async function getEixoCoordinatorContact(): Promise<string> {
   );
 }
 
+// TURMAS MILITARES. Quem pergunta do Ensino Médio Militar quase sempre pergunta
+// junto com valores ("qual a diferença?", "como funciona a rotina?"), e aí a
+// pergunta inteira era engolida pelo guard de preço — o cliente saía sem saber
+// o que é a turma. Dizemos O QUE É (foco em concurso militar) e mandamos o
+// resto pra secretaria: rotina, disciplinas e regras variam e o bot não chuta.
+const MILITAR_SIGNAL =
+  /(militar|militares|espcex|efomm|ciaba|\bita\b|\bime\b)/i;
+
+const MILITAR_EXPLICACAO =
+  "🎖️ O nosso *Ensino Médio Militar* é uma turma focada em *concursos militares* — " +
+  "*ITA*, *IME*, *EFOMM*, *CIABA* e *EsPCEx*.\n\n";
+
+const SECRETARIA_HORARIO =
+  "\n\nPra qualquer outra dúvida, fala com a *secretaria*: atendimento de " +
+  "*segunda a sexta, das 8h às 17h*. 😊";
+
 // Resposta canônica para qualquer pergunta de valor. Centralizada aqui pra
 // nunca divergir entre paths (top-level, sanitizer, fallback).
 // Quando a unidade é conhecida exibe o link de visita daquela unidade;
 // quando não é, mostra os três para o cliente escolher.
-function buildPresentialValuesReply(unit?: string): string {
+// `userMessage` é opcional só pra não quebrar chamadas antigas: quando vem e
+// fala de turma militar, a explicação entra antes do recado de valores.
+function buildPresentialValuesReply(unit?: string, userMessage?: string): string {
+  const militar = !!userMessage && MILITAR_SIGNAL.test(userMessage);
+  const antes = militar ? MILITAR_EXPLICACAO : "";
+  const depois = militar ? SECRETARIA_HORARIO : "";
   const intro =
     "Os valores de *mensalidade*, *matrícula* e *material didático* nós informamos *somente presencialmente* — " +
     "assim o nosso time consegue te apresentar as melhores condições com calma. 🤝\n\n";
 
   if (unit && VISIT_LINKS[unit]) {
     return (
+      antes +
       intro +
       `Que tal agendar uma visita à unidade *${unit}*? É só clicar no link:\n` +
       `👉 ${VISIT_LINKS[unit]}` +
-      SELETIVA_CROSS_SELL
+      SELETIVA_CROSS_SELL +
+      depois
     );
   }
 
   return (
+    antes +
     intro +
     "Quer agendar uma visita? Escolha a unidade mais próxima:\n" +
     `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
     `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
     `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}` +
-    SELETIVA_CROSS_SELL
+    SELETIVA_CROSS_SELL +
+    depois
   );
 }
 
@@ -1435,7 +1461,7 @@ function buildEnrollmentReply(opts: {
       `Os valores de mensalidade, matrícula e material são informados ` +
       `*presencialmente* — assim o nosso time te apresenta as melhores condições. 🤝\n\n` +
       `👉 Agende uma visita: ${VISIT_LINKS[unit] ?? VISIT_LINKS["Batista Campos"]}\n` +
-      `📞 Ou fale com a secretaria: *${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}*`;
+      `📞 Ou fale com a secretaria: *${secretariaContato(unit)}*`;
   } else {
     // Sem unidade → pergunta qual (o cliente escolhe pra receber link + telefone).
     reply =
@@ -1478,7 +1504,7 @@ const SECRETARIA_REDIRECT_REPLY =
 // perguntar nada. Senão, caímos na pergunta canônica acima.
 function buildSecretariaRedirectReply(unit?: string): string {
   if (!unit) return SECRETARIA_REDIRECT_REPLY;
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  const phone = secretariaContato(unit);
   return (
     "Essa informação específica quem confirma certinho é a nossa *secretaria* 😊\n\n" +
     `Na *${unit}* é só falar com a secretaria pelo *${phone}* que o nosso time te orienta certinho. 😊`
@@ -1527,10 +1553,21 @@ const UNIT_SECRETARIA_PHONE: Record<string, string> = {
   "Cidade Nova": "(91) 3346-0011",
 };
 
+// O horário anda GRUDADO no telefone, em toda mensagem que manda ligar. Sem
+// isso o cliente liga no sábado, não é atendido e acha que o número está errado
+// — foi exatamente o que aconteceu. Use secretariaContato() em vez de ler o
+// UNIT_SECRETARIA_PHONE direto quando o texto vai pro cliente.
+const SECRETARIA_HORARIO_CURTO = "seg–sex, 8h às 17h";
+
+function secretariaContato(unit?: string): string {
+  const phone = UNIT_SECRETARIA_PHONE[unit ?? ""] ?? "(91) 3323-5000";
+  return `${phone} · ${SECRETARIA_HORARIO_CURTO}`;
+}
+
 // Resposta de CONTATO quando a unidade é conhecida: passa o telefone fixo
 // daquela secretaria direto do CÓDIGO (fonte da verdade), sem LLM e sem banco.
 function buildContactReplyWithUnit(unit: string): string {
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  const phone = secretariaContato(unit);
   return (
     `O telefone da secretaria da unidade *${unit}* é *${phone}*. 📞\n` +
     `É só ligar que o nosso time te atende certinho! 😊`
@@ -1540,7 +1577,7 @@ function buildContactReplyWithUnit(unit: string): string {
 // Resposta documental quando a unidade já é conhecida: aponta a secretaria e
 // passa o telefone DAQUELA unidade.
 function buildDocumentReplyWithUnit(unit: string): string {
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  const phone = secretariaContato(unit);
   return (
     "Boletim, histórico escolar, declarações e qualquer outro documento são " +
     "emitidos direto na *secretaria* da unidade. 📄\n\n" +
@@ -1552,17 +1589,26 @@ function buildDocumentReplyWithUnit(unit: string): string {
 // (não no LLM) pra data e URL nunca serem "melhoradas" pelo modelo.
 const SELETIVA_LANDING_URL = "https://grupoideal.com.br/seletivas2027/";
 
+// Taxa da Seletiva: quem ainda não pagou compra na loja online. O pedido pede
+// só o nome do aluno. Link com a variante certa do produto — sem ela a loja cai
+// na página genérica.
+const SELETIVA_TAXA_URL =
+  "https://loja.grupoideal.com.br/products/taxa-seletivas-2027?variant=49205106868443";
+
 const SELETIVA_CALENDARIO =
   "🏆 *SELETIVA IDEAL 2027* — nossa prova de bolsas, com descontos de *até 50%*!\n\n" +
   "📝 Inscrições abertas até *25/09*\n" +
-  "📚 Aulas experimentais *gratuitas*: *21/09* e *23/09*\n" +
+  "📚 Aulas experimentais *gratuitas*, do *6º ano em diante*: *21/09* e *23/09*, " +
+  "das *14h às 17h* (sem inscrição à parte — quem se inscreveu na Seletiva já pode ir)\n" +
+  "👦 Do *2º ao 5º ano* não tem aula experimental: só a prova, no dia *26/09*\n" +
+  "📍 Aulas e prova acontecem na *unidade em que a inscrição foi feita*\n" +
   "🗓️ Prova: *sábado, 26/09*, a partir das *13:30*";
 
 // Com a unidade definida → manda o link da landing e o telefone da secretaria.
 // A landing pede a unidade de novo; já sabendo qual é, orientamos a seleção pra
 // o cliente não errar (e o unit_tag dele já foi gravado pelo webhook).
 function buildSeletivaReplyWithUnit(unit: string): string {
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  const phone = secretariaContato(unit);
   return (
     SELETIVA_CALENDARIO +
     "\n\n" +
@@ -1644,7 +1690,7 @@ const REMATRICULA_PASSOS =
 // Sem unidade → pergunta qual (o follow-up determinístico devolve o telefone).
 function buildRematriculaReply(unit?: string): string {
   if (unit) {
-    const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+    const phone = secretariaContato(unit);
     return (
       REMATRICULA_PASSOS +
       "\n\n" +
@@ -1665,7 +1711,7 @@ function buildRematriculaReply(unit?: string): string {
 // passo a passo. Não repetimos os 6 passos (já estão logo acima na conversa) —
 // só entregamos o telefone da secretaria daquela unidade.
 function buildRematriculaFollowUpReply(unit: string): string {
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  const phone = secretariaContato(unit);
   return (
     `Perfeito! Qualquer dúvida na *rematrícula*, é só falar com a secretaria da *${unit}* ` +
     `pelo *${phone}* que o nosso time te orienta certinho. 📞😊`
@@ -1727,9 +1773,9 @@ export function isPaymentOrSegundaChamadaQuestion(text: string): boolean {
 }
 
 // ── PAGAMENTO DA INSCRIÇÃO DA SELETIVA ──────────────────────────────────────
-// Auto-serviço: o cliente confere na *área do candidato*, pelo botão da unidade
-// dele na própria landing em que se inscreveu. O pagamento leva até 24h pra
-// aparecer; passado disso, a secretaria da unidade confirma.
+// Auto-serviço: não há status pra consultar. Inscrito é só levar o comprovante
+// no dia da prova, na unidade da inscrição; quem ainda não pagou a taxa compra
+// na loja online (SELETIVA_TAXA_URL), com o nome do aluno no pedido.
 //
 // CUIDADO AO MEXER: três assuntos disputam a palavra "pagamento" —
 //   1. VALOR de mensalidade/material  → isPriceOrMaterialQuestion (presencial)
@@ -1741,8 +1787,11 @@ export function isPaymentOrSegundaChamadaQuestion(text: string): boolean {
 const SELETIVA_INSCRICAO_SIGNAL =
   /(inscri[çc][ãa]o|inscricao|inscri[çc][õo]es|me\s+inscrevi|inscrevi|selet[a-zçãáéíóú]*|prova\s+de\s+bolsa|concurso\s+de\s+bolsas?)/i;
 
+// "e-?mail" entra aqui porque quem reclama que não recebeu confirmação está
+// perguntando a mesma coisa por outro caminho: o e-mail só sai depois que a
+// taxa é paga (e do 2º ao 5º ano não existe taxa nem e-mail).
 const PAGOU_OU_CONFIRMA_SIGNAL =
-  /(paguei|pagamento|pagou|\bpix\b|efetuei|realizei|transferi|comprovante|confirmar|confirma[çc][ãa]o|confirmad[ao]|deu\s+certo|est[áa]\s+tudo\s+certo|status|receberam|recebeu|caiu)/i;
+  /(paguei|pagamento|pagou|\bpix\b|efetuei|realizei|transferi|comprovante|confirmar|confirma[çc][ãa]o|confirmad[ao]|deu\s+certo|est[áa]\s+tudo\s+certo|status|receberam|recebeu|caiu|e-?mail)/i;
 
 // Quem cita estes assuntos NÃO é inscrição de Seletiva: volta pro fluxo da
 // secretaria, que é onde mensalidade/boleto/2ª chamada se resolvem.
@@ -1755,23 +1804,28 @@ export function isSeletivaInscricaoPaymentQuestion(text: string): boolean {
   return SELETIVA_INSCRICAO_SIGNAL.test(t) && PAGOU_OU_CONFIRMA_SIGNAL.test(t);
 }
 
-// Com a unidade conhecida apontamos o botão dela e fechamos com o telefone.
+// Nada de conferir status: quem já se inscreveu só leva o comprovante no dia da
+// prova, na unidade em que se inscreveu. Quem ainda não pagou a taxa compra na
+// loja online, pondo o nome do ALUNO no pedido.
+// Com a unidade conhecida nomeamos a unidade e fechamos com o telefone dela.
 // Sem unidade, NÃO listamos os três números (padrão marcado como bug neste
 // arquivo): oferecemos passar o telefone se o cliente disser qual é.
 function buildSeletivaInscricaoStatusReply(unit?: string): string {
-  const abertura =
-    "Pra confirmar se a inscrição na *Seletiva Ideal 2027* foi registrada, é só voltar " +
-    "no mesmo link da inscrição e entrar na *área do candidato*";
-  const botao = unit ? `, pelo botão da *${unit}*` : ", pelo botão da sua unidade";
+  const ondeProva = unit ? `na *${unit}*` : "na *unidade em que se inscreveu*";
   const fecho = unit
-    ? `Se passar disso e ainda não constar, é só ligar pra secretaria da *${unit}* no ` +
-      `*${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}* que o nosso time confirma pra você. 😊`
-    : "Se passar disso e ainda não constar, me diz de qual unidade é a inscrição que eu " +
-      "te passo o telefone da secretaria pra confirmar. 😊";
+    ? `Qualquer dúvida, a secretaria da *${unit}* atende no ` +
+      `*${secretariaContato(unit)}*. 😊`
+    : "Se quiser confirmar alguma coisa antes, me diz de qual unidade é a inscrição " +
+      "que eu te passo o telefone da secretaria. 😊";
   return (
-    `${abertura}${botao}:\n` +
-    `👉 ${SELETIVA_LANDING_URL}\n\n` +
-    "O pagamento leva até *24h* pra aparecer lá. ⏳\n\n" +
+    "Com a inscrição feita, é só *apresentar o comprovante no dia da prova*, " +
+    `${ondeProva}. ✅\n\n` +
+    "📧 O e-mail de confirmação chega *depois que a taxa é paga* no site. Se ainda " +
+    "não tiver pago, é por aqui:\n" +
+    `👉 ${SELETIVA_TAXA_URL}\n` +
+    "É só colocar o *nome do aluno* no pedido. 📝\n\n" +
+    "👦 *Do 2º ao 5º ano não tem taxa* — nesse caso não vem e-mail nenhum e não " +
+    "precisa pagar nada: é só vir fazer a prova. 😉\n\n" +
     fecho
   );
 }
@@ -1801,7 +1855,7 @@ function buildSeletivaConteudoReply(unit: string | undefined, editais: SeletivaE
     : "O edital também fica na página da Seletiva, logo *abaixo dos botões de inscrição*:\n";
   const fecho = unit
     ? `Qualquer dúvida, fala com a secretaria da *${unit}* pelo ` +
-      `*${UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000"}*. 😊`
+      `*${secretariaContato(unit)}*. 😊`
     : "E pra eu te orientar na inscrição: em qual unidade você quer fazer a *Seletiva*?\n" +
       "🏫 *Batista Campos*\n" +
       "🏫 *Augusto Montenegro*\n" +
@@ -1811,7 +1865,7 @@ function buildSeletivaConteudoReply(unit: string | undefined, editais: SeletivaE
 
 // Resposta de pagamento/2ª chamada com a unidade conhecida → telefone dela.
 function buildPaymentReplyWithUnit(unit: string): string {
-  const phone = UNIT_SECRETARIA_PHONE[unit] ?? "(91) 3323-5000";
+  const phone = secretariaContato(unit);
   return (
     "Pagamento de taxas, mensalidade e prova de *segunda chamada* é resolvido " +
     "direto na *secretaria* da unidade. 💳\n\n" +
@@ -1856,13 +1910,15 @@ const IDENTIDADE_ATENDIMENTO =
 const DADOS_COLEGIO = [
   "DADOS OFICIAIS (use VERBATIM — nunca invente outros):",
   `• Telefones fixos (NUNCA ofereça WhatsApp — o cliente já está no WhatsApp): Batista Campos ${UNIT_SECRETARIA_PHONE["Batista Campos"]} · Augusto Montenegro ${UNIT_SECRETARIA_PHONE["Augusto Montenegro"]} · Cidade Nova/Ananindeua ${UNIT_SECRETARIA_PHONE["Cidade Nova"]}.`,
+  `• Secretaria atende ${SECRETARIA_HORARIO_CURTO}. SEMPRE diga o horário junto do telefone, na mesma frase — quem liga fora disso não é atendido e acha que o número está errado.`,
   "• Endereços (dê a rua completa quando perguntarem): Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esq. WE-21), Coqueiro, Ananindeua-PA.",
   `• Links de visita: Batista Campos → ${VISIT_LINKS["Batista Campos"]} · Augusto Montenegro → ${VISIT_LINKS["Augusto Montenegro"]} · Cidade Nova → ${VISIT_LINKS["Cidade Nova"]}.`,
   "• 3 unidades, todas do Maternal ao Pré-Enem: Maternal, Jardim, Fund 1 (1º-5º), Fund 2 (6º-9º), Médio, Pré-Enem (Eixo). Sistema Poliedro. Material/uniforme comprados na escola/malharia. Aulas 07:30 (30 min de tolerância), iguais nas 3 unidades.",
   // A Seletiva PRECISA estar aqui: sem ela, a regra de "dado concreto fora dos
   // dados acima → a secretaria confirma" fazia o modelo empurrar a campanha pra
   // secretaria (bug real em produção, print do cliente).
-  `• SELETIVA IDEAL 2027 (prova de bolsa, descontos de ATÉ 50%): inscrições até 25/09 · aulas experimentais gratuitas 21/09 e 23/09 · prova sábado 26/09 a partir das 13:30 · inscrição em ${SELETIVA_LANDING_URL}.`,
+  `• Taxa da Seletiva: paga na loja online ${SELETIVA_TAXA_URL} (pondo o NOME DO ALUNO no pedido). O e-mail de confirmação só chega DEPOIS do pagamento. Do 2º ao 5º ano NÃO há taxa: não pagam nada, não recebem e-mail e é só comparecer no dia da prova.`,
+  `• SELETIVA IDEAL 2027 (prova de bolsa, descontos de ATÉ 50%): inscrições até 25/09 · aulas experimentais gratuitas SÓ DO 6º ANO EM DIANTE, 21/09 e 23/09 das 14h às 17h, SEM inscrição à parte (quem se inscreveu na Seletiva já pode ir) · do 2º ao 5º ano NÃO tem aula experimental, só a prova · aulas e prova acontecem na UNIDADE EM QUE A INSCRIÇÃO FOI FEITA (nunca mande ligar pra secretaria só pra confirmar o local) · prova sábado 26/09 a partir das 13:30 · inscrição em ${SELETIVA_LANDING_URL}.`,
 ].join("\n");
 
 // Regras duras compartilhadas (telefone, valor, anti-alucinação). Antes estavam

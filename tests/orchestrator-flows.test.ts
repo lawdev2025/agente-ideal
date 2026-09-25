@@ -114,10 +114,11 @@ describe("Orchestrator: unit_tag gravado sempre que a unidade é resolvida", () 
   });
 });
 
-// Pagamento da INSCRIÇÃO da Seletiva é auto-serviço: o cliente confere na área
-// do candidato, no mesmo link em que se inscreveu, e o pagamento aparece em até
-// 24h. Não é a mesma coisa que pagar mensalidade/boleto (isso sim é secretaria),
-// e os dois disputam a palavra "pagamento" — por isso o fluxo exige DOIS sinais.
+// Pagamento da INSCRIÇÃO da Seletiva se resolve na hora: quem já se inscreveu
+// leva o comprovante no dia da prova, e quem ainda não pagou a taxa compra na
+// loja online. Não é a mesma coisa que pagar mensalidade/boleto (isso sim é
+// secretaria), e os dois disputam a palavra "pagamento" — por isso o fluxo
+// exige DOIS sinais.
 describe("Orchestrator: confirmação de pagamento da inscrição da Seletiva", () => {
   const dispara = [
     "Boa tarde! Fiz o pagamento do pix. Só queria confirmar a inscriçao da minha filha para o 6 ano/2027",
@@ -127,18 +128,24 @@ describe("Orchestrator: confirmação de pagamento da inscrição da Seletiva", 
     "me inscrevi e paguei mas não veio nada",
     "Segue o comprovante da inscrição",
     "a inscrição da seletiva deu certo?",
+    // Reclamar do e-mail é perguntar a mesma coisa por outro caminho: o e-mail
+    // só sai depois da taxa paga.
+    "Fiz a inscrição, n chegou nada no email",
   ];
   for (const msg of dispara) {
-    it(`'${msg.slice(0, 42)}…' → área do candidato`, async () => {
+    it(`'${msg.slice(0, 42)}…' → comprovante no dia da prova`, async () => {
       const m = buildMocks({
         history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
       });
       const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
       await orch.processMessage("u1", msg, "u1");
       const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
-      expect(sent).toMatch(/área do candidato/i);
-      expect(sent).toContain("grupoideal.com.br/seletivas2027/");
-      expect(sent).toMatch(/24h/);
+      expect(sent).toMatch(/comprovante no dia da prova/i);
+      expect(sent).toContain("loja.grupoideal.com.br/products/taxa-seletivas-2027");
+      expect(sent).toMatch(/nome do aluno/i);
+      // O e-mail só sai depois da taxa, e do 2º ao 5º ano não há taxa nenhuma.
+      expect(sent).toMatch(/depois que a taxa é paga/i);
+      expect(sent).toMatch(/2º ao 5º ano não tem taxa/i);
       expect(m.llm.generateMessage).not.toHaveBeenCalled();
       expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
     });
@@ -153,14 +160,14 @@ describe("Orchestrator: confirmação de pagamento da inscrição da Seletiva", 
     "preciso fazer a prova de segunda chamada",
   ];
   for (const msg of naoDispara) {
-    it(`'${msg.slice(0, 42)}…' NÃO cai na área do candidato`, async () => {
+    it(`'${msg.slice(0, 42)}…' NÃO cai no fluxo da inscrição`, async () => {
       const m = buildMocks({
         history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
       });
       const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
       await orch.processMessage("u1", msg, "u1");
       const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
-      expect(sent).not.toMatch(/área do candidato/i);
+      expect(sent).not.toContain("loja.grupoideal.com.br/products/taxa-seletivas-2027");
       expect(sent).toMatch(/secretaria/i);
     });
   }
@@ -173,7 +180,7 @@ describe("Orchestrator: confirmação de pagamento da inscrição da Seletiva", 
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "quero fazer a inscrição na seletiva", "u1");
     const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
-    expect(sent).not.toMatch(/área do candidato/i);
+    expect(sent).not.toContain("loja.grupoideal.com.br/products/taxa-seletivas-2027");
     expect(sent).toMatch(/qual unidade/i);
   });
 
@@ -189,6 +196,28 @@ describe("Orchestrator: confirmação de pagamento da inscrição da Seletiva", 
     const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
     expect(sent).toContain("Batista Campos");
     expect(sent).toContain("(91) 3323-5000");
+    // O horário anda grudado no telefone: sem ele o cliente liga no sábado,
+    // não é atendido e acha que o número está errado.
+    expect(sent).toMatch(/8h às 17h/);
+  });
+
+  // Turma militar: a pergunta vinha junto com valores e era engolida inteira
+  // pelo guard de preço — o cliente saía sem saber o que é a turma.
+  it("pergunta sobre o Médio Militar explica a turma antes do recado de valores", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage(
+      "u1",
+      "qual a diferença do ensino médio militar pro regular? e quanto custa a mensalidade?",
+      "u1",
+    );
+    const sent = (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+    expect(sent).toMatch(/concursos militares/i);
+    expect(sent).toContain("EsPCEx");
+    expect(sent).toMatch(/somente presencialmente/i);
+    expect(sent).toMatch(/8h às 17h/);
   });
 
   // Sem unidade não despejamos os 3 telefones (padrão marcado como bug no

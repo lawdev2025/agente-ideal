@@ -2,7 +2,7 @@
 -- CAMPANHAS DE TEMPLATE (disparo em massa pelo /admin).
 --
 -- Por que tabela e não um laço no servidor: a Vercel derruba a função em
--- 60s e o WhatsApp só aceita 250 conversas iniciadas por 24h. O estado
+-- 60s e o WhatsApp limita as conversas iniciadas por 24h. O estado
 -- precisa viver no banco pra a campanha andar em lotes, sobreviver a
 -- falha/fechar a aba e nunca mandar duas vezes pra mesma pessoa.
 --
@@ -46,5 +46,19 @@ CREATE INDEX IF NOT EXISTS idx_campanha_envios_fila
 -- campanha. Protege a qualidade do número (bloqueio derruba o limite diário).
 ALTER TABLE contacts ADD COLUMN IF NOT EXISTS optout_marketing BOOLEAN DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_contacts_optout ON contacts(optout_marketing);
+
+-- RLS: mesmo padrao das outras tabelas (app_users, contacts, messages...).
+-- Sem isto o INSERT da campanha volta 42501 e o /admin mostra "rode esta
+-- migracao" — o SELECT, esse, devolve lista vazia calada, o que faz parecer
+-- que a tabela nao existe. O controle de acesso real e o login de admin da
+-- rota; a chave anon e a mesma do resto do app.
+ALTER TABLE campanhas       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE campanha_envios ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='campanhas' AND policyname='allow_all_campanhas')
+  THEN CREATE POLICY "allow_all_campanhas" ON campanhas FOR ALL USING (true) WITH CHECK (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='campanha_envios' AND policyname='allow_all_campanha_envios')
+  THEN CREATE POLICY "allow_all_campanha_envios" ON campanha_envios FOR ALL USING (true) WITH CHECK (true); END IF;
+END $$;
 
 NOTIFY pgrst, 'reload schema';

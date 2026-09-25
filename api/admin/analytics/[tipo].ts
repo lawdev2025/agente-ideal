@@ -293,11 +293,15 @@ async function handleTemplates(req: VercelRequest, res: VercelResponse) {
 // ── campanhas ────────────────────────────────────────────────────────────────
 // Disparo de template em massa, SOMENTE ADMIN. O estado vive no banco
 // (public/admin/supabase-campanhas.sql) porque a função da Vercel morre em 60s
-// e o WhatsApp só aceita 250 conversas iniciadas por 24h: a campanha anda em
+// e o WhatsApp limita as conversas iniciadas por 24h: a campanha anda em
 // lotes, sobrevive a fechar a aba e nunca manda duas vezes pra mesma pessoa.
 
-// Trava abaixo do teto do número (250/24h), pra sobrar folga pro atendimento.
-const LIMITE_24H = 240;
+// Trava abaixo do teto de conversas iniciadas por 24h do número (2.000,
+// conferido no WhatsApp Manager em 19/09/2026). Os 200 de folga são pros
+// templates que saem fora de campanha: eles consomem a mesma cota e não
+// entram no enviadosNasUltimas24h, que só conta linha de campanha.
+// Só suba junto com o limite do painel — estourar derruba a qualidade do número.
+const LIMITE_24H = 1800;
 const LOTE_MAX = 20;
 
 // Rótulo do público → filtro. Espelha a lista da tela (templates-audience).

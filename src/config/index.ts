@@ -18,6 +18,8 @@ export interface Config {
   /** URL pública da arte da campanha de rematrícula ('' = não enviar imagem). */
   rematriculaArtUrl: string;
   seletivaArtUrl: string;
+  /** Seletiva encerrada: respostas antigas desligadas (ver SELETIVA_ENCERRADA). */
+  seletivaEncerrada: boolean;
   whatsapp: {
     phoneNumberId: string;
     accessToken: string;
@@ -67,6 +69,7 @@ export const config: Config = {
   },
   rematriculaArtUrl: rawConfig.REMATRICULA_ART_URL,
   seletivaArtUrl: rawConfig.SELETIVA_ART_URL,
+  seletivaEncerrada: rawConfig.SELETIVA_ENCERRADA,
   whatsapp: {
     phoneNumberId: rawConfig.WHATSAPP_PHONE_NUMBER_ID,
     accessToken: rawConfig.WHATSAPP_ACCESS_TOKEN,

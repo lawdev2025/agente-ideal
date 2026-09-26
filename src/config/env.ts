@@ -43,6 +43,12 @@ const EnvSchema = z.object({
   // regras do REMATRICULA_ART_URL: URL pública HTTPS, vazio = só texto.
   SELETIVA_ART_URL: z.string().default(''),
 
+  // Seletiva Ideal 2027 ENCERRADA (inscrições fecharam em 25/09/2026). Ligado
+  // (default), todo assunto de Seletiva vira uma resposta fixa: "já encerrou" +
+  // resultado em 03/10 ou aviso do futuro agendamento de teste. "false"
+  // religa os fluxos antigos de inscrição (próxima edição).
+  SELETIVA_ENCERRADA: z.string().default('true').transform((v) => v.toLowerCase() !== 'false'),
+
   // Institution
   INSTITUTION_NAME: z.string().min(1),
   PERSONA_NAME: z.string().default('Ana'),

@@ -5,7 +5,7 @@ import { WhatsAppClient } from "../whatsapp/client";
 import { EscalationHandler } from "../handoff/telegram";
 import { logger } from "../logger";
 import { config } from "../config";
-import { routeIntent, RoutedIntent, detectUnit, detectNivel } from "./intent-router";
+import { routeIntent, RoutedIntent, detectUnit, detectNivel, mentionsSeletiva } from "./intent-router";
 import { matchDirectResponse } from "../kb/direct-responses";
 import { unitAbbrev } from "../kb/contact-tags";
 import {
@@ -14,6 +14,16 @@ import {
   SELETIVA_EDITAIS,
   SeletivaEdital,
 } from "../kb/seletiva-conteudo";
+import {
+  isSeletivaAtrasadoQuestion,
+  isSeletivaProvaDiaQuestion,
+  isSeletivaResultadoQuestion,
+  SELETIVA_PROVA_DIA_REPLY,
+  SELETIVA_PROVA_FIM_MS,
+  SELETIVA_RESULTADO_DATA,
+  SELETIVA_ENCERRADA_AGENDAMENTO_REPLY,
+  SELETIVA_ENCERRADA_RESULTADO_REPLY,
+} from "../kb/seletiva-encerrada";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 
@@ -149,6 +159,36 @@ export class MessageOrchestrator {
           `Limite de ${MAX_BOT_RESPONSES} respostas do bot atingido — passando para atendimento humano`
         );
         return;
+      }
+
+      // SELETIVA ENCERRADA (25/09/2026): todo assunto de Seletiva vira uma de
+      // duas respostas fixas (ver kb/seletiva-encerrada.ts). Vem ANTES dos
+      // fluxos antigos de Seletiva, do guard de preço ("taxa da seletiva") e das
+      // respostas diretas do painel, pra nenhuma resposta velha escapar. Quem
+      // não pergunta de resultado ganha o status "agendada" — inclusive com o
+      // bot pausado, mas aí o humano é quem responde.
+      if (config.seletivaEncerrada) {
+        const topico = detectSeletivaEncerradaTopic(userMessage, conversationHistory);
+        if (topico) {
+          // Só quem chegou tarde vira "agendada": quem pergunta do resultado ou
+          // do dia da prova já está inscrito.
+          if (topico === "agendamento") await this.stateRepository.markSeletivaAgendada(studentId);
+          if (await this.stateRepository.isBotPaused(studentId)) {
+            logger.info({ studentId, topico }, "Seletiva encerrada — bot pausado, só marcou o status");
+            return;
+          }
+          logger.info({ studentId, topico }, "Seletiva encerrada — resposta fixa");
+          const reply =
+            topico === "resultado"
+              ? SELETIVA_ENCERRADA_RESULTADO_REPLY
+              : topico === "prova"
+                ? SELETIVA_PROVA_DIA_REPLY
+                : SELETIVA_ENCERRADA_AGENDAMENTO_REPLY;
+          await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+          await this.whatsappClient.sendMessage(studentId, reply);
+          await this.recordTurnOutcome(userMessage, true);
+          return;
+        }
       }
 
       // Dúvida de PAGAMENTO de taxas/mensalidade ou prova de SEGUNDA CHAMADA:
@@ -1409,7 +1449,7 @@ function buildPresentialValuesReply(unit?: string, userMessage?: string): string
       intro +
       `Que tal agendar uma visita à unidade *${unit}*? É só clicar no link:\n` +
       `👉 ${VISIT_LINKS[unit]}` +
-      SELETIVA_CROSS_SELL +
+      seletivaCrossSell() +
       depois
     );
   }
@@ -1421,7 +1461,7 @@ function buildPresentialValuesReply(unit?: string, userMessage?: string): string
     `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
     `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
     `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}` +
-    SELETIVA_CROSS_SELL +
+    seletivaCrossSell() +
     depois
   );
 }
@@ -1482,7 +1522,7 @@ function buildEnrollmentReply(opts: {
   // Toda resposta de matrícula termina puxando a Seletiva (desconto de até 50%)
   // — exceto a de horário, que é uma dúvida pontual de quem já é da casa e não
   // combina com oferta de campanha.
-  if (!asksSchedule) reply += SELETIVA_CROSS_SELL;
+  if (!asksSchedule) reply += seletivaCrossSell();
 
   return reply;
 }
@@ -1666,6 +1706,46 @@ export function isSeletivaUnitSkip(text: string): boolean {
 const SELETIVA_CROSS_SELL =
   "\n\n🏆 Ah! Quer saber sobre a *Seletiva Ideal 2027*? " +
   "É a nossa prova de bolsas, com descontos de *até 50%* — é só me dizer que eu te explico. 😉";
+
+// Seletiva encerrada → sem convite (não há mais inscrição pra oferecer).
+function seletivaCrossSell(): string {
+  return config.seletivaEncerrada ? "" : SELETIVA_CROSS_SELL;
+}
+
+// SELETIVA ENCERRADA: a mensagem é sobre a Seletiva? "resultado" quando o
+// cliente quer saber do resultado; "prova" (só até a prova de 26/09 acabar)
+// pra dúvida de logística de quem já se inscreveu — portão, documento, local,
+// taxa paga, conteúdo; "agendamento" pra quem chegou tarde e pra qualquer
+// outra dúvida. Pega também:
+//   - resposta à pergunta de unidade antiga ("Batista", "manda o link"), de
+//     conversa que começou antes de fechar;
+//   - "e o resultado?" sem citar a Seletiva, quando ela apareceu nos últimos
+//     turnos.
+export function detectSeletivaEncerradaTopic(
+  userMessage: string,
+  history: ConversationMessage[],
+  now: number = Date.now()
+): "resultado" | "prova" | "agendamento" | null {
+  const conteudo = isSeletivaContentQuestion(userMessage);
+  const citaSeletiva =
+    mentionsSeletiva(userMessage) || conteudo || isSeletivaInscricaoPaymentQuestion(userMessage);
+  const resultado = isSeletivaResultadoQuestion(userMessage);
+  if (citaSeletiva) {
+    if (resultado) return "resultado";
+    if (isSeletivaAtrasadoQuestion(userMessage)) return "agendamento";
+    if (now < SELETIVA_PROVA_FIM_MS && (conteudo || isSeletivaProvaDiaQuestion(userMessage))) return "prova";
+    return "agendamento";
+  }
+
+  if (resultado && history.slice(-6).some((m) => mentionsSeletiva(m.content))) return "resultado";
+
+  if (
+    detectPendingUnitAsk(history) === "seletiva" &&
+    (detectUnit(userMessage) !== undefined || isSeletivaUnitSkip(userMessage))
+  )
+    return "agendamento";
+  return null;
+}
 
 // Passo a passo OFICIAL da rematrícula (Portal do Aluno / TOTVS). Texto único,
 // reusado com e sem unidade — os links são dados oficiais do colégio e não podem
@@ -1917,8 +1997,14 @@ const DADOS_COLEGIO = [
   // A Seletiva PRECISA estar aqui: sem ela, a regra de "dado concreto fora dos
   // dados acima → a secretaria confirma" fazia o modelo empurrar a campanha pra
   // secretaria (bug real em produção, print do cliente).
-  `• Taxa da Seletiva: paga na loja online ${SELETIVA_TAXA_URL} (pondo o NOME DO ALUNO no pedido). O e-mail de confirmação só chega DEPOIS do pagamento. Do 2º ao 5º ano NÃO há taxa: não pagam nada, não recebem e-mail e é só comparecer no dia da prova.`,
-  `• SELETIVA IDEAL 2027 (prova de bolsa, descontos de ATÉ 50%): inscrições até 25/09 · aulas experimentais gratuitas SÓ DO 6º ANO EM DIANTE, 21/09 e 23/09 das 14h às 17h, SEM inscrição à parte (quem se inscreveu na Seletiva já pode ir) · do 2º ao 5º ano NÃO tem aula experimental, só a prova · aulas e prova acontecem na UNIDADE EM QUE A INSCRIÇÃO FOI FEITA (nunca mande ligar pra secretaria só pra confirmar o local) · prova sábado 26/09 a partir das 13:30 · inscrição em ${SELETIVA_LANDING_URL}.`,
+  ...(config.seletivaEncerrada
+    ? [
+        `• SELETIVA IDEAL 2027: JÁ ENCERRADA. Não passe link, taxa, edital nem datas antigas. Resultado → divulgado em ${SELETIVA_RESULTADO_DATA}. Qualquer outra dúvida (inscrição, chegou tarde) → inscrições encerradas; fique de olho, em breve vamos abrir o agendamento de um teste para quem não conseguiu participar.`,
+      ]
+    : [
+        `• Taxa da Seletiva: paga na loja online ${SELETIVA_TAXA_URL} (pondo o NOME DO ALUNO no pedido). O e-mail de confirmação só chega DEPOIS do pagamento. Do 2º ao 5º ano NÃO há taxa: não pagam nada, não recebem e-mail e é só comparecer no dia da prova.`,
+        `• SELETIVA IDEAL 2027 (prova de bolsa, descontos de ATÉ 50%): inscrições até 25/09 · aulas experimentais gratuitas SÓ DO 6º ANO EM DIANTE, 21/09 e 23/09 das 14h às 17h, SEM inscrição à parte (quem se inscreveu na Seletiva já pode ir) · do 2º ao 5º ano NÃO tem aula experimental, só a prova · aulas e prova acontecem na UNIDADE EM QUE A INSCRIÇÃO FOI FEITA (nunca mande ligar pra secretaria só pra confirmar o local) · prova sábado 26/09 a partir das 13:30 · inscrição em ${SELETIVA_LANDING_URL}.`,
+      ]),
 ].join("\n");
 
 // Regras duras compartilhadas (telefone, valor, anti-alucinação). Antes estavam

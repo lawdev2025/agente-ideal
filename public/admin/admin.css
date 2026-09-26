@@ -2146,6 +2146,8 @@ html.dark .itag-esporte     { color: #6FA8F5; }
 .itag-sel-pendente { background: rgba(245,158,11,.15); color: #92400E; }
 html.dark .itag-sel-inscrito { color: var(--accent-green); }
 html.dark .itag-sel-pendente { color: #FBBF24; }
+.itag-sel-agendada { background: rgba(139,92,246,.15); color: #5B21B6; }
+html.dark .itag-sel-agendada { color: #C4B5FD; }
 /* Selo de UNIDADE (AM/BC/CN) — discreto, ao lado da tag de intenção */
 .utag {
     flex-shrink: 0; font-family: 'Quicksand', sans-serif; font-weight: 700;

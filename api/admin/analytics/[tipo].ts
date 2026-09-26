@@ -306,6 +306,7 @@ const LOTE_MAX = 20;
 
 // Rótulo do público → filtro. Espelha a lista da tela (templates-audience).
 const PUBLICOS: Record<string, (q: any) => any> = {
+  "seletiva-agendadas": (q) => q.eq("seletiva_status", "agendada"),
   "seletiva-pendentes": (q) => q.eq("seletiva_status", "pendente"),
   "seletiva-inscritos": (q) => q.eq("seletiva_status", "inscrito"),
   "seletiva-interessados": (q) => q.not("seletiva_status", "is", null),

@@ -248,6 +248,24 @@ export class StateRepository {
   }
 
   /**
+   * Marca o contato como AGENDADA na Seletiva ("Seletivas agendadas"): chegou
+   * depois do fim das inscrições e vai ser avisado quando abrir o agendamento
+   * do teste. Sobe de vazio ou pendente; nunca rebaixa um "inscrito" nem
+   * reescreve a data de quem já era agendada. Best-effort, como o pendente.
+   */
+  async markSeletivaAgendada(waId: string): Promise<void> {
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from("contacts")
+      .update({ seletiva_status: "agendada", seletiva_at: Date.now() })
+      .eq("wa_id", waId)
+      .or("seletiva_status.is.null,seletiva_status.eq.pendente");
+    if (error && !SCHEMA_MISSING.has(error.code ?? "")) {
+      logger.warn({ error, waId }, "Falha ao marcar seletiva agendada (nao critico)");
+    }
+  }
+
+  /**
    * Marca qual empurrão de follow-up já foi mandado (1 ou 2) e quando.
    * Escrito pelo job /api/jobs/temperature depois do envio dar certo.
    */

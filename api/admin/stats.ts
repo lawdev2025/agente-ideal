@@ -56,6 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       subjectsRes,
       { count: seletivaInscritos },
       { count: seletivaPendentes },
+      { count: seletivaAgendadas },
     ] = await Promise.all([
       scopeMsgs(sb.from("messages").select("*", { count: "exact", head: true })),
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true })),
@@ -77,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // com erro e null → 0, sem derrubar o dashboard.
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "inscrito")),
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "pendente")),
+      scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "agendada")),
     ]);
 
     const inactiveContacts = (totalContacts ?? 0) - (activeContacts ?? 0);
@@ -184,7 +186,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       msgCounts,
       subjects,
       learning,
-      seletiva: { inscritos: seletivaInscritos ?? 0, pendentes: seletivaPendentes ?? 0 },
+      seletiva: {
+        inscritos: seletivaInscritos ?? 0,
+        pendentes: seletivaPendentes ?? 0,
+        agendadas: seletivaAgendadas ?? 0,
+      },
     };
     // Grava no cache indexado por escopo.
     statsCache.set(scopeKey, { at: Date.now(), payload });

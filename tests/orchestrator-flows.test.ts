@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MessageOrchestrator, extractName } from "../src/worker/orchestrator";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MessageOrchestrator, extractName, detectSeletivaEncerradaTopic } from "../src/worker/orchestrator";
 import { LLMProvider } from "../src/llm/provider";
 import { StateRepository } from "../src/state/repository";
 import { WhatsAppClient } from "../src/whatsapp/client";
@@ -42,6 +42,7 @@ function buildMocks(opts: {
     setName: vi.fn(async () => {}),
     updateLastSeen: vi.fn(async () => {}),
     setContactUnitTag: vi.fn(async () => {}),
+    markSeletivaAgendada: vi.fn(async () => {}),
   } as unknown as StateRepository;
   const whatsapp = {
     sendMessage: vi.fn(async () => ({ messageId: "m1" })),
@@ -52,6 +53,17 @@ function buildMocks(opts: {
   } as unknown as EscalationHandler;
   return { llm, stateRepo, whatsapp, escalation };
 }
+
+// Os testes de Seletiva abaixo descrevem a campanha ABERTA (fluxos de
+// inscrição, taxa, edital) — o que volta com SELETIVA_ENCERRADA=false. O modo
+// encerrado (padrão desde 25/09/2026) tem o describe próprio no fim do arquivo.
+const seletivaEncerradaOriginal = config.seletivaEncerrada;
+beforeEach(() => {
+  config.seletivaEncerrada = false;
+});
+afterEach(() => {
+  config.seletivaEncerrada = seletivaEncerradaOriginal;
+});
 
 // A tag de unidade é o que direciona o lead pra atendente daquela unidade. Ela
 // se perdia quando o cliente respondia "em qual unidade?" com só o primeiro
@@ -1570,5 +1582,123 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
     const r = routeIntent("qual o valor do ensino médio e tem desconto pra irmão?", false);
     expect(r.kind).toBe("enrollment_info");
     if (r.kind === "enrollment_info") expect(r.escalateAfter).toBeTruthy();
+  });
+});
+
+describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
+  // Relógio fixo na véspera da prova: sem isso os testes do dia da prova
+  // quebrariam sozinhos a partir de 26/09.
+  beforeEach(() => {
+    config.seletivaEncerrada = true;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T20:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const ASK_UNIT =
+    "Pra eu te mandar o link de inscrição certinho, em qual unidade você quer fazer a *Seletiva*?\n" +
+    "🏫 *Batista Campos*\n🏫 *Augusto Montenegro*\n🏫 *Cidade Nova (Ananindeua)*";
+  const sentOf = (m: ReturnType<typeof buildMocks>) =>
+    (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+
+  it.each([
+    "quero fazer a inscrição na seletiva",
+    "ainda dá tempo de se inscrever na seletiva?",
+    "perdi o prazo da prova de bolsa",
+    "ainda dá pra fazer a seletiva amanhã?",
+    "quero saber da seletiva",
+  ])("'%s' → encerrada + agendamento futuro, marca 'agendada'", async (msg) => {
+    const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", msg, "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/encerrad/i);
+    expect(sent).toMatch(/agendamento de um teste/i);
+    expect(sent).not.toContain("seletivas2027");
+    expect(sent).not.toContain("loja.grupoideal");
+    expect(sent).not.toMatch(/equipe/i);
+    expect(m.stateRepo.markSeletivaAgendada).toHaveBeenCalledWith("u1");
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "que horas abre o portão da seletiva amanhã?",
+    "precisa levar documento na prova da seletiva?",
+    "paguei a taxa da seletiva e não chegou o e-mail",
+    "o que cai na prova da seletiva do 9º ano?",
+  ])("véspera: '%s' → orientações do dia da prova, sem marcar 'agendada'", async (msg) => {
+    const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", msg, "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/13h\*? e fecham às \*?13h55/);
+    expect(sent).toMatch(/documento de identifica[çc][ãa]o/);
+    expect(sent).not.toMatch(/comprovante/i);
+    expect(sent).toMatch(/caneta/i);
+    expect(sent).toMatch(/03\/10/);
+    expect(sent).not.toMatch(/equipe/i);
+    expect(m.stateRepo.markSeletivaAgendada).not.toHaveBeenCalled();
+  });
+
+  it("depois do fim da prova (26/09 18h de Belém) a logística volta pro 'encerrada'", () => {
+    const antes = Date.parse("2026-09-26T20:59:00Z");
+    const depois = Date.parse("2026-09-26T21:01:00Z");
+    const msg = "que horas abre o portão da seletiva?";
+    expect(detectSeletivaEncerradaTopic(msg, [], antes)).toBe("prova");
+    expect(detectSeletivaEncerradaTopic(msg, [], depois)).toBe("agendamento");
+    expect(detectSeletivaEncerradaTopic("resultado da seletiva?", [], depois)).toBe("resultado");
+  });
+
+  it("pergunta de resultado → resultado em 03/10, sem marcar 'agendada'", async () => {
+    const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quando sai o resultado da seletiva?", "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/encerrad/i);
+    expect(sent).toMatch(/03\/10/);
+    expect(m.stateRepo.markSeletivaAgendada).not.toHaveBeenCalled();
+  });
+
+  it("'e o resultado?' sem citar a Seletiva, logo depois de falar dela → 03/10", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "fiz a seletiva" },
+        { role: "assistant", content: "As inscrições da *Seletiva Ideal 2027* já foram encerradas." },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "e o resultado sai quando?", "u1");
+    expect(sentOf(m)).toMatch(/03\/10/);
+  });
+
+  it("resposta à pergunta de unidade antiga ('Batista') → encerrada, sem link", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "Seletivas" },
+        { role: "assistant", content: ASK_UNIT },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Batista", "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/agendamento de um teste/i);
+    expect(sent).not.toContain("seletivas2027");
+    expect(m.stateRepo.markSeletivaAgendada).toHaveBeenCalledWith("u1");
+  });
+
+  it("bot pausado: marca 'agendada' mas não responde", async () => {
+    const m = buildMocks({ paused: true, history: [{ role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero fazer a seletiva", "u1");
+    expect(m.stateRepo.markSeletivaAgendada).toHaveBeenCalledWith("u1");
+    expect(m.whatsapp.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("matrícula não oferece mais a Seletiva no fim", async () => {
+    const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "qual o valor da mensalidade?", "u1");
+    expect(sentOf(m)).not.toMatch(/Seletiva/i);
   });
 });

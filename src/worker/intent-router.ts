@@ -252,6 +252,11 @@ const DOCUMENT_KEYWORDS =
 const SELETIVA_KEYWORDS =
   /(\bselet[a-zçãáéíóú]*|processo\s+seletivo|prova\s+de\s+bolsa|provas\s+de\s+bolsa|concurso\s+de\s+bolsas?|teste\s+de\s+sele[çc][ãa]o|prova\s+de\s+sele[çc][ãa]o|aul[ãa]o)/i;
 
+/** A mensagem cita a Seletiva (mesmo critério do seletiva_request). */
+export function mentionsSeletiva(text: string): boolean {
+  return SELETIVA_KEYWORDS.test(text || "");
+}
+
 // Rematrícula / renovação de matrícula de quem JÁ é aluno. Só formas explícitas
 // ("rematrícula", "renovar a matrícula", "portal do aluno") — "renovar" sozinho
 // não entra, pra não capturar renovação de convênio/uniforme.

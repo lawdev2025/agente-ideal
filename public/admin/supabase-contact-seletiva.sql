@@ -4,6 +4,9 @@
 --   inscrito → o telefone aparece numa planilha de inscrição da Seletiva
 --   pendente → demonstrou interesse (falou de Seletiva ou recebeu o link)
 --              e ainda não achamos a inscrição
+--   agendada → "Seletivas agendadas": falou de Seletiva DEPOIS do fim das
+--              inscrições (25/09/2026) e espera o agendamento do teste.
+--              Sobe de vazio/pendente; a planilha ainda promove a inscrito.
 --
 -- Mora fora de `tag` porque `tag` é sobrescrita a cada mensagem: quem falou
 -- de Seletiva e depois perguntou a mensalidade vira "matricula" e sumiria da

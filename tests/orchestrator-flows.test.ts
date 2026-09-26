@@ -6,6 +6,7 @@ import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
 import { routeIntent, detectNivel } from "../src/worker/intent-router";
 import { config } from "../src/config";
+import { SELETIVA_PROVA_DIA_REPLY } from "../src/kb/seletiva-encerrada";
 
 function buildMocks(opts: {
   history?: Array<{ role: string; content: string }>;
@@ -1626,7 +1627,6 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     "que horas abre o portão da seletiva amanhã?",
     "precisa levar documento na prova da seletiva?",
     "paguei a taxa da seletiva e não chegou o e-mail",
-    "o que cai na prova da seletiva do 9º ano?",
   ])("véspera: '%s' → orientações do dia da prova, sem marcar 'agendada'", async (msg) => {
     const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
@@ -1672,6 +1672,39 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     expect(sent).not.toMatch(/3346-0011|3323-5000/);
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
     expect(m.stateRepo.markSeletivaAgendada).not.toHaveBeenCalled();
+  });
+
+  // Print real de 26/09: o bloco saiu 3x seguidas ("edital", "Ela tem identidade", "?").
+  it("pedido de edital → link do edital da série, não o bloco do dia", async () => {
+    vi.setSystemTime(new Date("2026-09-26T13:00:00Z"));
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: CAMPANHA },
+        { role: "user", content: "Bom dia" },
+        { role: "assistant", content: "Bom dia! 👋 Tudo bem? Como posso ajudar?" },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Gostaria de saber sobre o edital para 1 ano do ensino médio", "u1");
+    const sent = sentOf(m);
+    expect(sent).toContain("EDITAL-SELETIVA-IDEAL-2027.pdf");
+    expect(sent).not.toMatch(/Port[õo]es/);
+  });
+
+  it("bloco do dia já enviado → próxima dúvida vai pro LLM, sem repetir o bloco", async () => {
+    vi.setSystemTime(new Date("2026-09-26T13:00:00Z"));
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: CAMPANHA },
+        { role: "user", content: "o que precisa levar?" },
+        { role: "assistant", content: SELETIVA_PROVA_DIA_REPLY },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Ela tem identidade", "u1");
+    const sent = sentOf(m);
+    expect(sent).not.toContain(SELETIVA_PROVA_DIA_REPLY);
+    expect(m.llm.generateMessage).toHaveBeenCalled();
   });
 
   it("'meu filho está inscrito pra prova' sem campanha no histórico também cai nas orientações", () => {

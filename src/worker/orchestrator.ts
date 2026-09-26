@@ -178,13 +178,24 @@ export class MessageOrchestrator {
             logger.info({ studentId, topico }, "Seletiva encerrada — bot pausado, só marcou o status");
             return;
           }
-          logger.info({ studentId, topico }, "Seletiva encerrada — resposta fixa");
           const reply =
             topico === "resultado"
               ? SELETIVA_ENCERRADA_RESULTADO_REPLY
               : topico === "prova"
                 ? SELETIVA_PROVA_DIA_REPLY
-                : SELETIVA_ENCERRADA_AGENDAMENTO_REPLY;
+                : topico === "edital"
+                  ? buildSeletivaEditalReply(userMessage, conversationHistory)
+                  : SELETIVA_ENCERRADA_AGENDAMENTO_REPLY;
+          // RAIZ DE BUG (26/09, cliente recebeu o bloco 3x seguidas): resposta
+          // fixa sai UMA vez por conversa. Se ela já foi mandada, a próxima
+          // dúvida ("Ela tem identidade?") vai pro LLM, que tem os mesmos dados
+          // (DADOS_COLEGIO) e responde curto. Não cai nos fluxos antigos.
+          if (conversationHistory.some((m) => m.role === "assistant" && m.content === reply)) {
+            logger.info({ studentId, topico }, "Seletiva encerrada — resposta fixa já enviada, segue pro LLM");
+            await this.runLLMFlow(conversationId, studentId, userMessage, conversationHistory);
+            return;
+          }
+          logger.info({ studentId, topico }, "Seletiva encerrada — resposta fixa");
           await this.stateRepository.appendMessage(conversationId, "assistant", reply);
           await this.whatsappClient.sendMessage(studentId, reply);
           await this.recordTurnOutcome(userMessage, true);
@@ -1726,15 +1737,18 @@ export function detectSeletivaEncerradaTopic(
   userMessage: string,
   history: ConversationMessage[],
   now: number = Date.now()
-): "resultado" | "prova" | "agendamento" | null {
+): "resultado" | "prova" | "edital" | "agendamento" | null {
   const conteudo = isSeletivaContentQuestion(userMessage);
+  // Pediu o EDITAL ("edital", "o que cai") → link do edital, não o bloco do dia.
+  const edital = conteudo || /\bedita(l|is)\b/i.test(userMessage);
   const citaSeletiva =
     mentionsSeletiva(userMessage) || conteudo || isSeletivaInscricaoPaymentQuestion(userMessage);
   const resultado = isSeletivaResultadoQuestion(userMessage);
   if (citaSeletiva) {
     if (resultado) return "resultado";
     if (isSeletivaAtrasadoQuestion(userMessage)) return "agendamento";
-    if (now < SELETIVA_PROVA_FIM_MS && (conteudo || isSeletivaProvaDiaQuestion(userMessage))) return "prova";
+    if (now < SELETIVA_PROVA_FIM_MS && edital) return "edital";
+    if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaQuestion(userMessage)) return "prova";
     return "agendamento";
   }
 
@@ -1744,6 +1758,7 @@ export function detectSeletivaEncerradaTopic(
   // "seletiva", e sem isto caía no LLM, que mandava ligar pra secretaria.
   const seletivaNoContexto = history.slice(-12).some((m) => mentionsSeletiva(m.content));
   if (resultado && seletivaNoContexto) return "resultado";
+  if (now < SELETIVA_PROVA_FIM_MS && edital && seletivaNoContexto) return "edital";
   if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaSemNome(userMessage, seletivaNoContexto)) return "prova";
 
   if (
@@ -1950,6 +1965,32 @@ function buildSeletivaConteudoReply(unit: string | undefined, editais: SeletivaE
   return abertura + links + "\n\n" + pagina + `👉 ${SELETIVA_LANDING_URL}\n\n` + fecho;
 }
 
+// Seletiva encerrada, véspera/dia da prova: pediu o EDITAL → só o(s) link(s),
+// pela série da mensagem ou dos últimos turnos (sem série, os dois principais).
+// Sem link de inscrição nem pergunta de unidade — a inscrição já fechou.
+function buildSeletivaEditalReply(userMessage: string, history: ConversationMessage[]): string {
+  const recentUserText = history
+    .filter((m) => m.role === "user")
+    .slice(-4)
+    .map((m) => m.content)
+    .join("\n");
+  const editais =
+    pickSeletivaEditais(userMessage) ??
+    pickSeletivaEditais(recentUserText) ??
+    (["regular", "jr"] as SeletivaEdital[]);
+  const links = editais
+    .map((e) => `📄 Edital ${SELETIVA_EDITAIS[e].label}: ${SELETIVA_EDITAIS[e].url}`)
+    .join("\n");
+  return (
+    "Aqui está o edital da *Seletiva Ideal 2027* 😊\n" +
+    links +
+    // O edital Militar não traz a regra da série anterior (ver buildSeletivaConteudoReply).
+    (editais.length === 1 && editais[0] === "militar"
+      ? ""
+      : "\n\nO conteúdo de cada série está no *Anexo I*. A prova cobre o conteúdo da *série anterior* à que o aluno vai cursar em 2027.")
+  );
+}
+
 // Resposta de pagamento/2ª chamada com a unidade conhecida → telefone dela.
 function buildPaymentReplyWithUnit(unit: string): string {
   const phone = secretariaContato(unit);
@@ -2007,6 +2048,7 @@ const DADOS_COLEGIO = [
   ...(config.seletivaEncerrada
     ? [
         `• SELETIVA IDEAL 2027: JÁ ENCERRADA. Não passe link, taxa, edital nem datas antigas. Resultado → divulgado em ${SELETIVA_RESULTADO_DATA}. Qualquer outra dúvida (inscrição, chegou tarde) → inscrições encerradas; fique de olho, em breve vamos abrir o agendamento de um teste para quem não conseguiu participar.`,
+        `• DIA DA PROVA DA SELETIVA (sábado 26/09), pra quem JÁ se inscreveu: portões 13h–13h55 (depois ninguém entra) · prova 14h–17h (militares 14h–18h, na Augusto Montenegro) · local = unidade da inscrição · a sala é informada no local de prova · levar SÓ um documento de identificação do aluno (RG, por exemplo) e caneta azul ou preta — NÃO precisa de ficha, cartão nem comprovante de inscrição · celular desligado e guardado, sem calculadora · responsáveis não ficam no local. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro de orientações nem mande ligar pra secretaria por isso.`,
       ]
     : [
         `• Taxa da Seletiva: paga na loja online ${SELETIVA_TAXA_URL} (pondo o NOME DO ALUNO no pedido). O e-mail de confirmação só chega DEPOIS do pagamento. Do 2º ao 5º ano NÃO há taxa: não pagam nada, não recebem e-mail e é só comparecer no dia da prova.`,

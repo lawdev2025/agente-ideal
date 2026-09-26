@@ -1220,10 +1220,21 @@
 
   function onContactChange(row) {
     if (!row || !row.wa_id) return;
-    const existing = byId[row.wa_id] || {};
-    const merged = Object.assign({}, existing, row);
-    byId[row.wa_id] = merged;
-    if (!contacts.find((c) => c.wa_id === row.wa_id)) contacts.push(merged);
+    // RAIZ DE BUG (26/09): isto criava um objeto NOVO e trocava só o byId —
+    // a lista (`contacts`) seguia com o antigo. Toda mensagem seguinte ia pro
+    // objeto do byId e a prévia travava na 1ª ("Oi"), sem as respostas do bot.
+    // Atualiza NO LUGAR, pra byId e lista serem sempre o mesmo objeto.
+    let merged = byId[row.wa_id];
+    if (merged) Object.assign(merged, row);
+    else {
+      merged = Object.assign({}, row);
+      byId[row.wa_id] = merged;
+    }
+    if (!contacts.includes(merged)) {
+      const i = contacts.findIndex((c) => c.wa_id === row.wa_id);
+      if (i >= 0) contacts[i] = merged;
+      else contacts.push(merged);
+    }
     if (row.wa_id === currentChat) {
       updateChatHeader(merged);
       updateBotControls(merged);

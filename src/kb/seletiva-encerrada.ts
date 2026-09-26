@@ -74,7 +74,7 @@ export const SELETIVA_PROVA_DIA_REPLY =
   "🚪 *Portões:* abrem às *13h* e fecham às *13h55* em ponto. Depois disso, ninguém entra.\n" +
   "⏰ *Prova:* das *14h às 17h* (turmas militares: das 14h às 18h).\n" +
   "📍 *Local:* na *unidade em que a inscrição foi feita* (turmas militares: *Augusto Montenegro*).\n" +
-  "🏫 *Sala:* não precisa saber antes. Na chegada, o nosso time indica a sala de cada aluno.\n\n" +
+  "🏫 *Sala:* a sala de cada aluno será informada no local de prova.\n\n" +
   "🪪 *O que levar:*\n" +
   "• Um *documento de identificação* do aluno (o RG, por exemplo). Não precisa de ficha, cartão nem comprovante de inscrição\n" +
   "• *Caneta esferográfica azul ou preta*\n\n" +

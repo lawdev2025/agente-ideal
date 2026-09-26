@@ -535,6 +535,16 @@
                 <!-- 4. Aba Configurações -->
                 <section class="tab-content" id="tab-config">
                     <div class="config-wrapper">
+                        <!-- Usuários do CRM (só admin vê a aba; o backend também recusa quem não é admin). -->
+                        <div class="config-card glass config-users-card">
+                            <h3><i class="fa-solid fa-users"></i> Usuários do CRM</h3>
+                            <p class="card-desc" id="cfg-users-summary">Carregando…</p>
+                            <table class="db-table" id="cfg-users-table">
+                                <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Unidade</th><th>Status</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                            <button type="button" id="cfg-users-manage" class="btn">Gerenciar usuários</button>
+                        </div>
                         <form id="config-form" class="config-form-extended">
                             <div class="config-grid">
                                 

@@ -422,7 +422,45 @@ function activateTab(tab) {
     if (tab === 'banco') { loadDatabaseTable(); loadIntentLearning(); return; }
     if (tab === 'templates') return loadTemplates();
     if (tab === 'usuarios') return loadUsers();
+    if (tab === 'config') return loadConfigUsersCard();
 }
+
+// Cartão "Usuários do CRM" na aba Configurações: resumo (total, admins,
+// atendentes por unidade) + lista só-leitura. A gestão (criar, resetar senha,
+// excluir) continua na aba Usuários — o botão leva pra lá. Mesmo endpoint e
+// mesma trava de admin (requireAdmin no backend).
+async function loadConfigUsersCard() {
+    const resumo = document.getElementById('cfg-users-summary');
+    const tb = document.querySelector('#cfg-users-table tbody');
+    if (!resumo || !tb) return;
+    try {
+        const r = await fetch(BACKEND_URL + '/api/admin/users', { headers: authHeader() });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const users = (await r.json()).users || [];
+        const ativos = users.filter(u => u.active);
+        const admins = ativos.filter(u => u.role === 'admin').length;
+        const atendentes = ativos.length - admins;
+        const inativos = users.length - ativos.length;
+        resumo.textContent =
+            `${ativos.length} usuário${ativos.length === 1 ? '' : 's'} ativo${ativos.length === 1 ? '' : 's'}: ` +
+            `${admins} admin${admins === 1 ? '' : 's'} e ${atendentes} atendente${atendentes === 1 ? '' : 's'}` +
+            (inativos ? ` · ${inativos} inativo${inativos === 1 ? '' : 's'}` : '');
+        tb.innerHTML = users.map(u => `
+            <tr${u.active ? '' : ' class="cfg-user-inativo"'}>
+              <td>${escapeHtml(u.name)}</td>
+              <td>${escapeHtml(u.login)}</td>
+              <td>${u.role === 'admin' ? 'Admin' : 'Atendente'}</td>
+              <td>${escapeHtml(u.unit || 'Todas')}</td>
+              <td>${u.active ? 'ativo' : 'inativo'}${u.must_change_password && u.active ? ' · falta trocar a senha' : ''}</td>
+            </tr>`).join('');
+    } catch (e) {
+        resumo.textContent = 'Não consegui carregar os usuários. Recarregue a página.';
+        tb.innerHTML = '';
+    }
+}
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'cfg-users-manage') activateTab('usuarios');
+});
 
 // ── Modelos de mensagem (templates) ───────────────────────────────────────────
 // Só admin chega aqui: a aba some pelo applyRoleUI, activateTab redireciona e o
@@ -763,9 +801,10 @@ async function dispararCampanha() {
 
 async function loadUsers() {
     const r = await fetch(BACKEND_URL + '/api/admin/users', { headers: authHeader() });
-    if (!r.ok) return;
-    const { users } = await r.json();
     const tb = document.querySelector('#users-table tbody');
+    // Antes voltava calado e a tabela ficava vazia, parecendo "sem usuários".
+    if (!r.ok) { tb.innerHTML = '<tr><td colspan="6">Não consegui carregar os usuários (erro ' + r.status + '). Recarregue a página.</td></tr>'; return; }
+    const { users } = await r.json();
     tb.innerHTML = (users || []).map(u => `
         <tr data-id="${u.id}">
           <td>${escapeHtml(u.name)}</td>

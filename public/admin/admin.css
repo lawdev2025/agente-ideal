@@ -2675,3 +2675,8 @@ html.dark .utag-cn { color: #E0A23C; }
 .tpl-analise { font-size: 12px; color: var(--badge-warn-text); margin: 0 0 4px; }
 
 @media (max-width: 900px) { .tpl-novo-form { grid-template-columns: 1fr; } }
+
+/* Cartão "Usuários do CRM" (aba Configurações) */
+.config-users-card { margin-bottom: 20px; }
+.config-users-card .db-table { margin: 10px 0 14px; width: 100%; }
+.config-users-card .cfg-user-inativo td { opacity: .5; }

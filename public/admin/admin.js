@@ -966,7 +966,8 @@ async function initConnection() {
                 const cfg = await res.json();
                 if (cfg.SUPABASE_URL && !url) url = cfg.SUPABASE_URL;
                 if (cfg.SUPABASE_ANON_KEY && !key) key = cfg.SUPABASE_ANON_KEY;
-                if (cfg.ADMIN_TOKEN) adminToken = cfg.ADMIN_TOKEN;
+                // NÃO troca o token do usuário logado por um vindo daqui: era
+                // assim que uma atendente virava admin no painel.
 
                 // Popula os campos do formulário na aba de configurações
                 if (cfg.SUPABASE_URL) document.getElementById('input-supabase-url').value = cfg.SUPABASE_URL;
@@ -979,7 +980,6 @@ async function initConnection() {
                 if (cfg.WHATSAPP_PHONE_NUMBER_ID) document.getElementById('input-whatsapp-phone-id').value = cfg.WHATSAPP_PHONE_NUMBER_ID;
                 if (cfg.WHATSAPP_ACCESS_TOKEN) document.getElementById('input-whatsapp-token').value = cfg.WHATSAPP_ACCESS_TOKEN;
                 if (cfg.WHATSAPP_VERIFY_TOKEN) document.getElementById('input-whatsapp-verify-token').value = cfg.WHATSAPP_VERIFY_TOKEN;
-                if (cfg.ADMIN_TOKEN) document.getElementById('input-admin-token').value = cfg.ADMIN_TOKEN;
                 break;
             }
         } catch (e) { /* silent fail se o servidor local estiver offline */ }

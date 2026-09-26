@@ -17,6 +17,7 @@ import {
 import {
   isSeletivaAtrasadoQuestion,
   isSeletivaProvaDiaQuestion,
+  isSeletivaProvaDiaSemNome,
   isSeletivaResultadoQuestion,
   SELETIVA_PROVA_DIA_REPLY,
   SELETIVA_PROVA_FIM_MS,
@@ -1737,7 +1738,13 @@ export function detectSeletivaEncerradaTopic(
     return "agendamento";
   }
 
-  if (resultado && history.slice(-6).some((m) => mentionsSeletiva(m.content))) return "resultado";
+  // Contexto: a Seletiva apareceu nos últimos turnos — a mensagem da campanha
+  // ("A Seletiva Ideal 2027 é amanhã!") fica gravada como fala do bot. Dia de
+  // prova (26/09): pais perguntam "o que é preciso levar?" sem dizer
+  // "seletiva", e sem isto caía no LLM, que mandava ligar pra secretaria.
+  const seletivaNoContexto = history.slice(-12).some((m) => mentionsSeletiva(m.content));
+  if (resultado && seletivaNoContexto) return "resultado";
+  if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaSemNome(userMessage, seletivaNoContexto)) return "prova";
 
   if (
     detectPendingUnitAsk(history) === "seletiva" &&

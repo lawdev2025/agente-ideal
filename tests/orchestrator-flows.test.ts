@@ -1634,11 +1634,52 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     const sent = sentOf(m);
     expect(sent).toMatch(/13h\*? e fecham às \*?13h55/);
     expect(sent).toMatch(/documento de identifica[çc][ãa]o/);
-    expect(sent).not.toMatch(/comprovante/i);
+    expect(sent).toMatch(/N[ãa]o precisa de ficha, cart[ãa]o nem comprovante/);
     expect(sent).toMatch(/caneta/i);
     expect(sent).toMatch(/03\/10/);
     expect(sent).not.toMatch(/equipe/i);
     expect(m.stateRepo.markSeletivaAgendada).not.toHaveBeenCalled();
+  });
+
+  // Casos reais de 26/09 (prints): o pai não escreve "seletiva", mas a conversa
+  // tem a mensagem da campanha. Antes caíam no LLM, que mandava ligar pra secretaria.
+  const CAMPANHA =
+    "A Seletiva Ideal 2027 é *amanhã*!! Seguem algumas informações para você que já está inscrito: " +
+    "*26 de Setembro* - Prova para todos seguimentos (abertura dos portões 13hrs)";
+  it.each([
+    "Meu filho está inscrito pra realizar a prova. Como faço pra saber a sala dele?",
+    "O que é preciso levar ?",
+    "Não consegui ter acesso ao cartão de inscrição",
+    "é até que horas a prova?",
+    "até qual horário?",
+    "como faço para ter acesso a minha ficha de inscrição?",
+    "quais coisas serão necessárias levar para a realização da prova?",
+  ])("dia da prova, sem citar a Seletiva: '%s' → orientações", async (msg) => {
+    vi.setSystemTime(new Date("2026-09-26T12:30:00Z"));
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: CAMPANHA },
+        { role: "user", content: "Bom dia" },
+        { role: "assistant", content: "Bom dia! 😊 Tudo bem? Como posso ajudar?" },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", msg, "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/13h55/);
+    expect(sent).toMatch(/N[ãa]o precisa de ficha, cart[ãa]o nem comprovante/);
+    expect(sent).toMatch(/Sala/);
+    expect(sent).not.toMatch(/3346-0011|3323-5000/);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.stateRepo.markSeletivaAgendada).not.toHaveBeenCalled();
+  });
+
+  it("'meu filho está inscrito pra prova' sem campanha no histórico também cai nas orientações", () => {
+    const t = Date.parse("2026-09-26T12:30:00Z");
+    expect(detectSeletivaEncerradaTopic("Meu filho está inscrito pra realizar a prova, qual a sala?", [], t)).toBe("prova");
+    // Sem contexto de Seletiva, dúvida genérica não é sequestrada.
+    expect(detectSeletivaEncerradaTopic("qual o horário das aulas?", [], t)).toBeNull();
+    expect(detectSeletivaEncerradaTopic("o que preciso levar pra matrícula?", [], t)).toBeNull();
   });
 
   it("depois do fim da prova (26/09 18h de Belém) a logística volta pro 'encerrada'", () => {

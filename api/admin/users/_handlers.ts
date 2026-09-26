@@ -9,6 +9,71 @@ import { hashPassword } from "../../../src/auth/password";
 import { logger } from "../../../src/logger";
 
 const SAFE = "id, name, login, email, role, unit, must_change_password, active, created_at, updated_at";
+const USO = ", last_login_at, last_seen_at";
+
+// Registro de uso por atendente, a partir das mensagens que ELA mandou pelo
+// CRM (messages.agent_name = nome do usuário, gravado no POST de resposta).
+// "Atendimento" = conversa distinta em que ela respondeu no período.
+type Uso = {
+  ultima_msg_at: number | null;
+  hoje: { atendimentos: number; mensagens: number };
+  dias7: { atendimentos: number; mensagens: number };
+  dias30: { atendimentos: number; mensagens: number };
+};
+const USO_VAZIO: Uso = {
+  ultima_msg_at: null,
+  hoje: { atendimentos: 0, mensagens: 0 },
+  dias7: { atendimentos: 0, mensagens: 0 },
+  dias30: { atendimentos: 0, mensagens: 0 },
+};
+
+// Início do dia em Belém (UTC-3, sem horário de verão).
+function inicioDoDiaBelem(now: number): number {
+  const TZ = 3 * 3600 * 1000;
+  return Math.floor((now - TZ) / 86400000) * 86400000 + TZ;
+}
+
+async function usoPorAtendente(sb: ReturnType<typeof getSupabase>): Promise<Map<string, Uso>> {
+  const now = Date.now();
+  const desde30 = now - 30 * 86400000;
+  const desde7 = now - 7 * 86400000;
+  const hoje = inicioDoDiaBelem(now);
+  const rows: { agent_name: string; wa_id: string; created_at: number }[] = [];
+  // Paginado: o PostgREST corta em 1000 linhas por resposta.
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb
+      .from("messages")
+      .select("agent_name, wa_id, created_at")
+      .not("agent_name", "is", null)
+      .gte("created_at", desde30)
+      .order("id", { ascending: true })
+      .range(from, from + 999);
+    if (error || !data || !data.length) break;
+    rows.push(...(data as any[]));
+    if (data.length < 1000) break;
+  }
+  const acc = new Map<string, { ultima: number; c: Record<"hoje" | "dias7" | "dias30", { conv: Set<string>; msgs: number }> }>();
+  for (const r of rows) {
+    let a = acc.get(r.agent_name);
+    if (!a) {
+      const novo = () => ({ conv: new Set<string>(), msgs: 0 });
+      a = { ultima: 0, c: { hoje: novo(), dias7: novo(), dias30: novo() } };
+      acc.set(r.agent_name, a);
+    }
+    const t = Number(r.created_at);
+    if (t > a.ultima) a.ultima = t;
+    const faixas: ("hoje" | "dias7" | "dias30")[] = ["dias30"];
+    if (t >= desde7) faixas.push("dias7");
+    if (t >= hoje) faixas.push("hoje");
+    for (const f of faixas) { a.c[f].msgs++; a.c[f].conv.add(r.wa_id); }
+  }
+  const out = new Map<string, Uso>();
+  for (const [nome, a] of acc) {
+    const fx = (f: "hoje" | "dias7" | "dias30") => ({ atendimentos: a.c[f].conv.size, mensagens: a.c[f].msgs });
+    out.set(nome, { ultima_msg_at: a.ultima || null, hoje: fx("hoje"), dias7: fx("dias7"), dias30: fx("dias30") });
+  }
+  return out;
+}
 
 // /api/admin/users — GET lista, POST cria
 export async function collection(req: VercelRequest, res: VercelResponse) {
@@ -18,8 +83,17 @@ export async function collection(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     try {
-      const { data } = await sb.from("app_users").select(SAFE).order("created_at", { ascending: true });
-      res.status(200).json({ users: data || [] });
+      // Colunas de uso (supabase-app-users-uso.sql). Sem elas o select dá
+      // 42703 e caímos no SAFE — a lista aparece, só sem último acesso.
+      const comUso = await sb.from("app_users").select(SAFE + USO).order("created_at", { ascending: true });
+      const res1 = comUso.error
+        ? await sb.from("app_users").select(SAFE).order("created_at", { ascending: true })
+        : comUso;
+      const users = (res1.data || []) as any[];
+      const uso = await usoPorAtendente(sb);
+      res.status(200).json({
+        users: users.map((u) => ({ ...u, uso: uso.get(u.name) || USO_VAZIO })),
+      });
     } catch (error) { logger.error({ error }, "GET users"); res.status(500).json({ error: "Internal error" }); }
     return;
   }

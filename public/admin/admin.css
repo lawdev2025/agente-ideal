@@ -2680,3 +2680,10 @@ html.dark .utag-cn { color: #E0A23C; }
 .config-users-card { margin-bottom: 20px; }
 .config-users-card .db-table { margin: 10px 0 14px; width: 100%; }
 .config-users-card .cfg-user-inativo td { opacity: .5; }
+
+/* Registro de uso (aba Usuários) */
+.uso-on { color: #16A34A; font-weight: 700; white-space: nowrap; }
+.uso-off { opacity: .55; }
+.uso-num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.uso-num small { opacity: .6; }
+.uso-legenda { margin: 6px 0 4px; }

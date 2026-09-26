@@ -526,8 +526,9 @@
                     <button id="btn-new-user" class="btn">+ Novo usuário</button>
                     <button id="btn-my-password" class="btn">Trocar minha senha</button>
                   </div>
+                  <p class="card-desc uso-legenda">Atendimentos = conversas em que a pessoa respondeu pelo CRM · o número menor é o total de mensagens enviadas.</p>
                   <table class="db-table" id="users-table">
-                    <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Unidade</th><th>Status</th><th></th></tr></thead>
+                    <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Unidade</th><th>Status</th><th>Último acesso</th><th>Última resposta</th><th title="conversas respondidas · mensagens enviadas">Hoje</th><th title="conversas respondidas · mensagens enviadas">7 dias</th><th title="conversas respondidas · mensagens enviadas">30 dias</th><th></th></tr></thead>
                     <tbody></tbody>
                   </table>
                 </section>
@@ -540,7 +541,7 @@
                             <h3><i class="fa-solid fa-users"></i> Usuários do CRM</h3>
                             <p class="card-desc" id="cfg-users-summary">Carregando…</p>
                             <table class="db-table" id="cfg-users-table">
-                                <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Unidade</th><th>Status</th></tr></thead>
+                                <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Unidade</th><th>Status</th><th>Último acesso</th></tr></thead>
                                 <tbody></tbody>
                             </table>
                             <button type="button" id="cfg-users-manage" class="btn">Gerenciar usuários</button>

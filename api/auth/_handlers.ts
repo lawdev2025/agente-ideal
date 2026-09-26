@@ -11,6 +11,26 @@ import { signToken } from "../../src/auth/token";
 import { logger } from "../../src/logger";
 
 // POST /api/auth/login
+// Registro de uso (aba Usuários do /admin): último login e última atividade.
+// O app chama /api/auth/me ao abrir e a cada 5 min com a tela visível, então
+// last_seen_at recente = atendente com o CRM aberto. Best-effort: sem as
+// colunas (supabase-app-users-uso.sql não rodado) só não grava — nunca derruba
+// o login.
+async function touchUser(sb: ReturnType<typeof getSupabase>, id: string, isLogin: boolean): Promise<void> {
+  const now = Date.now();
+  try {
+    const { error } = await sb
+      .from("app_users")
+      .update(isLogin ? { last_login_at: now, last_seen_at: now } : { last_seen_at: now })
+      .eq("id", id);
+    if (error && error.code !== "42703" && error.code !== "PGRST204") {
+      logger.warn({ error, id }, "Falha ao registrar acesso do usuário (não crítico)");
+    }
+  } catch (err) {
+    logger.warn({ err, id }, "Falha ao registrar acesso do usuário (não crítico)");
+  }
+}
+
 export async function login(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
   if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
@@ -34,6 +54,7 @@ export async function login(req: VercelRequest, res: VercelResponse) {
     }
 
     const u = user as any;
+    await touchUser(sb, u.id, true);
     const token = signToken({ uid: u.id, role: u.role, unit: u.unit, name: u.name });
     res.status(200).json({
       token,
@@ -64,6 +85,7 @@ export async function me(req: VercelRequest, res: VercelResponse) {
     const { data: user } = await sb.from("app_users").select("id, name, role, unit, must_change_password, active").eq("id", auth.uid).maybeSingle();
     if (!user || !(user as any).active) { res.status(403).json({ error: "Usuário inativo" }); return; }
     const u = user as any;
+    await touchUser(sb, u.id, false);
     res.status(200).json({ user: { id: u.id, name: u.name, role: u.role, unit: u.unit, must_change_password: u.must_change_password } });
   } catch (error) {
     logger.error({ error }, "Erro em GET /api/auth/me");

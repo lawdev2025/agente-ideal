@@ -161,6 +161,7 @@
     await loadContacts();
     subscribeRealtime();
     startSafetyNet();
+    startPresence();
     // ?chat= (abertura via notificacao push)
     const params = new URLSearchParams(location.search);
     const chat = pendingChat || params.get("chat");
@@ -1136,6 +1137,15 @@
       }
       if (added && nearBottom) scrollToBottom();
     } catch (e) { /* silencioso */ }
+  }
+
+  // Presença (aba Usuários do /admin → "online agora" / último acesso): o
+  // /api/auth/me grava last_seen_at. Chamado a cada 5 min com a tela visível
+  // e ao voltar pra aba. Best-effort, resposta ignorada.
+  function startPresence() {
+    const ping = () => { if (!document.hidden) authedFetch("/api/auth/me").catch(() => {}); };
+    setInterval(ping, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", ping);
   }
 
   function startSafetyNet() {

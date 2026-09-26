@@ -16,6 +16,10 @@
     {
       "source": "/webhook",
       "destination": "/api/webhook"
+    },
+    {
+      "source": "/api/admin/users",
+      "destination": "/api/admin/users/list"
     }
   ],
   "redirects": [

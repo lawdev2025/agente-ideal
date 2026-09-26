@@ -221,7 +221,15 @@ const TABLE_SCHEMAS = {
 
 // startPanel: inicializa o painel após autenticação bem-sucedida.
 // Extraído do DOMContentLoaded original para suportar o fluxo de login real (bootAuth).
+// Presença do usuário logado no painel (mesma lógica do /app: startPresence).
+function startPresence() {
+    const ping = () => { if (!document.hidden) fetch(BACKEND_URL + '/api/auth/me', { headers: authHeader() }).catch(() => {}); };
+    setInterval(ping, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', ping);
+}
+
 async function startPanel() {
+    startPresence();
     initTabs();
     initTheme();
 
@@ -452,6 +460,7 @@ async function loadConfigUsersCard() {
               <td>${u.role === 'admin' ? 'Admin' : 'Atendente'}</td>
               <td>${escapeHtml(u.unit || 'Todas')}</td>
               <td>${u.active ? 'ativo' : 'inativo'}${u.must_change_password && u.active ? ' · falta trocar a senha' : ''}</td>
+              <td>${presencaHtml(u)}</td>
             </tr>`).join('');
     } catch (e) {
         resumo.textContent = 'Não consegui carregar os usuários. Recarregue a página.';
@@ -799,24 +808,51 @@ async function dispararCampanha() {
 
 // ── Usuários: CRUD ────────────────────────────────────────────────────────────
 
+// "Online agora" se o app/painel dela bateu presença nos últimos 10 min (o
+// batimento é de 5 em 5). Sem a coluna (SQL não rodado) → "sem registro".
+const ONLINE_MS = 10 * 60 * 1000;
+function presencaHtml(u) {
+    if (!u.last_seen_at) return '<span class="uso-off">sem registro</span>';
+    if (Date.now() - Number(u.last_seen_at) < ONLINE_MS) return '<span class="uso-on">● online agora</span>';
+    return fmtQuando(u.last_seen_at);
+}
+function fmtQuando(ts) {
+    const d = new Date(Number(ts));
+    const hoje = new Date();
+    const ontem = new Date(Date.now() - 86400000);
+    const hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === hoje.toDateString()) return 'hoje ' + hm;
+    if (d.toDateString() === ontem.toDateString()) return 'ontem ' + hm;
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+}
+
 async function loadUsers() {
     const r = await fetch(BACKEND_URL + '/api/admin/users', { headers: authHeader() });
     const tb = document.querySelector('#users-table tbody');
     // Antes voltava calado e a tabela ficava vazia, parecendo "sem usuários".
-    if (!r.ok) { tb.innerHTML = '<tr><td colspan="6">Não consegui carregar os usuários (erro ' + r.status + '). Recarregue a página.</td></tr>'; return; }
+    if (!r.ok) { tb.innerHTML = '<tr><td colspan="11">Não consegui carregar os usuários (erro ' + r.status + '). Recarregue a página.</td></tr>'; return; }
     const { users } = await r.json();
-    tb.innerHTML = (users || []).map(u => `
+    tb.innerHTML = (users || []).map(u => {
+        const uso = u.uso || {};
+        const h = uso.hoje || {}, d7 = uso.dias7 || {}, d30 = uso.dias30 || {};
+        return `
         <tr data-id="${u.id}">
           <td>${escapeHtml(u.name)}</td>
           <td>${escapeHtml(u.login)}</td>
-          <td>${escapeHtml(u.role)}</td>
-          <td>${escapeHtml(u.unit || '-')}</td>
+          <td>${u.role === 'admin' ? 'Admin' : 'Atendente'}</td>
+          <td>${escapeHtml(u.unit || 'Todas')}</td>
           <td>${u.active ? 'ativo' : 'inativo'}</td>
+          <td>${presencaHtml(u)}</td>
+          <td>${uso.ultima_msg_at ? fmtQuando(uso.ultima_msg_at) : '—'}</td>
+          <td class="uso-num" title="conversas respondidas · mensagens enviadas">${h.atendimentos || 0} <small>· ${h.mensagens || 0}</small></td>
+          <td class="uso-num" title="conversas respondidas · mensagens enviadas">${d7.atendimentos || 0} <small>· ${d7.mensagens || 0}</small></td>
+          <td class="uso-num" title="conversas respondidas · mensagens enviadas">${d30.atendimentos || 0} <small>· ${d30.mensagens || 0}</small></td>
           <td>
             <button class="btn btn-sm js-reset">Resetar senha</button>
             <button class="btn btn-sm js-del">Excluir</button>
           </td>
-        </tr>`).join('');
+        </tr>`;
+    }).join('');
 }
 
 // Delegação de clique para CRUD de usuários e "Trocar minha senha"

@@ -258,7 +258,7 @@
     // Posição LOCAL do lote (0,1,2…), não a global: as linhas reveladas pela
     // rolagem aparecem juntas, então a cascata do medidor tem que recomeçar
     // nelas. Com o índice global, tudo acima de 12 cairia no mesmo instante.
-    lastItems.slice(from, visibleCount).forEach((c, i) => frag.appendChild(contactRow(c, i)));
+    lastItems.slice(from, visibleCount).forEach((c, i) => frag.appendChild(rowFor(c, i)));
     $("contacts-list").appendChild(frag);
   }
 
@@ -271,7 +271,6 @@
   function renderContacts() {
     const q = ($("search-input").value || "").toLowerCase().trim();
     const list = $("contacts-list");
-    list.innerHTML = "";
     const noHistorico =
       buscaServidor.termo === q && buscaServidor.waIds ? buscaServidor.waIds : null;
     const items = sortedContacts().filter((c) => {
@@ -300,8 +299,55 @@
     if (visibleCount > VISIBLE_STEP && visibleCount > items.length) resetContactWindow();
     // O índice vai pro contactRow porque o medidor de temperatura escalona a
     // cascata por posição na lista.
-    items.slice(0, visibleCount).forEach((c, i) => list.appendChild(contactRow(c, i)));
+    reconcileRows(list, items.slice(0, visibleCount).map((c, i) => rowFor(c, i)));
     updateListHeader();
+  }
+
+  // RAIZ DO "PISCAR" (26/09): renderContacts apagava a lista inteira
+  // (innerHTML = "") a cada evento do Realtime — e uma mensagem gera vários (a
+  // mensagem + 3-4 updates do contato). Toda linha nascia de novo e as
+  // animações (medidor de temperatura, headset) recomeçavam juntas. Agora cada
+  // linha é reaproveitada enquanto o que ela mostra não muda, e só a conversa
+  // que mexeu é redesenhada/movida.
+  const rowCache = new Map(); // wa_id -> { el, sig }
+
+  function rowSig(c) {
+    return [
+      displayName(c), c.bot_paused ? 1 : 0, unread[c.wa_id] || 0,
+      c.last_message_role, c.last_message, fmtTime(c.last_message_at || c.last_seen_at),
+      c.temperature, c.tag, c.seletiva_status, c.unit_tag,
+    ].join("");
+  }
+
+  function rowFor(c, pos) {
+    const sig = rowSig(c);
+    const hit = rowCache.get(c.wa_id);
+    if (hit && hit.sig === sig) return hit.el;
+    const el = contactRow(c, pos);
+    rowCache.set(c.wa_id, { el, sig });
+    return el;
+  }
+
+  // Deixa os filhos de `list` exatamente = `rows`, mexendo só no que mudou de
+  // lugar. Nó que já está na posição certa não sai do DOM (tirar e repor
+  // reinicia a animação CSS dele). Linhas velhas vão sendo empurradas pro fim
+  // e saem no final.
+  function reconcileRows(list, rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const cur = list.children[i];
+      if (cur !== rows[i]) list.insertBefore(rows[i], cur || null);
+    }
+    while (list.children.length > rows.length) list.lastElementChild.remove();
+  }
+
+  // Junta a rajada de eventos de UMA mensagem num único render.
+  let renderTimer = null;
+  function scheduleRenderContacts() {
+    if (renderTimer) return;
+    renderTimer = setTimeout(() => {
+      renderTimer = null;
+      renderContacts();
+    }, 60);
   }
 
   // Há filtro de fila ligado que o botão "Limpar" consiga desligar? A unidade
@@ -530,6 +576,7 @@
       // O card reaparece num refresh — é cosmético até existir um flag no servidor.
       wrap.classList.add("removing");
       unread[waId] = 0;
+      rowCache.delete(waId); // num refresh volta como linha nova, sem "removing"
       setTimeout(() => wrap.remove(), 400);
     });
   }
@@ -990,9 +1037,15 @@
       // POST ja pausa o bot no servidor. Reflete local e recarrega (dedupe por id).
       const c = byId[currentChat] || { wa_id: currentChat };
       c.bot_paused = true;
+      // A lista geral mostra a mensagem enviada já — sem esperar o Realtime
+      // (se ele tivesse caído, a prévia e a ordem ficavam velhas até o F5).
+      c.last_message = text;
+      c.last_message_role = "assistant";
+      c.last_message_at = Date.now();
       byId[currentChat] = c;
       updateChatHeader(c);
       updateBotControls(c);
+      scheduleRenderContacts();
       await loadMessages(currentChat);
     } catch (e) {
       toast("Sem conexão. Mensagem não enviada.");
@@ -1095,10 +1148,56 @@
     safetyTimer = setInterval(() => {
       if (!document.hidden) refreshOpenChat();
     }, 10000);
+    // A lista também precisa de rede: o Realtime às vezes cai CALADO (status
+    // continua SUBSCRIBED e nada chega) e aí contato novo só aparecia no F5.
+    // A cada 5s, com a aba visível, pergunta só "tem mensagem com id maior que
+    // o último que eu vi?" — 1 linha, barato — e passa as novas pelo mesmo
+    // onNewMessage do Realtime (dedup por id, então nada entra duas vezes).
+    setInterval(() => { if (!document.hidden) pollNewMessages(); }, 5000);
   }
+
+  let polling = false;
+  async function pollNewMessages() {
+    if (!sb || polling) return;
+    polling = true;
+    try {
+      if (!lastMsgId) {
+        const { data } = await sb.from("messages").select("id").order("id", { ascending: false }).limit(1);
+        lastMsgId = (data && data[0] && data[0].id) || 0;
+        return;
+      }
+      const { data, error } = await sb
+        .from("messages")
+        .select("*")
+        .gt("id", lastMsgId)
+        .order("id", { ascending: true })
+        .limit(100);
+      if (error || !data || !data.length) return;
+      const novos = new Set();
+      for (const m of data) {
+        if (!byId[m.wa_id]) novos.add(m.wa_id);
+        onNewMessage(m);
+      }
+      // Contato que nunca apareceu: busca a linha dele (nome, tags, unidade).
+      if (novos.size) {
+        const { data: rows } = await sb.from("contacts").select("*").in("wa_id", [...novos]);
+        (rows || []).forEach(onContactChange);
+      }
+    } catch (_) { /* silencioso: próxima volta tenta de novo */ }
+    finally { polling = false; }
+  }
+
+  // Mensagem já processada (Realtime e polling de segurança entregam a mesma).
+  const seenMsgIds = new Set();
+  let lastMsgId = 0; // maior id visto — base do polling de segurança
 
   function onNewMessage(m) {
     if (!m || !m.wa_id) return;
+    if (m.id != null) {
+      if (seenMsgIds.has(m.id)) return;
+      seenMsgIds.add(m.id);
+      if (m.id > lastMsgId) lastMsgId = m.id;
+    }
     const c = byId[m.wa_id] || { wa_id: m.wa_id };
     // atualiza preview/ordenacao da lista
     if (m.role !== "tool" && m.role !== "system") {
@@ -1116,7 +1215,7 @@
     } else if (m.role === "user") {
       unread[m.wa_id] = (unread[m.wa_id] || 0) + 1;
     }
-    renderContacts();
+    scheduleRenderContacts();
   }
 
   function onContactChange(row) {
@@ -1129,7 +1228,7 @@
       updateChatHeader(merged);
       updateBotControls(merged);
     }
-    renderContacts();
+    scheduleRenderContacts();
   }
 
   // ---------------- WEB PUSH ----------------

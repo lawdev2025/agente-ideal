@@ -5,7 +5,7 @@ const lidas: string[] = [];
 vi.mock("../src/db/supabase-client", () => {
   const chain = (table: string) => {
     const q: any = {
-      select: () => q, order: () => q, not: () => q, gte: () => q, range: () => q, eq: () => q,
+      select: () => q, order: () => q, limit: () => q, not: () => q, gte: () => q, range: () => q, eq: () => q,
       then: (res: any) => { lidas.push(table); return Promise.resolve({ data: [], error: null }).then(res); },
     };
     return q;

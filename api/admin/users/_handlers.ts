@@ -91,6 +91,17 @@ export async function collection(req: VercelRequest, res: VercelResponse) {
         : comUso;
       const users = (res1.data || []) as any[];
       const uso = await usoPorAtendente(sb);
+      // "Última resposta" é de TODO o histórico, não só dos 30 dias: quem não
+      // responde há mais de um mês aparecia como "—" (nunca respondeu), e é
+      // justamente o caso que o admin precisa ver. 1 consulta por usuário.
+      await Promise.all(users.map(async (u) => {
+        const atual = uso.get(u.name);
+        if (atual && atual.ultima_msg_at) return;
+        const { data } = await sb.from("messages").select("created_at")
+          .eq("agent_name", u.name).order("id", { ascending: false }).limit(1);
+        const t = data && data[0] ? Number((data[0] as any).created_at) : null;
+        if (t) uso.set(u.name, { ...(atual || USO_VAZIO), ultima_msg_at: t });
+      }));
       res.status(200).json({
         users: users.map((u) => ({ ...u, uso: uso.get(u.name) || USO_VAZIO })),
       });

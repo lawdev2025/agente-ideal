@@ -2687,3 +2687,4 @@ html.dark .utag-cn { color: #E0A23C; }
 .uso-num { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .uso-num small { opacity: .6; }
 .uso-legenda { margin: 6px 0 4px; }
+.uso-velho { color: #DC2626; font-weight: 600; white-space: nowrap; }

@@ -823,7 +823,10 @@ function fmtQuando(ts) {
     const hm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     if (d.toDateString() === hoje.toDateString()) return 'hoje ' + hm;
     if (d.toDateString() === ontem.toDateString()) return 'ontem ' + hm;
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+    const dias = Math.floor((Date.now() - d.getTime()) / 86400000);
+    const data = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+    // Parado há muito tempo precisa saltar aos olhos, não parecer "recente".
+    return dias >= 7 ? `${data} <span class="uso-velho">· há ${dias} dias</span>` : data;
 }
 
 async function loadUsers() {

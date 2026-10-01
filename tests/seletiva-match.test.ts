@@ -5,6 +5,7 @@ import {
   pickPhoneColumns,
   isSeletivaInterestMessage,
   decideSeletivaUpdates,
+  decidePresenca,
   leadWaId,
 } from "../src/kb/seletiva-match";
 
@@ -155,5 +156,30 @@ describe("leadWaId", () => {
   it("casa de volta com phoneKey — o contato criado bate com a planilha", () => {
     const wa = leadWaId("9188887777")!;
     expect(phoneKey(wa)).toBe("9188887777");
+  });
+});
+
+describe("presença na prova (realizou)", () => {
+  const contacts = [
+    { wa_id: "559188887777", seletiva_status: "inscrito" }, // veio → realizou
+    { wa_id: "559199991111", seletiva_status: "inscrito" }, // NÃO veio → continua inscrito
+    { wa_id: "559177776666", seletiva_status: "agendada" }, // veio (número errado na inscrição) → realizou
+    { wa_id: "559166665555", seletiva_status: "realizou" }, // já marcado → nada
+    { wa_id: "559155554444", seletiva_status: null }, // veio sem status → realizou
+  ];
+  const presenca = new Set(["9188887777", "9177776666", "9166665555", "9155554444", "9100000000"]);
+  const r = decidePresenca(contacts, presenca);
+
+  it("marca realizou só quem está na lista de presença", () => {
+    expect(r.toRealizou.sort()).toEqual(["559155554444", "559177776666", "559188887777"]);
+    expect(r.toRealizou).not.toContain("559199991111");
+  });
+  it("conta presentes no CRM e quem veio sem contato", () => {
+    expect(r.presentesNoCrm).toBe(4);
+    expect(r.semContato).toEqual(["9100000000"]);
+  });
+  it("reler a planilha de INSCRIÇÃO não rebaixa quem realizou", () => {
+    const u = decideSeletivaUpdates([{ wa_id: "559166665555", seletiva_status: "realizou" }], new Set(["9166665555"]), new Set());
+    expect(u.toInscrito).toEqual([]);
   });
 });

@@ -176,7 +176,9 @@ async function main() {
     for (let i = 0; i < d.toInscrito.length; i += CHUNK) {
       const { error } = await sb.from("contacts")
         .update({ seletiva_status: "inscrito", seletiva_at: now })
-        .in("wa_id", d.toInscrito.slice(i, i + CHUNK));
+        .in("wa_id", d.toInscrito.slice(i, i + CHUNK))
+        // Trava no banco também: quem "realizou" (presença na prova) nunca volta pra inscrito.
+        .or("seletiva_status.is.null,seletiva_status.neq.realizou");
       if (error) throw error;
     }
     for (let i = 0; i < d.toPendente.length; i += CHUNK) {

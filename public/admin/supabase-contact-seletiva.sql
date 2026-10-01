@@ -7,6 +7,8 @@
 --   agendada → "Seletivas agendadas": falou de Seletiva DEPOIS do fim das
 --              inscrições (25/09/2026) e espera o agendamento do teste.
 --              Sobe de vazio/pendente; a planilha ainda promove a inscrito.
+--   realizou → "Seletivas realizaram": FEZ a prova (planilha de resultado,
+--              scripts/seletiva-presenca.ts). Topo da escada: nunca desce.
 --
 -- Mora fora de `tag` porque `tag` é sobrescrita a cada mensagem: quem falou
 -- de Seletiva e depois perguntou a mensalidade vira "matricula" e sumiria da

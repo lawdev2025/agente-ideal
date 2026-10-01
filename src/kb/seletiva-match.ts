@@ -15,7 +15,10 @@
  */
 import { classifyContactTag } from "./contact-tags";
 
-export type SeletivaStatus = "inscrito" | "pendente";
+// Escada (só sobe): vazio → pendente / agendada → inscrito → realizou.
+//   agendada → chegou depois do fim das inscrições (bot, 25/09/2026)
+//   realizou → fez a prova (planilha de presença, scripts/seletiva-presenca.ts)
+export type SeletivaStatus = "inscrito" | "pendente" | "agendada" | "realizou";
 
 // Colégio em Belém/Ananindeua: número digitado sem DDD é daqui.
 export const DEFAULT_DDD = "91";
@@ -148,7 +151,9 @@ export function decideSeletivaUpdates(
     if (key && planilhaKeys.has(key)) {
       matched.add(key);
       inscritosNoCrm++;
-      if (c.seletiva_status !== "inscrito") toInscrito.push(c.wa_id);
+      // "realizou" está ACIMA de inscrito: reler a planilha de inscrição não
+      // pode desfazer a presença na prova.
+      if (c.seletiva_status !== "inscrito" && c.seletiva_status !== "realizou") toInscrito.push(c.wa_id);
       continue;
     }
     if (!c.seletiva_status && interessados.has(c.wa_id)) toPendente.push(c.wa_id);
@@ -161,4 +166,26 @@ export function decideSeletivaUpdates(
   for (const k of planilhaKeys) if (!matched.has(k)) semContato.push(k);
 
   return { toInscrito, toPendente, inscritosNoCrm, semContato, planilhaSemWhatsApp: semContato.length };
+}
+
+/**
+ * Presença na prova (planilha de quem FEZ a Seletiva). Todo contato achado
+ * vira "realizou", seja qual for o status atual (inscrito, pendente, agendada
+ * ou vazio — a planilha de inscrição pode ter errado o número). Quem não está
+ * na lista fica como está: inscrito que não veio continua "inscrito".
+ */
+export function decidePresenca(contacts: SeletivaContact[], presencaKeys: Set<string>) {
+  const toRealizou: string[] = [];
+  const matched = new Set<string>();
+  let presentesNoCrm = 0;
+  for (const c of contacts) {
+    const key = phoneKey(c.wa_id);
+    if (!key || !presencaKeys.has(key)) continue;
+    matched.add(key);
+    presentesNoCrm++;
+    if (c.seletiva_status !== "realizou") toRealizou.push(c.wa_id);
+  }
+  const semContato: string[] = [];
+  for (const k of presencaKeys) if (!matched.has(k)) semContato.push(k);
+  return { toRealizou, presentesNoCrm, semContato };
 }

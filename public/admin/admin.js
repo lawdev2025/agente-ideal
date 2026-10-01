@@ -558,9 +558,10 @@ function renderTemplateCard(t) {
 // A chave casa com PUBLICOS no backend (api/admin/analytics/[tipo].ts): a tela
 // e o disparo precisam falar do MESMO público, senão a contagem mente.
 const TEMPLATE_AUDIENCIAS = [
+    ['seletiva-realizaram', 'Seletivas realizaram (fizeram a prova)', q => q.eq('seletiva_status', 'realizou')],
     ['seletiva-agendadas', 'Seletivas agendadas', q => q.eq('seletiva_status', 'agendada')],
     ['seletiva-pendentes', 'Seletiva · pendentes', q => q.eq('seletiva_status', 'pendente')],
-    ['seletiva-inscritos', 'Seletiva · inscritos', q => q.eq('seletiva_status', 'inscrito')],
+    ['seletiva-inscritos', 'Seletiva · inscritos que não fizeram a prova', q => q.eq('seletiva_status', 'inscrito')],
     ['seletiva-interessados', 'Seletiva · todos os interessados', q => q.not('seletiva_status', 'is', null)],
     ['tag-matricula', 'Tag Matrícula', q => q.eq('tag', 'matricula')],
     ['tag-rematricula', 'Tag Rematrícula', q => q.eq('tag', 'rematricula')],
@@ -1062,10 +1063,11 @@ async function loadDashboardStats() {
                 const selInscritos = sel.inscritos ?? 0;
                 const selPendentes = sel.pendentes ?? 0;
                 const selAgendadas = sel.agendadas ?? 0;
+                const selRealizaram = sel.realizaram ?? 0;
                 const selEl = document.getElementById('stat-seletiva');
-                if (selEl) selEl.textContent = selInscritos + selPendentes + selAgendadas;
+                if (selEl) selEl.textContent = selRealizaram + selInscritos + selPendentes + selAgendadas;
                 const selTrend = document.getElementById('stat-seletiva-trend');
-                if (selTrend) selTrend.innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${selInscritos} inscritos · ${selPendentes} pendentes · ${selAgendadas} agendadas`;
+                if (selTrend) selTrend.innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${selRealizaram} fizeram a prova · ${selInscritos} inscritos que faltaram · ${selPendentes} pendentes · ${selAgendadas} agendadas`;
                 document.getElementById('stat-telegram-errors').textContent = s.escalationMessages ?? 0;
                 const trendEl = document.getElementById('stat-telegram-trend');
                 if ((s.escalationMessages ?? 0) > 0) {
@@ -1709,7 +1711,7 @@ const contactFilters = { unidade: '', segmento: '', interesse: '', temperatura: 
 
 // Seletiva: "interessados" = inscrito OU pendente; os outros casam o status.
 function matchSeletiva(status, filtro) {
-    if (filtro === 'interessados') return status === 'inscrito' || status === 'pendente' || status === 'agendada';
+    if (filtro === 'interessados') return !!status;
     return status === filtro;
 }
 
@@ -1844,7 +1846,7 @@ function tempInfo(t) {
 
 // Rótulo do selo por seletiva_status. "agendada" = chegou depois do fim das
 // inscrições e espera o agendamento do teste (Seletiva encerrada em 25/09/2026).
-const SELETIVA_SELO = { inscrito: 'Seletiva · inscrito', pendente: 'Seletiva · pendente', agendada: 'Seletivas agendadas' };
+const SELETIVA_SELO = { realizou: 'Seletivas realizaram', inscrito: 'Seletiva · inscrito', pendente: 'Seletiva · pendente', agendada: 'Seletivas agendadas' };
 
 // Selos da lista: intenção + status da Seletiva (seletiva_status). Com status,
 // o selo combinado substitui o "Seletiva" solto da intenção, pra não repetir.

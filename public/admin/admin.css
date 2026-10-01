@@ -2688,3 +2688,5 @@ html.dark .utag-cn { color: #E0A23C; }
 .uso-num small { opacity: .6; }
 .uso-legenda { margin: 6px 0 4px; }
 .uso-velho { color: #DC2626; font-weight: 600; white-space: nowrap; }
+.itag-sel-realizou { background: rgba(37,99,235,.13); color: #1E40AF; }
+html.dark .itag-sel-realizou { color: #93C5FD; }

@@ -229,7 +229,7 @@
   ];
   // Seletiva: "interessados" = inscrito OU pendente; os outros casam o status.
   function matchSeletiva(status, filtro) {
-    if (filtro === "interessados") return status === "inscrito" || status === "pendente" || status === "agendada";
+    if (filtro === "interessados") return !!status;
     return status === filtro;
   }
   let lockedUnit = null; // unidade fixa da atendente (null = admin, escolhe)
@@ -467,7 +467,7 @@
 
   // Rótulo do selo por seletiva_status. "agendada" = chegou depois do fim das
   // inscrições e espera o agendamento do teste (Seletiva encerrada em 25/09/2026).
-  const SELETIVA_SELO = { inscrito: "Seletiva · inscrito", pendente: "Seletiva · pendente", agendada: "Seletivas agendadas" };
+  const SELETIVA_SELO = { realizou: "Seletivas realizaram", inscrito: "Seletiva · inscrito", pendente: "Seletiva · pendente", agendada: "Seletivas agendadas" };
 
   // Selos da fila: intenção + status da Seletiva (seletiva_status, carimbado
   // pela planilha ou pelo webhook). Com status, o selo combinado substitui o

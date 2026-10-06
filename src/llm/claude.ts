@@ -1,6 +1,6 @@
 ﻿import Anthropic from "@anthropic-ai/sdk";
 import { LLMProvider, GenerateOptions } from "./provider";
-import { SYSTEM_PROMPT } from "./prompts/system-prompt";
+import { buildSystemPrompt } from "./prompts/system-prompt";
 import { logger } from "../logger";
 
 /**
@@ -92,7 +92,7 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
     }
 
     try {
-      const systemText = options?.systemPromptOverride ?? SYSTEM_PROMPT;
+      const systemText = options?.systemPromptOverride ?? buildSystemPrompt();
 
       // Anthropic expects messages in user/assistant turns. The orchestrator
       // stores "tool" roles for tool results; we fold those into the previous

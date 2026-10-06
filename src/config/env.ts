@@ -45,7 +45,7 @@ const EnvSchema = z.object({
 
   // Seletiva Ideal 2027 ENCERRADA (inscrições fecharam em 25/09/2026). Ligado
   // (default), todo assunto de Seletiva vira uma resposta fixa: "já encerrou" +
-  // resultado em 03/10 ou aviso do futuro agendamento de teste. "false"
+  // resultado por e-mail ou teste agendado. "false"
   // religa os fluxos antigos de inscrição (próxima edição).
   SELETIVA_ENCERRADA: z.string().default('true').transform((v) => v.toLowerCase() !== 'false'),
 

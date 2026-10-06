@@ -21,14 +21,9 @@ import {
   isSeletivaResultadoQuestion,
   SELETIVA_PROVA_DIA_REPLY,
   SELETIVA_PROVA_FIM_MS,
-  SELETIVA_RESULTADO_DATA,
   SELETIVA_ENCERRADA_AGENDAMENTO_REPLY,
   SELETIVA_ENCERRADA_RESULTADO_REPLY,
-  SELETIVA_MATRICULA_PRAZO,
-  SELETIVA_MATRICULA_HORARIO,
-  SELETIVA_RESULTADO_EMAIL_SUPORTE,
-  SELETIVA_AGENDADA_DATAS,
-  SELETIVA_AGENDADA_URL,
+  seletivaInfoLLM,
   seletivaResultadoReply,
   seletivaNaoRecebidoReply,
   seletivaAgendamentoReply,
@@ -201,7 +196,7 @@ export class MessageOrchestrator {
           // RAIZ DE BUG (26/09, cliente recebeu o bloco 3x seguidas): resposta
           // fixa sai UMA vez por conversa. Se ela já foi mandada, a próxima
           // dúvida ("Ela tem identidade?") vai pro LLM, que tem os mesmos dados
-          // (DADOS_COLEGIO) e responde curto. Não cai nos fluxos antigos.
+          // (dadosColegio) e responde curto. Não cai nos fluxos antigos.
           if (conversationHistory.some((m) => m.role === "assistant" && m.content === reply)) {
             logger.info({ studentId, topico }, "Seletiva encerrada — resposta fixa já enviada, segue pro LLM");
             await this.runLLMFlow(conversationId, studentId, userMessage, conversationHistory);
@@ -2054,7 +2049,9 @@ export function isPriceOrMaterialQuestion(text: string): boolean {
 const IDENTIDADE_ATENDIMENTO =
   "Você é o atendimento oficial do Colégio Ideal (sem nome próprio — fale em nome do colégio, use 'nós'/'aqui no Colégio Ideal').";
 
-const DADOS_COLEGIO = [
+// Função, não constante: a parte da Seletiva muda com a data (seletivaInfoLLM)
+// e uma instância da Vercel pode viver de um dia pro outro.
+const dadosColegio = () => [
   "DADOS OFICIAIS (use VERBATIM — nunca invente outros):",
   `• Telefones fixos (NUNCA ofereça WhatsApp — o cliente já está no WhatsApp): Batista Campos ${UNIT_SECRETARIA_PHONE["Batista Campos"]} · Augusto Montenegro ${UNIT_SECRETARIA_PHONE["Augusto Montenegro"]} · Cidade Nova/Ananindeua ${UNIT_SECRETARIA_PHONE["Cidade Nova"]}.`,
   `• Secretaria atende ${SECRETARIA_HORARIO_CURTO}. SEMPRE diga o horário junto do telefone, na mesma frase — quem liga fora disso não é atendido e acha que o número está errado.`,
@@ -2066,8 +2063,7 @@ const DADOS_COLEGIO = [
   // secretaria (bug real em produção, print do cliente).
   ...(config.seletivaEncerrada
     ? [
-        `• SELETIVA IDEAL 2027: JÁ ENCERRADA (prova foi em 26/09). Não passe link de inscrição da Seletiva, taxa, edital nem datas antigas. Quem NÃO fez a Seletiva → pode fazer o TESTE AGENDADO nos dias ${SELETIVA_AGENDADA_DATAS}, sempre às 8h ou às 14h, inscrição em ${SELETIVA_AGENDADA_URL} (depois do último dia: encerrado; há outras condições de matrícula, apresentadas nas unidades).`,
-        `• RESULTADO DA SELETIVA: JÁ FOI ENVIADO POR E-MAIL (o e-mail usado na inscrição), com o percentual de desconto de cada aluno. Você NÃO sabe o percentual de ninguém — nunca diga nem estime um número; o % está no e-mail. Quem se matricular ATÉ ${SELETIVA_MATRICULA_PRAZO} leva o MESMO % de desconto da Seletiva, válido para a matrícula E a mensalidade, durante TODO o ano de 2027, em QUALQUER uma das 3 unidades (não precisa ser a da prova). Condição válida SOMENTE até ${SELETIVA_MATRICULA_PRAZO}; depois disso há outras condições de matrícula, apresentadas nas unidades. Matrícula presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO} (dê o endereço se perguntarem onde). Não achou o e-mail → olhar Spam/Lixo eletrônico e Promoções, buscar "Seletivas Ideal 2027"; se não achar, mandar e-mail para ${SELETIVA_RESULTADO_EMAIL_SUPORTE} com o nome completo do aluno e o e-mail correto. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro.`,
+        ...seletivaInfoLLM().split("\n"),
       ]
     : [
         `• Taxa da Seletiva: paga na loja online ${SELETIVA_TAXA_URL} (pondo o NOME DO ALUNO no pedido). O e-mail de confirmação só chega DEPOIS do pagamento. Do 2º ao 5º ano NÃO há taxa: não pagam nada, não recebem e-mail e é só comparecer no dia da prova.`,
@@ -2097,7 +2093,7 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
   const lines = [
     `${IDENTIDADE_ATENDIMENTO} Sua tarefa: responder ao cliente em UMA mensagem natural de WhatsApp (1-3 frases curtas), usando EXCLUSIVAMENTE o resultado da ferramenta no histórico (role=tool) e os dados oficiais abaixo. Não repita o resumo bruto da ferramenta — extraia só o ponto que o cliente perguntou. Se ele perguntou duas coisas (ex.: valor + telefone), responda as duas. Termine com no máximo uma pergunta curta de avanço.`,
     "",
-    DADOS_COLEGIO,
+    dadosColegio(),
     "",
     REGRAS_COMUNS,
   ];
@@ -2117,7 +2113,7 @@ function buildChatSystemPrompt(): string {
   return [
     `${IDENTIDADE_ATENDIMENTO} Nesta mensagem você está apenas conversando por WhatsApp — outras decisões já foram tratadas pelo sistema. Responda natural, 1-2 frases curtas. Se o cliente está confirmando algo ou agradecendo, responda curto e simpático. Não copie markdown bruto de resultado de ferramenta — reformule em português corrido.`,
     "",
-    DADOS_COLEGIO,
+    dadosColegio(),
     "",
     REGRAS_COMUNS,
   ].join("\n");

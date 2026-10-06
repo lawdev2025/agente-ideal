@@ -5,7 +5,7 @@
   Tool,
 } from "@google/generative-ai";
 import { LLMProvider, GenerateOptions } from "./provider";
-import { SYSTEM_PROMPT } from "./prompts/system-prompt";
+import { buildSystemPrompt } from "./prompts/system-prompt";
 import { logger } from "../logger";
 
 export class GeminiProvider implements LLMProvider {
@@ -93,7 +93,7 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
 
       const model = this.client.getGenerativeModel({
         model: this.model,
-        systemInstruction: options?.systemPromptOverride ?? SYSTEM_PROMPT,
+        systemInstruction: options?.systemPromptOverride ?? buildSystemPrompt(),
         tools: modelTools,
       });
 
@@ -136,7 +136,7 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
       logger.info(
         {
           flow: options?.flow ?? "default",
-          systemChars: (options?.systemPromptOverride ?? SYSTEM_PROMPT).length,
+          systemChars: (options?.systemPromptOverride ?? buildSystemPrompt()).length,
           toolCalls: toolCalls?.length || 0,
           messageLength: text.length,
           promptTokens: usage?.promptTokenCount ?? null,

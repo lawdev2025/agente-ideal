@@ -16,8 +16,6 @@
  * religa tudo na próxima edição.
  */
 
-export const SELETIVA_RESULTADO_DATA = "03/10";
-
 // ── RESULTADO (informativo de 05/10/2026) ───────────────────────────────────
 // O resultado foi enviado por e-mail (o da inscrição) com o percentual de
 // desconto de cada aluno. Quem se matricular até 09/10 leva o MESMO % na
@@ -32,15 +30,24 @@ export const SELETIVA_RESULTADO_EMAIL_SUPORTE = "sistemas@grupoideal.com.br";
 export const SELETIVA_MATRICULA_FIM_MS = Date.parse("2026-10-10T03:00:00Z");
 
 // ── TESTE AGENDADO (quem não fez a Seletiva) ────────────────────────────────
-// Dias 06/10 e 08/10, sempre às 8h e às 14h; inscrição pelo formulário. Cada
-// dia sai da resposta quando começa a última sessão dele (14h de Belém =
-// 17h UTC); depois do último, a resposta vira "encerrado, outras condições".
+// Sempre às 8h e às 14h; inscrição pelo formulário. Cada dia:
+//   aPartirMs → quando passa a ser divulgado (o dono só quer anunciar a
+//               próxima data DEPOIS que a anterior passar)
+//   ateMs     → quando sai da resposta: início da última sessão (14h de
+//               Belém = 17h UTC)
+// Depois do último, a resposta vira "encerrado" + o desconto da matrícula do momento.
 export const SELETIVA_AGENDADA_HORARIOS = "às *8h* ou às *14h*";
 export const SELETIVA_AGENDADA_DIAS = [
-  { data: "06/10", ateMs: Date.parse("2026-10-06T17:00:00Z") },
-  { data: "08/10", ateMs: Date.parse("2026-10-08T17:00:00Z") },
+  { data: "06/10", aPartirMs: 0, ateMs: Date.parse("2026-10-06T17:00:00Z") },
+  { data: "08/10", aPartirMs: 0, ateMs: Date.parse("2026-10-08T17:00:00Z") },
+  { data: "13/10", aPartirMs: Date.parse("2026-10-08T17:00:00Z"), ateMs: Date.parse("2026-10-13T17:00:00Z") },
+  { data: "20/10", aPartirMs: Date.parse("2026-10-13T17:00:00Z"), ateMs: Date.parse("2026-10-20T17:00:00Z") },
 ];
-export const SELETIVA_AGENDADA_DATAS = SELETIVA_AGENDADA_DIAS.map((d) => d.data).join(" e ");
+
+/** Datas do teste agendado que podem ser divulgadas agora. */
+export function seletivaAgendadaDatas(now: number = Date.now()): string[] {
+  return SELETIVA_AGENDADA_DIAS.filter((d) => now >= d.aPartirMs && now < d.ateMs).map((d) => d.data);
+}
 export const SELETIVA_AGENDADA_URL = "https://forms.cloud.microsoft/r/WKqZt6vcgJ";
 export const SELETIVA_AGENDADA_FIM_MS = SELETIVA_AGENDADA_DIAS[SELETIVA_AGENDADA_DIAS.length - 1].ateMs;
 
@@ -80,14 +87,36 @@ export const SELETIVA_ENCERRADA_RESULTADO_REPLY =
   `⚠️ Condição válida *somente até ${SELETIVA_MATRICULA_PRAZO}*.\n\n` +
   `🏫 Nossas unidades estão te esperando para a matrícula, *${SELETIVA_MATRICULA_HORARIO}*.`;
 
-// Depois de 09/10: a condição da Seletiva acabou, mas há outras.
-export const SELETIVA_RESULTADO_POS_PRAZO_REPLY =
-  `O prazo para matricular com o desconto da *Seletiva Ideal 2027* terminou em *${SELETIVA_MATRICULA_PRAZO}*. 🙏\n\n` +
-  "Mas ainda temos *outras condições de matrícula* para 2027! " +
-  `Visite uma das nossas unidades, *${SELETIVA_MATRICULA_HORARIO}*, que o nosso time te apresenta as opções. 😉`;
+// ── DEPOIS DE 09/10: desconto na matrícula que cai com o tempo ──────────────
+// Dono (05/10/2026): 20% na matrícula até 20/10, 10% até 30/10. Fim de cada
+// dia em Belém (UTC-3). Depois de 30/10 o bot não cita % nenhum.
+export const MATRICULA_DESCONTO_FAIXAS = [
+  { pct: 20, ate: "20/10", ateMs: Date.parse("2026-10-21T03:00:00Z") },
+  { pct: 10, ate: "30/10", ateMs: Date.parse("2026-10-31T03:00:00Z") },
+];
 
+/** Desconto na matrícula que vale AGORA, depois do prazo da Seletiva. */
+export function descontoMatriculaAtual(now: number = Date.now()) {
+  if (now < SELETIVA_MATRICULA_FIM_MS) return null;
+  return MATRICULA_DESCONTO_FAIXAS.find((f) => now < f.ateMs) ?? null;
+}
+
+// "Temos X% na matrícula até DD/MM" ou, sem faixa, "a unidade apresenta".
+function condicaoAtualTexto(now: number): string {
+  const d = descontoMatriculaAtual(now);
+  return d
+    ? `Mas ainda dá para garantir *${d.pct}% de desconto na matrícula* até *${d.ate}*! 🎓\n\n` +
+      `🏫 Nossas unidades estão te esperando, *${SELETIVA_MATRICULA_HORARIO}*. 😉`
+    : `Visite uma das nossas unidades, *${SELETIVA_MATRICULA_HORARIO}*, que o nosso time te apresenta as condições de matrícula para 2027. 😉`;
+}
+
+// Depois de 09/10: a condição da Seletiva acabou; vale a faixa do momento.
 export function seletivaResultadoReply(now: number = Date.now()): string {
-  return now < SELETIVA_MATRICULA_FIM_MS ? SELETIVA_ENCERRADA_RESULTADO_REPLY : SELETIVA_RESULTADO_POS_PRAZO_REPLY;
+  if (now < SELETIVA_MATRICULA_FIM_MS) return SELETIVA_ENCERRADA_RESULTADO_REPLY;
+  return (
+    `O prazo para matricular com o desconto da *Seletiva Ideal 2027* terminou em *${SELETIVA_MATRICULA_PRAZO}*. 🙏\n\n` +
+    condicaoAtualTexto(now)
+  );
 }
 
 const NAO_RECEBIDO_BASE =
@@ -156,7 +185,7 @@ export const SELETIVA_PROVA_DIA_REPLY =
   "• *Caneta esferográfica azul ou preta*\n\n" +
   "📵 Celular e eletrônicos ficam *desligados e guardados*, e *calculadora não é permitida*.\n" +
   "👨‍👩‍👧 Os responsáveis não ficam no local da prova.\n\n" +
-  `📋 O *resultado* sai no dia *${SELETIVA_RESULTADO_DATA}*. Boa prova! 🍀\n\n` +
+  "Boa prova! 🍀\n\n" +
   "_Não conseguiu se inscrever? Fique de olho: em breve vamos abrir o agendamento de um teste para quem não pôde participar._";
 
 function agendamentoReply(datas: string[]): string {
@@ -170,16 +199,36 @@ function agendamentoReply(datas: string[]): string {
   );
 }
 
-// Com todos os dias ainda pela frente (texto de referência dos testes).
-export const SELETIVA_ENCERRADA_AGENDAMENTO_REPLY = agendamentoReply(SELETIVA_AGENDADA_DIAS.map((d) => d.data));
+// Antes do primeiro teste (06/10 e 08/10) — texto de referência dos testes.
+export const SELETIVA_ENCERRADA_AGENDAMENTO_REPLY = agendamentoReply(seletivaAgendadaDatas(0));
 
-// Depois do teste agendado (08/10): sem prova pela frente, outras condições.
-export const SELETIVA_AGENDADA_ENCERRADA_REPLY =
-  "A *Seletiva Ideal 2027* e os testes agendados já foram encerrados. 🙏\n\n" +
-  "Mas ainda temos *outras condições de matrícula* para 2027! " +
-  `Visite uma das nossas unidades, *${SELETIVA_MATRICULA_HORARIO}*, que o nosso time te apresenta as opções. 😉`;
-
+// Depois do último teste agendado: sem prova pela frente, vale a faixa do momento.
 export function seletivaAgendamentoReply(now: number = Date.now()): string {
-  const restantes = SELETIVA_AGENDADA_DIAS.filter((d) => now < d.ateMs).map((d) => d.data);
-  return restantes.length ? agendamentoReply(restantes) : SELETIVA_AGENDADA_ENCERRADA_REPLY;
+  const datas = seletivaAgendadaDatas(now);
+  if (datas.length) return agendamentoReply(datas);
+  return "A *Seletiva Ideal 2027* e os testes agendados já foram encerrados. 🙏\n\n" + condicaoAtualTexto(now);
+}
+
+/**
+ * O que o LLM sabe da Seletiva AGORA — mesma fonte das respostas fixas, pra
+ * nunca divergir. Recalculado a cada mensagem: as datas viram sozinhas.
+ * Usado pelo prompt principal (llm/prompts/system-prompt.ts) e pelos prompts
+ * curtos do orquestrador (DADOS_COLEGIO).
+ */
+export function seletivaInfoLLM(now: number = Date.now()): string {
+  const datas = seletivaAgendadaDatas(now);
+  const agendado = datas.length
+    ? `Quem NÃO fez a Seletiva → pode fazer o TESTE AGENDADO ${datas.length > 1 ? `nos dias ${datas.join(" ou ")}` : `no dia ${datas[0]}`}, sempre às 8h ou às 14h, inscrição em ${SELETIVA_AGENDADA_URL}. NÃO cite nenhuma outra data de teste.`
+    : "Quem NÃO fez a Seletiva → os testes agendados já foram encerrados. NÃO cite datas de teste.";
+  const faixa = descontoMatriculaAtual(now);
+  const condicaoAtual = faixa
+    ? `Condição que vale HOJE: ${faixa.pct}% de desconto na MATRÍCULA até ${faixa.ate} (não cite outro percentual nem outra data).`
+    : "Não há desconto divulgado agora: as condições de matrícula são apresentadas nas unidades (não cite percentual).";
+  const resultado = now < SELETIVA_MATRICULA_FIM_MS
+    ? `Quem se matricular ATÉ ${SELETIVA_MATRICULA_PRAZO} leva o MESMO % de desconto da Seletiva, válido para a matrícula E a mensalidade, durante TODO o ano de 2027, em QUALQUER uma das 3 unidades (não precisa ser a da prova). Condição válida SOMENTE até ${SELETIVA_MATRICULA_PRAZO}.`
+    : `O prazo para matricular com o desconto da Seletiva TERMINOU em ${SELETIVA_MATRICULA_PRAZO}; NÃO prometa o desconto da Seletiva. ${condicaoAtual}`;
+  return [
+    `• SELETIVA IDEAL 2027: JÁ ENCERRADA (prova foi em 26/09). Não passe link de inscrição da Seletiva, taxa, edital nem datas antigas. ${agendado}${!datas.length && now >= SELETIVA_MATRICULA_FIM_MS ? ` ${condicaoAtual}` : ""}`,
+    `• RESULTADO DA SELETIVA: JÁ FOI ENVIADO POR E-MAIL (o e-mail usado na inscrição), com o percentual de desconto de cada aluno. Você NÃO sabe o percentual da Seletiva de nenhum aluno — nunca diga nem estime esse número; ele está no e-mail. ${resultado} Matrícula presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO} (dê o endereço se perguntarem onde). Não achou o e-mail → olhar Spam/Lixo eletrônico e Promoções, buscar "Seletivas Ideal 2027"; se não achar, mandar e-mail para ${SELETIVA_RESULTADO_EMAIL_SUPORTE} com o nome completo do aluno e o e-mail correto. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro.`,
+  ].join("\n");
 }

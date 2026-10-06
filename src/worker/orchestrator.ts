@@ -24,6 +24,16 @@ import {
   SELETIVA_RESULTADO_DATA,
   SELETIVA_ENCERRADA_AGENDAMENTO_REPLY,
   SELETIVA_ENCERRADA_RESULTADO_REPLY,
+  SELETIVA_MATRICULA_PRAZO,
+  SELETIVA_MATRICULA_HORARIO,
+  SELETIVA_RESULTADO_EMAIL_SUPORTE,
+  SELETIVA_AGENDADA_DATAS,
+  SELETIVA_AGENDADA_URL,
+  seletivaResultadoReply,
+  seletivaNaoRecebidoReply,
+  seletivaAgendamentoReply,
+  isSeletivaResultadoNaoRecebido,
+  isSeletivaPosResultadoQuestion,
 } from "../kb/seletiva-encerrada";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
@@ -179,13 +189,15 @@ export class MessageOrchestrator {
             return;
           }
           const reply =
-            topico === "resultado"
-              ? SELETIVA_ENCERRADA_RESULTADO_REPLY
+            topico === "resultado_nao_recebido"
+              ? seletivaNaoRecebidoReply()
+              : topico === "resultado"
+              ? seletivaResultadoReply()
               : topico === "prova"
                 ? SELETIVA_PROVA_DIA_REPLY
                 : topico === "edital"
                   ? buildSeletivaEditalReply(userMessage, conversationHistory)
-                  : SELETIVA_ENCERRADA_AGENDAMENTO_REPLY;
+                  : seletivaAgendamentoReply();
           // RAIZ DE BUG (26/09, cliente recebeu o bloco 3x seguidas): resposta
           // fixa sai UMA vez por conversa. Se ela já foi mandada, a próxima
           // dúvida ("Ela tem identidade?") vai pro LLM, que tem os mesmos dados
@@ -1737,16 +1749,23 @@ export function detectSeletivaEncerradaTopic(
   userMessage: string,
   history: ConversationMessage[],
   now: number = Date.now()
-): "resultado" | "prova" | "edital" | "agendamento" | null {
+): "resultado" | "resultado_nao_recebido" | "prova" | "edital" | "agendamento" | null {
   const conteudo = isSeletivaContentQuestion(userMessage);
   // Pediu o EDITAL ("edital", "o que cai") → link do edital, não o bloco do dia.
   const edital = conteudo || /\bedita(l|is)\b/i.test(userMessage);
   const citaSeletiva =
     mentionsSeletiva(userMessage) || conteudo || isSeletivaInscricaoPaymentQuestion(userMessage);
-  const resultado = isSeletivaResultadoQuestion(userMessage);
+  // "Perdi a inscrição, ainda dá pra ter desconto?" é de quem chegou tarde.
+  const atrasado = isSeletivaAtrasadoQuestion(userMessage) && !/(resultad|e-?mail)/i.test(userMessage);
+  const resultado =
+    (isSeletivaResultadoQuestion(userMessage) ||
+      (now >= SELETIVA_PROVA_FIM_MS && isSeletivaPosResultadoQuestion(userMessage))) &&
+    !atrasado;
+  const qualResultado = () =>
+    isSeletivaResultadoNaoRecebido(userMessage) ? "resultado_nao_recebido" as const : "resultado" as const;
   if (citaSeletiva) {
-    if (resultado) return "resultado";
-    if (isSeletivaAtrasadoQuestion(userMessage)) return "agendamento";
+    if (resultado) return qualResultado();
+    if (atrasado) return "agendamento";
     if (now < SELETIVA_PROVA_FIM_MS && edital) return "edital";
     if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaQuestion(userMessage)) return "prova";
     return "agendamento";
@@ -1757,7 +1776,7 @@ export function detectSeletivaEncerradaTopic(
   // prova (26/09): pais perguntam "o que é preciso levar?" sem dizer
   // "seletiva", e sem isto caía no LLM, que mandava ligar pra secretaria.
   const seletivaNoContexto = history.slice(-12).some((m) => mentionsSeletiva(m.content));
-  if (resultado && seletivaNoContexto) return "resultado";
+  if (resultado && seletivaNoContexto) return qualResultado();
   if (now < SELETIVA_PROVA_FIM_MS && edital && seletivaNoContexto) return "edital";
   if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaSemNome(userMessage, seletivaNoContexto)) return "prova";
 
@@ -2047,8 +2066,8 @@ const DADOS_COLEGIO = [
   // secretaria (bug real em produção, print do cliente).
   ...(config.seletivaEncerrada
     ? [
-        `• SELETIVA IDEAL 2027: JÁ ENCERRADA. Não passe link, taxa, edital nem datas antigas. Resultado → divulgado em ${SELETIVA_RESULTADO_DATA}. Qualquer outra dúvida (inscrição, chegou tarde) → inscrições encerradas; fique de olho, em breve vamos abrir o agendamento de um teste para quem não conseguiu participar.`,
-        `• DIA DA PROVA DA SELETIVA (sábado 26/09), pra quem JÁ se inscreveu: portões 13h–13h55 (depois ninguém entra) · prova 14h–17h (militares 14h–18h, na Augusto Montenegro) · local = unidade da inscrição · a sala é informada no local de prova · levar SÓ um documento de identificação do aluno (RG, por exemplo) e caneta azul ou preta — NÃO precisa de ficha, cartão nem comprovante de inscrição · celular desligado e guardado, sem calculadora · responsáveis não ficam no local. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro de orientações nem mande ligar pra secretaria por isso.`,
+        `• SELETIVA IDEAL 2027: JÁ ENCERRADA (prova foi em 26/09). Não passe link de inscrição da Seletiva, taxa, edital nem datas antigas. Quem NÃO fez a Seletiva → pode fazer o TESTE AGENDADO nos dias ${SELETIVA_AGENDADA_DATAS}, sempre às 8h ou às 14h, inscrição em ${SELETIVA_AGENDADA_URL} (depois do último dia: encerrado; há outras condições de matrícula, apresentadas nas unidades).`,
+        `• RESULTADO DA SELETIVA: JÁ FOI ENVIADO POR E-MAIL (o e-mail usado na inscrição), com o percentual de desconto de cada aluno. Você NÃO sabe o percentual de ninguém — nunca diga nem estime um número; o % está no e-mail. Quem se matricular ATÉ ${SELETIVA_MATRICULA_PRAZO} leva o MESMO % de desconto da Seletiva, válido para a matrícula E a mensalidade, durante TODO o ano de 2027, em QUALQUER uma das 3 unidades (não precisa ser a da prova). Condição válida SOMENTE até ${SELETIVA_MATRICULA_PRAZO}; depois disso há outras condições de matrícula, apresentadas nas unidades. Matrícula presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO} (dê o endereço se perguntarem onde). Não achou o e-mail → olhar Spam/Lixo eletrônico e Promoções, buscar "Seletivas Ideal 2027"; se não achar, mandar e-mail para ${SELETIVA_RESULTADO_EMAIL_SUPORTE} com o nome completo do aluno e o e-mail correto. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro.`,
       ]
     : [
         `• Taxa da Seletiva: paga na loja online ${SELETIVA_TAXA_URL} (pondo o NOME DO ALUNO no pedido). O e-mail de confirmação só chega DEPOIS do pagamento. Do 2º ao 5º ano NÃO há taxa: não pagam nada, não recebem e-mail e é só comparecer no dia da prova.`,
@@ -2065,7 +2084,9 @@ const REGRAS_COMUNS = [
   "- Telefone/número/secretaria → dê o telefone fixo da unidade pedida (Batista Campos por padrão se não disser qual). Nunca ofereça WhatsApp, nunca diga 'não tenho essa informação' (os números estão acima).",
   "- Valor/mensalidade/preço/taxa → diga que os valores são informados presencialmente e convide para agendar visita pelo link da unidade (ou liste os 3 se não souber qual). Nunca cite R$. Não use 'quem te confirma' / 'vou pedir pra eles' / 'vou chamar a coordenação'.",
   "- Dado concreto fora dos dados acima (taxa de matrícula, vencimento, desconto, pagamento, início das aulas, documentos, link de cadastro, prazo): NÃO invente — diga que a secretaria confirma certinho e ofereça o telefone (ex.: Batista Campos (91) 3323-5000).",
-  "- Seletiva / processo seletivo / prova de bolsa / concurso de bolsas: é campanha NOSSA e os dados estão acima — NUNCA diga que a secretaria confirma. Dê as datas e PERGUNTE em qual unidade o cliente quer fazer a Seletiva. Só mande o link de inscrição DEPOIS que ele disser a unidade (é a unidade que direciona o lead pra atendente certa).",
+  config.seletivaEncerrada
+    ? "- Seletiva / resultado / desconto da Seletiva: é campanha NOSSA e os dados estão acima — NUNCA diga que a secretaria confirma nem invente percentual. Use só os dados da Seletiva acima."
+    : "- Seletiva / processo seletivo / prova de bolsa / concurso de bolsas: é campanha NOSSA e os dados estão acima — NUNCA diga que a secretaria confirma. Dê as datas e PERGUNTE em qual unidade o cliente quer fazer a Seletiva. Só mande o link de inscrição DEPOIS que ele disser a unidade (é a unidade que direciona o lead pra atendente certa).",
   "- Nunca invente telefone com DDD diferente de 91. Nunca escreva texto que pareça chamada de função (ex.: get_enrollment_info(...)). Nunca diga 'aguarde' / 'um momento' / 'vou verificar'.",
 ].join("\n");
 

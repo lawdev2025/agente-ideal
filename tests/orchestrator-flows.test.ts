@@ -6,7 +6,15 @@ import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
 import { routeIntent, detectNivel } from "../src/worker/intent-router";
 import { config } from "../src/config";
-import { SELETIVA_PROVA_DIA_REPLY } from "../src/kb/seletiva-encerrada";
+import {
+  SELETIVA_PROVA_DIA_REPLY,
+  SELETIVA_ENCERRADA_RESULTADO_REPLY,
+  SELETIVA_RESULTADO_NAO_RECEBIDO_REPLY,
+  SELETIVA_AGENDADA_URL,
+  seletivaAgendamentoReply,
+  seletivaResultadoReply,
+  seletivaNaoRecebidoReply,
+} from "../src/kb/seletiva-encerrada";
 
 function buildMocks(opts: {
   history?: Array<{ role: string; content: string }>;
@@ -1615,7 +1623,8 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     await orch.processMessage("u1", msg, "u1");
     const sent = sentOf(m);
     expect(sent).toMatch(/encerrad/i);
-    expect(sent).toMatch(/agendamento de um teste/i);
+    expect(sent).toMatch(/teste agendado/i);
+    expect(sent).toContain("forms.cloud.microsoft/r/WKqZt6vcgJ");
     expect(sent).not.toContain("seletivas2027");
     expect(sent).not.toContain("loja.grupoideal");
     expect(sent).not.toMatch(/equipe/i);
@@ -1724,17 +1733,19 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     expect(detectSeletivaEncerradaTopic("resultado da seletiva?", [], depois)).toBe("resultado");
   });
 
-  it("pergunta de resultado → resultado em 03/10, sem marcar 'agendada'", async () => {
+  it("pergunta de resultado → enviado por e-mail + matrícula até 09/10, sem marcar 'agendada'", async () => {
     const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "quando sai o resultado da seletiva?", "u1");
     const sent = sentOf(m);
-    expect(sent).toMatch(/encerrad/i);
-    expect(sent).toMatch(/03\/10/);
+    expect(sent).toMatch(/e-mail/i);
+    expect(sent).toMatch(/09\/10/);
+    expect(sent).toMatch(/mensalidade/);
+    expect(sent).not.toMatch(/03\/10/);
     expect(m.stateRepo.markSeletivaAgendada).not.toHaveBeenCalled();
   });
 
-  it("'e o resultado?' sem citar a Seletiva, logo depois de falar dela → 03/10", async () => {
+  it("'e o resultado?' sem citar a Seletiva, logo depois de falar dela → resultado por e-mail", async () => {
     const m = buildMocks({
       history: [
         { role: "user", content: "fiz a seletiva" },
@@ -1743,7 +1754,30 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     });
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "e o resultado sai quando?", "u1");
-    expect(sentOf(m)).toMatch(/03\/10/);
+    expect(sentOf(m)).toBe(SELETIVA_ENCERRADA_RESULTADO_REPLY);
+  });
+
+  it("desconto / matrícula / prazo citando a Seletiva → resultado, não 'agendamento'", () => {
+    const t = Date.parse("2026-10-05T15:00:00Z");
+    for (const msg of [
+      "quero matricular meu filho com o desconto da seletiva",
+      "até quando vale o desconto da seletiva?",
+      "o desconto da seletiva vale pra mensalidade?",
+      "qual foi o percentual da seletiva do meu filho?",
+    ]) expect(detectSeletivaEncerradaTopic(msg, [], t)).toBe("resultado");
+    // Quem chegou tarde continua no agendamento.
+    expect(detectSeletivaEncerradaTopic("perdi o prazo da seletiva, ainda dá pra fazer?", [], t)).toBe("agendamento");
+  });
+
+  it("não recebeu o e-mail → orienta spam/nome do aluno e avisa o time sem pausar", async () => {
+    const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "não recebi o e-mail do resultado da seletiva", "u1");
+    const sent = sentOf(m);
+    expect(sent).toBe(SELETIVA_RESULTADO_NAO_RECEBIDO_REPLY);
+    expect(sent).toMatch(/Spam/);
+    expect(sent).not.toMatch(/equipe/i);
+    expect(m.stateRepo.pauseBot).not.toHaveBeenCalled();
   });
 
   it("resposta à pergunta de unidade antiga ('Batista') → encerrada, sem link", async () => {
@@ -1756,7 +1790,8 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "Batista", "u1");
     const sent = sentOf(m);
-    expect(sent).toMatch(/agendamento de um teste/i);
+    expect(sent).toMatch(/teste agendado/i);
+    expect(sent).toContain("forms.cloud.microsoft/r/WKqZt6vcgJ");
     expect(sent).not.toContain("seletivas2027");
     expect(m.stateRepo.markSeletivaAgendada).toHaveBeenCalledWith("u1");
   });
@@ -1774,5 +1809,37 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "qual o valor da mensalidade?", "u1");
     expect(sentOf(m)).not.toMatch(/Seletiva/i);
+  });
+});
+
+describe("Seletiva: respostas mudam sozinhas com a data", () => {
+  const belem = (iso: string) => Date.parse(iso);
+  it("teste agendado: 06/10 e 08/10 às 8h/14h; cada dia some às 14h dele; depois, outras condições", () => {
+    const ambos = seletivaAgendamentoReply(belem("2026-10-05T23:00:00Z"));
+    expect(ambos).toMatch(/\*06\/10\* ou \*08\/10\*/);
+    expect(ambos).toMatch(/8h\* ou às \*14h/);
+    const so08 = seletivaAgendamentoReply(belem("2026-10-06T17:01:00Z"));
+    expect(so08).toMatch(/no dia \*08\/10\*/);
+    expect(so08).not.toContain("06/10");
+    expect(seletivaAgendamentoReply(belem("2026-10-08T16:00:00Z"))).toContain(SELETIVA_AGENDADA_URL);
+    const depois = seletivaAgendamentoReply(belem("2026-10-08T17:01:00Z"));
+    expect(depois).not.toContain(SELETIVA_AGENDADA_URL);
+    expect(depois).toMatch(/outras condi[çc][õo]es/);
+  });
+  it("resultado: desconto até o fim de 09/10; depois, outras condições sem prometer o %", () => {
+    const antes = seletivaResultadoReply(belem("2026-10-09T20:00:00Z"));
+    expect(antes).toMatch(/todo o ano de 2027/);
+    expect(antes).toMatch(/qualquer uma das nossas unidades/);
+    expect(antes).toMatch(/segunda a sexta/);
+    const depois = seletivaResultadoReply(belem("2026-10-10T03:01:00Z"));
+    expect(depois).toMatch(/terminou/);
+    expect(depois).not.toMatch(/somente até/);
+    expect(seletivaNaoRecebidoReply(belem("2026-10-10T03:01:00Z"))).not.toMatch(/somente até/);
+  });
+  it("não recebeu o e-mail → sistemas@grupoideal.com.br com nome e e-mail correto", () => {
+    const r = seletivaNaoRecebidoReply(belem("2026-10-06T15:00:00Z"));
+    expect(r).toContain("sistemas@grupoideal.com.br");
+    expect(r).toMatch(/nome completo do aluno/);
+    expect(r).toMatch(/e-mail correto/);
   });
 });

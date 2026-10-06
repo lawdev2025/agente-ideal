@@ -559,6 +559,8 @@ function renderTemplateCard(t) {
 // e o disparo precisam falar do MESMO público, senão a contagem mente.
 const TEMPLATE_AUDIENCIAS = [
     ['seletiva-realizaram', 'Seletivas realizaram (fizeram a prova)', q => q.eq('seletiva_status', 'realizou')],
+    ['seletiva-resultado-recebeu', 'Seletiva · resultado recebido', q => q.eq('seletiva_resultado', 'recebeu')],
+    ['seletiva-resultado-nao-recebeu', 'Seletiva · resultado não recebido', q => q.eq('seletiva_resultado', 'nao_recebeu')],
     ['seletiva-agendadas', 'Seletivas agendadas', q => q.eq('seletiva_status', 'agendada')],
     ['seletiva-pendentes', 'Seletiva · pendentes', q => q.eq('seletiva_status', 'pendente')],
     ['seletiva-inscritos', 'Seletiva · inscritos que não fizeram a prova', q => q.eq('seletiva_status', 'inscrito')],
@@ -1068,6 +1070,16 @@ async function loadDashboardStats() {
                 if (selEl) selEl.textContent = selRealizaram + selInscritos + selPendentes + selAgendadas;
                 const selTrend = document.getElementById('stat-seletiva-trend');
                 if (selTrend) selTrend.innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${selRealizaram} fizeram a prova · ${selInscritos} inscritos que faltaram · ${selPendentes} pendentes · ${selAgendadas} agendadas`;
+                // Entrega do resultado (contacts.seletiva_resultado, scripts/seletiva-resultado.ts).
+                const resRecebeu = sel.resultadoRecebeu ?? 0;
+                const resNao = sel.resultadoNaoRecebeu ?? 0;
+                const resEl = document.getElementById('stat-resultado');
+                if (resEl) resEl.textContent = resRecebeu;
+                const resTrend = document.getElementById('stat-resultado-trend');
+                if (resTrend) {
+                    resTrend.className = resNao > 0 ? 'trend negative' : 'trend positive';
+                    resTrend.innerHTML = `<i class="fa-solid fa-envelope-open-text"></i> ${resRecebeu} receberam · ${resNao} não receberam`;
+                }
                 document.getElementById('stat-telegram-errors').textContent = s.escalationMessages ?? 0;
                 const trendEl = document.getElementById('stat-telegram-trend');
                 if ((s.escalationMessages ?? 0) > 0) {
@@ -1709,10 +1721,13 @@ let topicFilterLabel = null;
 // renderContactsFiltered(), então o filtro sobrevive ao polling.
 const contactFilters = { unidade: '', segmento: '', interesse: '', temperatura: '', seletiva: '' };
 
-// Seletiva: "interessados" = inscrito OU pendente; os outros casam o status.
-function matchSeletiva(status, filtro) {
-    if (filtro === 'interessados') return !!status;
-    return status === filtro;
+// Seletiva: "interessados" = qualquer status; "resultado-*" olha a entrega do
+// resultado (seletiva_resultado); os outros casam o status.
+function matchSeletiva(c, filtro) {
+    if (filtro === 'interessados') return !!c.seletiva_status;
+    if (filtro === 'resultado-recebeu') return c.seletiva_resultado === 'recebeu';
+    if (filtro === 'resultado-nao-recebeu') return c.seletiva_resultado === 'nao_recebeu';
+    return c.seletiva_status === filtro;
 }
 
 // Liga os selects. Atendente de unidade não escolhe unidade: o select some e
@@ -1756,7 +1771,7 @@ function renderContactsFiltered() {
     if (contactFilters.segmento)   list = list.filter(c => c.segment_tag === contactFilters.segmento);
     if (contactFilters.interesse)  list = list.filter(c => c.tag === contactFilters.interesse);
     if (contactFilters.temperatura) list = list.filter(c => c.temperature === contactFilters.temperatura);
-    if (contactFilters.seletiva)   list = list.filter(c => matchSeletiva(c.seletiva_status, contactFilters.seletiva));
+    if (contactFilters.seletiva)   list = list.filter(c => matchSeletiva(c, contactFilters.seletiva));
     if (query) list = list.filter(c =>
         (c.wa_id && c.wa_id.toLowerCase().includes(query)) ||
         (c.name && c.name.toLowerCase().includes(query)));
@@ -1847,6 +1862,8 @@ function tempInfo(t) {
 // Rótulo do selo por seletiva_status. "agendada" = chegou depois do fim das
 // inscrições e espera o agendamento do teste (Seletiva encerrada em 25/09/2026).
 const SELETIVA_SELO = { realizou: 'Seletivas realizaram', inscrito: 'Seletiva · inscrito', pendente: 'Seletiva · pendente', agendada: 'Seletivas agendadas' };
+// Selo da entrega do resultado (seletiva_resultado), ao lado do status.
+const RESULTADO_SELO = { recebeu: 'Resultado recebido', nao_recebeu: 'Resultado não recebido' };
 
 // Selos da lista: intenção + status da Seletiva (seletiva_status). Com status,
 // o selo combinado substitui o "Seletiva" solto da intenção, pra não repetir.
@@ -1855,7 +1872,9 @@ function tagsHtml(contact) {
     const ti = tagInfo(contact.tag);
     const intent = ti && !(sel && contact.tag === 'seletiva') ? `<span class="itag ${ti.cls}">${ti.label}</span>` : '';
     const selHtml = sel ? `<span class="itag itag-sel-${sel}">${SELETIVA_SELO[sel]}</span>` : '';
-    return intent + selHtml;
+    const res = RESULTADO_SELO[contact.seletiva_resultado] ? contact.seletiva_resultado : null;
+    const resHtml = res ? `<span class="itag itag-res-${res}">${RESULTADO_SELO[res]}</span>` : '';
+    return intent + selHtml + resHtml;
 }
 
 function updateContactNode(item, contact) {

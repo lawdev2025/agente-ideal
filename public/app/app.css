@@ -227,6 +227,10 @@ body {
 .itag-sel-agendada { background: rgba(139,92,246,.15); color: #5B21B6; }
 .itag-sel-realizou { background: rgba(37,99,235,.13); color: #1E40AF; }
 .ideal.dark .itag-sel-realizou { color: #93C5FD; }
+.itag-res-recebeu { background: rgba(22,163,74,.13); color: #166534; }
+.itag-res-nao_recebeu { background: rgba(220,38,38,.12); color: #991B1B; }
+.ideal.dark .itag-res-recebeu { color: #86EFAC; }
+.ideal.dark .itag-res-nao_recebeu { color: #FCA5A5; }
 .ideal.dark .itag-sel-agendada { color: #C4B5FD; }
 
 /* Selo de UNIDADE (AM/BC/CN) — discreto, ao lado da tag de intenção */

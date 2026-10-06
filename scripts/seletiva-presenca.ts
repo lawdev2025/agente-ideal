@@ -14,10 +14,9 @@
  *
  * Imprime SÓ o resumo — nenhuma linha de planilha, nenhum telefone.
  */
-import { readdirSync, statSync, existsSync } from "node:fs";
-import { join, extname } from "node:path";
 import { getSupabase, isSupabaseEnabled } from "../src/db/supabase-client";
 import { readSheets } from "./seletiva/read-sheet";
+import { expandFiles, lerResultado, indexarInscricoes, type Aluno } from "./seletiva/resultado-alunos";
 import {
   extractPhoneKeys,
   pickPhoneColumns,
@@ -27,23 +26,9 @@ import {
 } from "../src/kb/seletiva-match";
 
 const DEFAULT_DIR = "data/seletiva-presenca";
-const SHEET_EXT = new Set([".xlsx", ".xlsm", ".csv"]);
 const PAGE = 1000;
 const CHUNK = 300;
 const fmt = (n: number) => n.toLocaleString("pt-BR");
-
-function expandFiles(targets: string[]): string[] {
-  const files: string[] = [];
-  for (const t of targets.length ? targets : [DEFAULT_DIR]) {
-    if (!existsSync(t)) { console.error(`⚠ não encontrei: ${t}`); continue; }
-    if (statSync(t).isDirectory()) {
-      for (const f of readdirSync(t)) {
-        if (SHEET_EXT.has(extname(f).toLowerCase()) && !f.startsWith("~$")) files.push(join(t, f));
-      }
-    } else files.push(t);
-  }
-  return files;
-}
 
 async function pageAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>): Promise<T[]> {
   const out: T[] = [];
@@ -55,82 +40,18 @@ async function pageAll<T>(build: (from: number, to: number) => PromiseLike<{ dat
   }
 }
 
-// ── Planilha de resultado sem telefone ─────────────────────────────────────
-const INSCRICAO_DIR = "data/seletiva";
-const norm = (v: unknown) =>
-  String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-const soDigitos = (v: unknown) => String(v ?? "").replace(/\D/g, "");
-
-type Aluno = { id: string; nome: string };
-
-// Abas com cabeçalho IDENTIFICAÇÃO + NOME e sem coluna de telefone → lista de
-// quem fez a prova. null se o arquivo não for desse tipo.
-function lerResultado(files: string[]): Aluno[] | null {
-  const alunos: Aluno[] = [];
-  let achou = false;
-  for (const file of files) {
-    let sheets;
-    try { sheets = readSheets(file); } catch { continue; }
-    for (const { rows } of sheets) {
-      if (rows.length < 2) continue;
-      const head = rows[0].map(norm);
-      const iId = head.findIndex((h) => h.startsWith("identifica"));
-      const iNome = head.findIndex((h) => h === "nome");
-      if (iId < 0 || iNome < 0 || pickPhoneColumns(rows).columns.length) continue;
-      achou = true;
-      for (const r of rows.slice(1)) {
-        const nome = norm(r[iNome]);
-        if (nome) alunos.push({ id: soDigitos(r[iId]), nome });
-      }
-    }
-  }
-  return achou ? alunos : null;
-}
-
 function resolverPorInscricao(alunos: Aluno[]) {
-  const ids = new Set(alunos.map((a) => a.id).filter(Boolean));
-  const porIdx = new Map<string, Set<string>>(); // identificação → telefones
-  const porNomeIdx = new Map<string, Set<string>>(); // nome do aluno → telefones
-  const colunasId = new Set<string>();
-  const add = (m: Map<string, Set<string>>, k: string, tels: string[]) => {
-    if (!k || !tels.length) return;
-    const s = m.get(k) || new Set<string>();
-    tels.forEach((t) => s.add(t));
-    m.set(k, s);
-  };
-  for (const f of expandFiles([INSCRICAO_DIR])) {
-    let sheets;
-    try { sheets = readSheets(f); } catch { continue; }
-    for (const { name, rows } of sheets) {
-      if (rows.length < 2) continue;
-      const { headerRow, columns } = pickPhoneColumns(rows);
-      if (!columns.length) continue;
-      const head = rows[headerRow].map(norm);
-      const corpo = rows.slice(headerRow + 1);
-      // Coluna de identificação = a que mais coincide com as identificações do
-      // resultado (descoberta pelos dados, sem depender do nome da coluna).
-      const iId = head.map((_, c) => corpo.filter((r) => ids.has(soDigitos(r[c]))).length)
-        .reduce((best, n, c, arr) => (n > (arr[best] || 0) ? c : best), -1);
-      if (iId >= 0) colunasId.add(`${name.split("›").pop()!.trim()} › ${rows[headerRow][iId]}`);
-      // Nome do ALUNO (não do responsável): "Nome do aluno(a)" ou "CANDIDATO_NOME".
-      const iNome = head.findIndex((h) => (h.includes("nome") && (h.includes("aluno") || h.includes("candidato"))) && !h.startsWith("pontos") && !h.startsWith("comentarios"));
-      for (const r of corpo) {
-        const tels = columns.flatMap((c) => extractPhoneKeys(r[c]));
-        if (iId >= 0) add(porIdx, soDigitos(r[iId]), tels);
-        if (iNome >= 0) add(porNomeIdx, norm(r[iNome]), tels);
-      }
-    }
-  }
+  const { telefones, colunasId } = indexarInscricoes(alunos);
   const keys = new Set<string>();
   let porId = 0, porNome = 0, semTelefone = 0;
   for (const a of alunos) {
-    const t = (a.id && porIdx.get(a.id)) || null;
-    if (t) { porId++; t.forEach((k) => keys.add(k)); continue; }
-    const n = porNomeIdx.get(a.nome);
-    if (n) { porNome++; n.forEach((k) => keys.add(k)); continue; }
-    semTelefone++;
+    const t = telefones(a);
+    if (t.via === "id") porId++;
+    else if (t.via === "nome") porNome++;
+    else semTelefone++;
+    t.keys.forEach((k) => keys.add(k));
   }
-  return { keys, porId, porNome, semTelefone, colunasId: [...colunasId] };
+  return { keys, porId, porNome, semTelefone, colunasId };
 }
 
 async function main() {
@@ -138,7 +59,7 @@ async function main() {
   const dryRun = argv.includes("--dry-run");
   const criarLeads = argv.includes("--criar-leads");
   const coluna = argv.find((a) => a.startsWith("--coluna="))?.slice("--coluna=".length);
-  const files = expandFiles(argv.filter((a) => !a.startsWith("--")));
+  const files = expandFiles(argv.filter((a) => !a.startsWith("--")), DEFAULT_DIR);
 
   if (!isSupabaseEnabled()) {
     console.error("❌ Supabase não configurado (.env sem SUPABASE_URL/ANON_KEY).");

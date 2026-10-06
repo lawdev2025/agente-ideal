@@ -227,10 +227,13 @@
     ["f-interesse", "interesse"], ["f-temperatura", "temperatura"],
     ["f-seletiva", "seletiva"],
   ];
-  // Seletiva: "interessados" = inscrito OU pendente; os outros casam o status.
-  function matchSeletiva(status, filtro) {
-    if (filtro === "interessados") return !!status;
-    return status === filtro;
+  // Seletiva: "interessados" = qualquer status; "resultado-*" olha a entrega do
+  // resultado (seletiva_resultado); os outros casam o status.
+  function matchSeletiva(c, filtro) {
+    if (filtro === "interessados") return !!c.seletiva_status;
+    if (filtro === "resultado-recebeu") return c.seletiva_resultado === "recebeu";
+    if (filtro === "resultado-nao-recebeu") return c.seletiva_resultado === "nao_recebeu";
+    return c.seletiva_status === filtro;
   }
   let lockedUnit = null; // unidade fixa da atendente (null = admin, escolhe)
 
@@ -279,7 +282,7 @@
       if (queueFilters.segmento && c.segment_tag !== queueFilters.segmento) return false;
       if (queueFilters.interesse && c.tag !== queueFilters.interesse) return false;
       if (queueFilters.temperatura && c.temperature !== queueFilters.temperatura) return false;
-      if (queueFilters.seletiva && !matchSeletiva(c.seletiva_status, queueFilters.seletiva)) return false;
+      if (queueFilters.seletiva && !matchSeletiva(c, queueFilters.seletiva)) return false;
       if (!q) return true;
       return (
         displayName(c).toLowerCase().includes(q) ||
@@ -316,7 +319,7 @@
     return [
       displayName(c), c.bot_paused ? 1 : 0, unread[c.wa_id] || 0,
       c.last_message_role, c.last_message, fmtTime(c.last_message_at || c.last_seen_at),
-      c.temperature, c.tag, c.seletiva_status, c.unit_tag,
+      c.temperature, c.tag, c.seletiva_status, c.seletiva_resultado, c.unit_tag,
     ].join("");
   }
 
@@ -468,6 +471,8 @@
   // Rótulo do selo por seletiva_status. "agendada" = chegou depois do fim das
   // inscrições e espera o agendamento do teste (Seletiva encerrada em 25/09/2026).
   const SELETIVA_SELO = { realizou: "Seletivas realizaram", inscrito: "Seletiva · inscrito", pendente: "Seletiva · pendente", agendada: "Seletivas agendadas" };
+  // Selo da entrega do resultado (seletiva_resultado), ao lado do status.
+  const RESULTADO_SELO = { recebeu: "Resultado recebido", nao_recebeu: "Resultado não recebido" };
 
   // Selos da fila: intenção + status da Seletiva (seletiva_status, carimbado
   // pela planilha ou pelo webhook). Com status, o selo combinado substitui o
@@ -477,7 +482,9 @@
     const ti = tagInfo(c.tag);
     const intent = ti && !(sel && c.tag === "seletiva") ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";
     const selHtml = sel ? `<span class="itag itag-sel-${sel}">${SELETIVA_SELO[sel]}</span>` : "";
-    return intent + selHtml;
+    const res = RESULTADO_SELO[c.seletiva_resultado] ? c.seletiva_resultado : null;
+    const resHtml = res ? `<span class="itag itag-res-${res}">${RESULTADO_SELO[res]}</span>` : "";
+    return intent + selHtml + resHtml;
   }
 
   function contactRow(c, pos) {

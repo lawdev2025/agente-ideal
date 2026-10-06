@@ -189,3 +189,82 @@ export function decidePresenca(contacts: SeletivaContact[], presencaKeys: Set<st
   for (const k of presencaKeys) if (!matched.has(k)) semContato.push(k);
   return { toRealizou, presentesNoCrm, semContato };
 }
+
+// ── Entrega do resultado (contacts.seletiva_resultado) ─────────────────────
+// Dimensão À PARTE da escada: só faz sentido pra quem fez a prova.
+//   recebeu     → o aluno está na lista de quem recebeu o resultado
+//   nao_recebeu → fez a prova e não está nessa lista
+export type SeletivaResultado = "recebeu" | "nao_recebeu";
+
+// Distância de edição normalizada (1 = iguais). Os nomes já chegam normalizados.
+export function nomeSimilaridade(a: string, b: string): number {
+  if (a === b) return 1;
+  if (!a || !b) return 0;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return 1 - prev[b.length] / Math.max(a.length, b.length);
+}
+
+// Abaixo disso o nome é outro aluno; a margem evita escolher entre dois parecidos.
+const NOME_MIN = 0.8;
+const NOME_MARGEM = 0.05;
+
+/**
+ * Casa a lista de quem RECEBEU o resultado (digitada à mão, com erro de
+ * digitação) com quem FEZ a prova. Primeiro pelo nome exato; o que sobra, pelo
+ * aluno mais parecido ainda não casado — só se for claramente o mais parecido.
+ * Recebe nomes normalizados; devolve o conjunto de nomes de `fizeram` que receberam.
+ */
+export function casarRecebidos(fizeram: string[], receberam: string[]) {
+  const recebeu = new Set<string>();
+  const todos = new Set(fizeram);
+  const sobra: string[] = [];
+  for (const n of receberam) {
+    if (todos.has(n)) recebeu.add(n);
+    else sobra.push(n);
+  }
+  const porDigitacao: [string, string][] = [];
+  const foraDaProva: string[] = [];
+  for (const n of sobra) {
+    const ranking = [...todos].filter((f) => !recebeu.has(f))
+      .map((f) => ({ f, s: nomeSimilaridade(n, f) }))
+      .sort((x, y) => y.s - x.s);
+    const [best, second] = ranking;
+    if (best && best.s >= NOME_MIN && best.s - (second?.s ?? 0) >= NOME_MARGEM) {
+      recebeu.add(best.f);
+      porDigitacao.push([n, best.f]);
+    } else foraDaProva.push(n);
+  }
+  return { recebeu, porDigitacao, foraDaProva };
+}
+
+/**
+ * Decide a tag de resultado por contato. Telefone de aluno que não recebeu
+ * vence o de aluno que recebeu (irmãos no mesmo número: ainda falta entregar).
+ * Contato "realizou" sem telefone ligado a quem recebeu → nao_recebeu.
+ * Só devolve quem muda.
+ */
+export function decideResultado(
+  contacts: (SeletivaContact & { seletiva_resultado?: string | null })[],
+  recebeuKeys: Set<string>,
+  naoRecebeuKeys: Set<string>,
+) {
+  const toRecebeu: string[] = [];
+  const toNaoRecebeu: string[] = [];
+  for (const c of contacts) {
+    const key = phoneKey(c.wa_id);
+    let alvo: SeletivaResultado | null = null;
+    if (key && naoRecebeuKeys.has(key)) alvo = "nao_recebeu";
+    else if (key && recebeuKeys.has(key)) alvo = "recebeu";
+    else if (c.seletiva_status === "realizou") alvo = "nao_recebeu";
+    if (!alvo || c.seletiva_resultado === alvo) continue;
+    (alvo === "recebeu" ? toRecebeu : toNaoRecebeu).push(c.wa_id);
+  }
+  return { toRecebeu, toNaoRecebeu };
+}

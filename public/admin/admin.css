@@ -2690,3 +2690,7 @@ html.dark .utag-cn { color: #E0A23C; }
 .uso-velho { color: #DC2626; font-weight: 600; white-space: nowrap; }
 .itag-sel-realizou { background: rgba(37,99,235,.13); color: #1E40AF; }
 html.dark .itag-sel-realizou { color: #93C5FD; }
+.itag-res-recebeu { background: rgba(22,163,74,.13); color: #166534; }
+.itag-res-nao_recebeu { background: rgba(220,38,38,.12); color: #991B1B; }
+html.dark .itag-res-recebeu { color: #86EFAC; }
+html.dark .itag-res-nao_recebeu { color: #FCA5A5; }

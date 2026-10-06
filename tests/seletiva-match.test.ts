@@ -6,6 +6,8 @@ import {
   isSeletivaInterestMessage,
   decideSeletivaUpdates,
   decidePresenca,
+  casarRecebidos,
+  decideResultado,
   leadWaId,
 } from "../src/kb/seletiva-match";
 
@@ -181,5 +183,36 @@ describe("presença na prova (realizou)", () => {
   it("reler a planilha de INSCRIÇÃO não rebaixa quem realizou", () => {
     const u = decideSeletivaUpdates([{ wa_id: "559166665555", seletiva_status: "realizou" }], new Set(["9166665555"]), new Set());
     expect(u.toInscrito).toEqual([]);
+  });
+});
+
+describe("entrega do resultado", () => {
+  const fizeram = ["julyane campelo moura", "jeany campelo moura", "ana clara souza", "isabelle rosa barauna da silva"];
+
+  it("casa nome exato e erro de digitação, e separa quem não fez a prova", () => {
+    const r = casarRecebidos(fizeram, ["ana clara souza", "julyanne campelo moura", "isabelle rosa barbosa da silva", "maria alice maciel pantoja"]);
+    expect([...r.recebeu].sort()).toEqual(["ana clara souza", "isabelle rosa barauna da silva", "julyane campelo moura"]);
+    expect(r.porDigitacao).toHaveLength(2);
+    expect(r.foraDaProva).toEqual(["maria alice maciel pantoja"]);
+    expect(r.recebeu.has("jeany campelo moura")).toBe(false);
+  });
+
+  it("não chuta quando dois alunos são igualmente parecidos", () => {
+    const r = casarRecebidos(["joao silva", "joan silva"], ["joax silva"]);
+    expect(r.recebeu.size).toBe(0);
+    expect(r.foraDaProva).toEqual(["joax silva"]);
+  });
+
+  it("tagueia por telefone; irmão sem resultado vence; realizou fora da lista → nao_recebeu", () => {
+    const contacts = [
+      { wa_id: "559188887777", seletiva_status: "realizou", seletiva_resultado: null }, // recebeu
+      { wa_id: "559199991111", seletiva_status: "realizou", seletiva_resultado: null }, // irmãos: um recebeu, outro não
+      { wa_id: "559177776666", seletiva_status: "realizou", seletiva_resultado: null }, // sem telefone ligado → não recebeu
+      { wa_id: "559166665555", seletiva_status: "realizou", seletiva_resultado: "recebeu" }, // já certo → nada
+      { wa_id: "559155554444", seletiva_status: "inscrito", seletiva_resultado: null }, // não fez a prova → nada
+    ];
+    const r = decideResultado(contacts, new Set(["9188887777", "9199991111", "9166665555"]), new Set(["9199991111"]));
+    expect(r.toRecebeu).toEqual(["559188887777"]);
+    expect(r.toNaoRecebeu.sort()).toEqual(["559177776666", "559199991111"]);
   });
 });

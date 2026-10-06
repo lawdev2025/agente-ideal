@@ -157,6 +157,17 @@
 
                         <div class="metric-card glass">
                             <div class="metric-info">
+                                <p>Resultado da Seletiva</p>
+                                <h3 id="stat-resultado">0</h3>
+                                <span class="trend info" id="stat-resultado-trend"><i class="fa-solid fa-envelope-open-text"></i> 0 receberam · 0 não receberam</span>
+                            </div>
+                            <div class="metric-icon brand-subtle">
+                                <i class="fa-solid fa-envelope-open-text"></i>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass">
+                            <div class="metric-info">
                                 <p>Alertas de Erros</p>
                                 <h3 id="stat-telegram-errors">0</h3>
                                 <span class="trend negative" id="stat-telegram-trend"><i class="fa-solid fa-circle-exclamation"></i> Telegram offline</span>
@@ -268,6 +279,8 @@
                                     <option value="pendente">Pendentes</option>
                                     <option value="realizou">Seletivas realizaram</option>
                                     <option value="agendada">Seletivas agendadas</option>
+                                    <option value="resultado-recebeu">Resultado recebido</option>
+                                    <option value="resultado-nao-recebeu">Resultado não recebido</option>
                                 </select>
                                 <button type="button" id="filter-clear" class="cfilter-clear" hidden>Limpar</button>
                             </div>
@@ -748,6 +761,6 @@
          As credenciais são buscadas async via /api/config em initConnection(). -->
     <script>window.__ADMIN_CONFIG__ = null;</script>
     <!-- Lógica de Controle JS -->
-    <script src="/admin/admin.js?v=7.22"></script>
+    <script src="/admin/admin.js?v=7.23"></script>
 </body>
 </html>

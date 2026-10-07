@@ -70,6 +70,18 @@ export function isSeletivaPosResultadoQuestion(text: string): boolean {
   return POS_RESULTADO_SIGNAL.test(text || "");
 }
 
+// Sem citar a Seletiva, só com ela no histórico (a campanha do resultado fica
+// gravada como fala do bot): conta só o que é DELA — desconto, %, e-mail, 09/10.
+// RAIZ DE BUG (07/10, print do dono): "Gostaria de saber mais sobre matrícula"
+// virava o bloco do resultado. Matrícula, mensalidade e prazo sozinhos são de
+// quem quer MATRICULAR — vão pro fluxo de matrícula (visita, unidades).
+const POS_RESULTADO_CONTEXTO_SIGNAL =
+  /(desconto|percentual|porcentagem|\d\s*%|\bbolsa\b|e-?mail|\b0?9\/10\b)/i;
+
+export function isSeletivaPosResultadoContexto(text: string): boolean {
+  return POS_RESULTADO_CONTEXTO_SIGNAL.test(text || "");
+}
+
 // "Não recebi o e-mail", "não chegou nada", "cadê o resultado?".
 const NAO_RECEBI_SIGNAL =
   /(n[ãa]o\s+(me\s+)?(recebi|recebemos|recebeu|chegou|veio|encontr\w*|ach\w*|apareceu|localiz\w*)|ainda\s+n[ãa]o\s+(recebi|chegou|veio)|cad[êe]|nada\s+(no|na|chegou)|n[ãa]o\s+tem\s+nada)/i;
@@ -215,6 +227,23 @@ export function seletivaAgendamentoReply(now: number = Date.now()): string {
 }
 
 /**
+ * Fecho da resposta de VALOR (mensalidade, taxa, preço): o gancho de desconto.
+ * Só sai em pergunta de valor — matrícula/visita não leva Seletiva (dono, 07/10).
+ * Quem fez já tem o % no e-mail; quem não fez ganha o teste agendado da vez
+ * ou, depois deles, a faixa de matrícula do momento.
+ */
+export function seletivaDescontoDica(now: number = Date.now()): string {
+  const fez = "💡 *Quer desconto?* Quem fez a *Seletiva Ideal 2027* já recebeu por *e-mail* o % de desconto na mensalidade.";
+  const datas = seletivaAgendadaDatas(now);
+  if (datas.length) {
+    const dias = datas.length > 1 ? `nos dias ${datas.map((d) => `*${d}*`).join(" ou ")}` : `no dia *${datas[0]}*`;
+    return `${fez} Não fez? Ainda dá para fazer o *teste agendado* ${dias}, ${SELETIVA_AGENDADA_HORARIOS}: ${SELETIVA_AGENDADA_URL}`;
+  }
+  const d = descontoMatriculaAtual(now);
+  return d ? `${fez} E ainda dá para garantir *${d.pct}% de desconto na matrícula* até *${d.ate}*!` : fez;
+}
+
+/**
  * O que o LLM sabe da Seletiva AGORA — mesma fonte das respostas fixas, pra
  * nunca divergir. Recalculado a cada mensagem: as datas viram sozinhas.
  * Usado pelo prompt principal (llm/prompts/system-prompt.ts) e pelos prompts
@@ -237,5 +266,7 @@ export function seletivaInfoLLM(now: number = Date.now()): string {
   return [
     `• SELETIVA IDEAL 2027: JÁ ENCERRADA (prova foi em 26/09). Não passe link de inscrição da Seletiva, taxa, edital nem datas antigas. ${agendado}${!datas.length && now >= SELETIVA_MATRICULA_FIM_MS ? ` ${condicaoAtual}` : ""}`,
     `• RESULTADO DA SELETIVA: JÁ FOI ENVIADO POR E-MAIL (o e-mail usado na inscrição), com o percentual de desconto de cada aluno. Você NÃO sabe o percentual da Seletiva de nenhum aluno — nunca diga nem estime esse número; ele está no e-mail. ${resultado} Matrícula presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO} (dê o endereço se perguntarem onde). Não achou o e-mail → olhar Spam/Lixo eletrônico e Promoções, buscar "Seletivas Ideal 2027"; se não achar, mandar e-mail para ${SELETIVA_RESULTADO_EMAIL_SUPORTE} com o nome completo do aluno e o e-mail correto. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro.`,
+    "• MATRÍCULA NÃO É SELETIVA: quem pergunta de matrícula, vaga, turma ou visita quer MATRICULAR — fale da matrícula " +
+      `(presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO}) e convide para agendar uma visita. Só fale da Seletiva se o cliente citar a Seletiva/resultado ou perguntar de valor/desconto.`,
   ].join("\n");
 }

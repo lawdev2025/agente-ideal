@@ -30,6 +30,9 @@ import {
   seletivaAgendamentoReply,
   isSeletivaResultadoNaoRecebido,
   isSeletivaPosResultadoQuestion,
+  isSeletivaPosResultadoContexto,
+  seletivaDescontoDica,
+  SELETIVA_MATRICULA_HORARIO,
 } from "../kb/seletiva-encerrada";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
@@ -619,6 +622,18 @@ export class MessageOrchestrator {
       await this.handleEnrollmentInfo(conversationId, studentId, userMessage, intent, contact.name, conversationHistory);
       await this.recordTurnOutcome(userMessage, true);
       return;
+    }
+
+    // "Quero saber da matrícula" sem série: resposta fixa de matrícula + visita,
+    // 1x por conversa (depois o fluxo de tool/LLM responde a dúvida seguinte).
+    if (intent.kind === "enrollment_info" && MATRICULA_INTERESSE.test(userMessage) && !intent.escalateAfter) {
+      const reply = buildMatriculaReply(intent.unit ?? this.findRecentUnit(conversationHistory));
+      if (!conversationHistory.some((m) => m.role === "assistant" && m.content === reply)) {
+        await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+        await this.whatsappClient.sendMessage(studentId, reply);
+        await this.recordTurnOutcome(userMessage, true);
+        return;
+      }
     }
 
     await this.runDeterministicToolFlow(
@@ -1486,7 +1501,7 @@ function buildPresentialValuesReply(unit?: string, userMessage?: string): string
       intro +
       `Que tal agendar uma visita à unidade *${unit}*? É só clicar no link:\n` +
       `👉 ${VISIT_LINKS[unit]}` +
-      seletivaCrossSell() +
+      valoresSeletivaFecho() +
       depois
     );
   }
@@ -1498,7 +1513,7 @@ function buildPresentialValuesReply(unit?: string, userMessage?: string): string
     `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
     `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
     `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}` +
-    seletivaCrossSell() +
+    valoresSeletivaFecho() +
     depois
   );
 }
@@ -1749,6 +1764,38 @@ function seletivaCrossSell(): string {
   return config.seletivaEncerrada ? "" : SELETIVA_CROSS_SELL;
 }
 
+// Fecho da resposta de VALOR. Seletiva encerrada: o desconto só aparece pra
+// quem pergunta de valor (dono, 07/10) — matrícula/visita não leva Seletiva.
+function valoresSeletivaFecho(): string {
+  return config.seletivaEncerrada ? `\n\n${seletivaDescontoDica()}` : SELETIVA_CROSS_SELL;
+}
+
+// "Quero saber da matrícula" sem série nem valor: matrícula de verdade —
+// presencial nas unidades + visita. Nada de Seletiva (print do dono, 07/10:
+// o bot respondia matrícula com o bloco do resultado).
+const MATRICULA_INTERESSE = /matr[íi]cul/i;
+
+function buildMatriculaReply(unit?: string): string {
+  const intro =
+    "Que bom que você quer fazer parte do *Colégio Ideal*! 🎓\n\n" +
+    `As *matrículas para 2027* são feitas *presencialmente* nas nossas unidades, *${SELETIVA_MATRICULA_HORARIO}*. ` +
+    "Lá o nosso time te apresenta tudo com calma: turmas, valores e documentos. 🤝\n\n";
+  if (unit && VISIT_LINKS[unit]) {
+    return (
+      intro +
+      `Quer conhecer a unidade *${unit}* antes? Agende uma visita:\n👉 ${VISIT_LINKS[unit]}\n\n` +
+      `📞 Ou fale com a secretaria: *${secretariaContato(unit)}*`
+    );
+  }
+  return (
+    intro +
+    "Quer conhecer a escola antes? Agende uma visita na unidade mais próxima:\n" +
+    `🏫 *Batista Campos*: ${VISIT_LINKS["Batista Campos"]}\n` +
+    `🏫 *Augusto Montenegro*: ${VISIT_LINKS["Augusto Montenegro"]}\n` +
+    `🏫 *Cidade Nova (Ananindeua)*: ${VISIT_LINKS["Cidade Nova"]}`
+  );
+}
+
 // SELETIVA ENCERRADA: a mensagem é sobre a Seletiva? "resultado" quando o
 // cliente quer saber do resultado; "prova" (só até a prova de 26/09 acabar)
 // pra dúvida de logística de quem já se inscreveu — portão, documento, local,
@@ -1789,7 +1836,13 @@ export function detectSeletivaEncerradaTopic(
   // prova (26/09): pais perguntam "o que é preciso levar?" sem dizer
   // "seletiva", e sem isto caía no LLM, que mandava ligar pra secretaria.
   const seletivaNoContexto = history.slice(-12).some((m) => mentionsSeletiva(m.content));
-  if (resultado && seletivaNoContexto) return qualResultado();
+  // Pelo contexto, "matrícula"/"mensalidade" sozinhas NÃO puxam o resultado:
+  // é pai querendo matricular (ver isSeletivaPosResultadoContexto).
+  const resultadoPeloContexto =
+    (isSeletivaResultadoQuestion(userMessage) ||
+      (now >= SELETIVA_PROVA_FIM_MS && isSeletivaPosResultadoContexto(userMessage))) &&
+    !atrasado;
+  if (resultadoPeloContexto && seletivaNoContexto) return qualResultado();
   if (now < SELETIVA_PROVA_FIM_MS && edital && seletivaNoContexto) return "edital";
   if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaSemNome(userMessage, seletivaNoContexto)) return "prova";
 

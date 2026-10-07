@@ -1807,11 +1807,46 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     expect(m.whatsapp.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("matrícula não oferece mais a Seletiva no fim", async () => {
+  it("matrícula não oferece a Seletiva no fim", async () => {
+    const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "quero matricular meu filho no 6º ano", "u1");
+    expect(sentOf(m)).not.toMatch(/Seletiva/i);
+  });
+
+  it("print 07/10: 'saber mais sobre matricula' com a campanha do resultado no histórico → matrícula + visita, sem Seletiva", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "assistant", content: "Chegou o momento tão esperado! Confira seu resultado da Seletiva Ideal 2027." },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "Gostaria de saber mais sobre matricula", "u1");
+    const sent = sentOf(m);
+    expect(sent).not.toMatch(/Seletiva|resultado/i);
+    expect(sent).toMatch(/matrícula/i);
+    expect(sent).toMatch(/visita/i);
+    expect(sent).toContain("quillbooking_calendar");
+  });
+
+  it("campanha no histórico: desconto/% ainda é da Seletiva; matrícula/mensalidade não", () => {
+    const t = Date.parse("2026-10-07T12:00:00Z");
+    const hist = [{ role: "assistant" as const, content: "Confira seu resultado da Seletiva Ideal 2027." }];
+    expect(detectSeletivaEncerradaTopic("Gostaria de saber mais sobre matricula", hist, t)).toBeNull();
+    expect(detectSeletivaEncerradaTopic("como faço a matrícula?", hist, t)).toBeNull();
+    expect(detectSeletivaEncerradaTopic("qual o valor da mensalidade?", hist, t)).toBeNull();
+    expect(detectSeletivaEncerradaTopic("qual o desconto?", hist, t)).toBe("resultado");
+    expect(detectSeletivaEncerradaTopic("e o resultado?", hist, t)).toBe("resultado");
+  });
+
+  it("pergunta de VALOR fecha com o gancho de desconto da Seletiva", async () => {
     const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "qual o valor da mensalidade?", "u1");
-    expect(sentOf(m)).not.toMatch(/Seletiva/i);
+    const sent = sentOf(m);
+    expect(sent).toMatch(/presencialmente/);
+    expect(sent).toMatch(/Quer desconto\?/);
+    expect(sent).toMatch(/Seletiva Ideal 2027/);
   });
 });
 

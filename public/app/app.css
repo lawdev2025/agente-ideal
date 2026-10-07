@@ -433,17 +433,21 @@ body {
 .msg-reply-btn {
   position: absolute; top: 50%; transform: translateY(-50%);
   width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer;
-  background: var(--surface); color: var(--dim); box-shadow: var(--shadow-sm);
+  background: var(--brand-tint); color: var(--brand);
   display: flex; align-items: center; justify-content: center;
-  opacity: 0; transition: opacity .15s, color .15s;
+  opacity: 0; transition: opacity .15s, background-color .15s, color .15s, transform .15s;
 }
 .msg.in .msg-reply-btn { right: -38px; }
 .msg.out .msg-reply-btn { left: -38px; }
 .msg:hover .msg-reply-btn, .msg-reply-btn:focus-visible { opacity: 1; }
-.msg-reply-btn:hover { color: var(--brand); }
-/* Celular: sem hover — arrastar o balão pra direita responde. */
-@media (hover: none) { .msg-reply-btn { display: none; } }
-.msg.swipe-armed { box-shadow: 0 0 0 2px var(--brand); }
+.msg-reply-btn:hover { background: var(--brand); color: #fff; }
+/* Celular: sem hover — o ícone surge atrás do balão enquanto ele é arrastado
+   pra direita, e fica cheio quando soltar já responde. */
+@media (hover: none) {
+  .msg-reply-btn { left: -38px; right: auto; pointer-events: none; opacity: var(--swipe, 0); transform: translateY(-50%) scale(calc(.6 + var(--swipe, 0) * .4)); }
+  .msg.in .msg-reply-btn { left: -38px; right: auto; }
+  .msg.swipe-armed .msg-reply-btn { background: var(--brand); color: #fff; }
+}
 .msg.flash { animation: msgFlash 1.2s ease; }
 @keyframes msgFlash { 0%, 40% { box-shadow: 0 0 0 3px rgba(200,32,46,.55); } 100% { box-shadow: none; } }
 

@@ -754,7 +754,7 @@
   }
 
   // ---------------- RESPONDER (citação) ----------------
-  const REPLY_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`;
+  const REPLY_SVG = `<svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>`;
 
   // Quem escreveu a mensagem citada: o nome do cliente, o atendente ou o bot.
   function quoteAuthor(q) {
@@ -843,12 +843,14 @@
       if (!horizontal) return;
       dx = Math.max(0, Math.min(mx, 80));
       el.style.transform = `translateX(${dx}px)`;
+      el.style.setProperty("--swipe", Math.min(dx / 56, 1).toFixed(2));
       el.classList.toggle("swipe-armed", dx >= 56);
     }, { passive: true });
     const end = () => {
       if (!el) return;
       const target = el, armed = dx >= 56;
       target.style.transform = "";
+      target.style.removeProperty("--swipe");
       target.classList.remove("swipe-armed");
       el = null;
       if (armed) setReply(msgCache[target.dataset.mid]);

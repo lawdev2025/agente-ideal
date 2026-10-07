@@ -19,6 +19,14 @@ function normalizeBrazilMobile(wa: string): string {
   return digits;
 }
 
+/**
+ * "Responder" do WhatsApp: com context.message_id (wamid da mensagem citada) a
+ * mensagem chega pro cliente como resposta àquela, com a citação em cima.
+ */
+function withReply<T extends object>(payload: T, replyTo?: string): T {
+  return replyTo ? { ...payload, context: { message_id: replyTo } } : payload;
+}
+
 export interface WhatsAppMessage {
   messaging_product: string;
   recipient_type: string;
@@ -63,7 +71,7 @@ export class WhatsAppClient {
     });
   }
 
-  async sendMessage(to: string, text: string): Promise<{ messageId: string }> {
+  async sendMessage(to: string, text: string, replyTo?: string): Promise<{ messageId: string }> {
     const dryRun = config.whatsapp.dryRun;
 
     if (dryRun) {
@@ -91,7 +99,7 @@ export class WhatsAppClient {
         },
       };
 
-      const response = await this.client.post(`/messages`, payload);
+      const response = await this.client.post(`/messages`, withReply(payload, replyTo));
 
       logger.info(
         {
@@ -175,7 +183,8 @@ export class WhatsAppClient {
   async sendImage(
     to: string,
     imageUrl: string,
-    caption?: string
+    caption?: string,
+    replyTo?: string
   ): Promise<{ messageId: string }> {
     // Mesmo contrato do sendMessage: em DRY_RUN não toca a API da Meta.
     if (config.whatsapp.dryRun) {
@@ -197,7 +206,7 @@ export class WhatsAppClient {
         },
       };
 
-      const response = await this.client.post(`/messages`, payload);
+      const response = await this.client.post(`/messages`, withReply(payload, replyTo));
 
       logger.info({ to, imageUrl }, "WhatsApp image sent");
 
@@ -213,7 +222,8 @@ export class WhatsAppClient {
   async sendDocument(
     to: string,
     documentUrl: string,
-    filename?: string
+    filename?: string,
+    replyTo?: string
   ): Promise<{ messageId: string }> {
     if (config.whatsapp.dryRun) {
       logger.info({ to, documentUrl, dryRun: true }, "WhatsApp document (DRY_RUN - not actually sent)");
@@ -232,7 +242,7 @@ export class WhatsAppClient {
         },
       };
 
-      const response = await this.client.post(`/messages`, payload);
+      const response = await this.client.post(`/messages`, withReply(payload, replyTo));
 
       logger.info({ to, documentUrl }, "WhatsApp document sent");
 
@@ -248,7 +258,8 @@ export class WhatsAppClient {
   async sendVideo(
     to: string,
     videoUrl: string,
-    caption?: string
+    caption?: string,
+    replyTo?: string
   ): Promise<{ messageId: string }> {
     try {
       const payload: any = {
@@ -258,7 +269,7 @@ export class WhatsAppClient {
         type: "video",
         video: { link: videoUrl, ...(caption ? { caption } : {}) },
       };
-      const response = await this.client.post(`/messages`, payload);
+      const response = await this.client.post(`/messages`, withReply(payload, replyTo));
       logger.info({ to, videoUrl }, "WhatsApp video sent");
       return { messageId: response.data.messages?.[0]?.id || "unknown" };
     } catch (error) {
@@ -269,7 +280,8 @@ export class WhatsAppClient {
 
   async sendAudio(
     to: string,
-    audioUrl: string
+    audioUrl: string,
+    replyTo?: string
   ): Promise<{ messageId: string }> {
     try {
       const payload: any = {
@@ -279,7 +291,7 @@ export class WhatsAppClient {
         type: "audio",
         audio: { link: audioUrl },
       };
-      const response = await this.client.post(`/messages`, payload);
+      const response = await this.client.post(`/messages`, withReply(payload, replyTo));
       logger.info({ to, audioUrl }, "WhatsApp audio sent");
       return { messageId: response.data.messages?.[0]?.id || "unknown" };
     } catch (error) {

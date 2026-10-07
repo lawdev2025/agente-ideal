@@ -30,6 +30,10 @@
   let chatOldestTs = null; // created_at da msg mais antiga ja carregada
   let chatHasMore = false; // ainda ha historico anterior?
   let chatLoadingMore = false; // trava anti-corrida
+  // Responder (citação estilo WhatsApp). Só cita mensagem com wa_message_id —
+  // sem ele a Meta não mostra "respondendo a" pro cliente.
+  let replyTarget = null; // mensagem sendo respondida
+  const msgCache = {};    // id -> mensagem renderizada (monta a citação do Realtime)
 
   // ---------------- helpers ----------------
   function showScreen(name) {
@@ -633,6 +637,7 @@
     $("chat-name").textContent = displayName(c);
     $("chat-avatar").textContent = initials(c);
     $("messages").innerHTML = "";
+    clearReply();
     updateChatHeader(c);
     updateBotControls(c);
     showScreen("chat");
@@ -733,9 +738,123 @@
         ? `<div>${escapeHtml(m.content)}</div>` : "";
       // Nome do atendente que respondeu (aparece embaixo na bolha do assistente/saída)
       const agentHtml = (out && m.agent_name) ? `<small class="msg-agent">— ${escapeHtml(m.agent_name)}</small>` : "";
-      div.innerHTML = `${mediaHtml}${textHtml}${agentHtml}<span class="msg-time">${time}${out ? " ✓✓" : ""}</span>`;
+      const quoteHtml = buildQuoteHtml(m);
+      if (m.id != null) {
+        div.dataset.mid = String(m.id);
+        msgCache[m.id] = m;
+      }
+      const canReply = !!m.wa_message_id && m.id != null;
+      if (canReply) div.classList.add("can-reply");
+      const replyBtn = canReply
+        ? `<button class="msg-reply-btn" data-reply="${escapeHtml(String(m.id))}" aria-label="Responder" title="Responder">${REPLY_SVG}</button>`
+        : "";
+      div.innerHTML = `${replyBtn}${quoteHtml}${mediaHtml}${textHtml}${agentHtml}<span class="msg-time">${time}${out ? " ✓✓" : ""}</span>`;
     }
     return div;
+  }
+
+  // ---------------- RESPONDER (citação) ----------------
+  const REPLY_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`;
+
+  // Quem escreveu a mensagem citada: o nome do cliente, o atendente ou o bot.
+  function quoteAuthor(q) {
+    if (q.role === "user") return displayName(byId[currentChat] || { wa_id: currentChat });
+    return q.agent_name || "Bot";
+  }
+
+  // Trecho curto da mensagem citada (mídia sem legenda vira o rótulo dela).
+  function quoteSnippet(q) {
+    const labels = { image: "📷 Foto", sticker: "Figurinha", video: "🎥 Vídeo", audio: "🎤 Áudio", document: "📄 Documento" };
+    const txt = String(q.content || "").replace(/\s+/g, " ").trim();
+    const placeholder = /^\[(imagem|vídeo|áudio|sticker|documento|arquivo)/i.test(txt);
+    const base = (q.media_type && (placeholder || !txt)) ? (labels[q.media_type] || "Arquivo") : txt;
+    return base.length > 110 ? base.slice(0, 110) + "…" : base;
+  }
+
+  function buildQuoteHtml(m) {
+    if (m.reply_to_id == null) return "";
+    const q = m.reply_to || msgCache[m.reply_to_id];
+    if (!q) return `<div class="msg-quote"><span class="q-text">Mensagem respondida</span></div>`;
+    const who = q.role === "user" ? "in" : "out";
+    return `<div class="msg-quote q-${who}" data-jump="${escapeHtml(String(m.reply_to_id))}">` +
+      `<b class="q-author">${escapeHtml(quoteAuthor(q))}</b>` +
+      `<span class="q-text">${escapeHtml(quoteSnippet(q))}</span></div>`;
+  }
+
+  function setReply(m) {
+    if (!m) return;
+    const c = byId[currentChat];
+    if (!c || !c.bot_paused) { toast("Pause o bot para responder."); return; }
+    if (windowClosed(c)) { toast("Janela de 24h encerrada — aguarde o cliente escrever."); return; }
+    replyTarget = m;
+    let bar = $("reply-bar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "reply-bar";
+      bar.className = "reply-bar";
+      const composer = document.querySelector(".composer");
+      composer.parentNode.insertBefore(bar, composer);
+    }
+    const who = m.role === "user" ? "in" : "out";
+    bar.innerHTML =
+      `<div class="msg-quote q-${who}"><b class="q-author">${escapeHtml(quoteAuthor(m))}</b>` +
+      `<span class="q-text">${escapeHtml(quoteSnippet(m))}</span></div>` +
+      `<button id="reply-cancel" class="reply-cancel tap" aria-label="Cancelar resposta">✕</button>`;
+    $("reply-cancel").addEventListener("click", clearReply);
+    const input = $("composer-input");
+    if (!input.disabled) input.focus();
+  }
+
+  function clearReply() {
+    replyTarget = null;
+    const bar = $("reply-bar");
+    if (bar) bar.remove();
+  }
+
+  // Leva até a mensagem citada (se já estiver carregada) e pisca.
+  function jumpToMessage(id) {
+    const el = document.querySelector(`#messages [data-mid="${CSS.escape(String(id))}"]`);
+    if (!el) { toast("Mensagem mais antiga — role para cima para carregá-la."); return; }
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("flash");
+    void el.offsetWidth;
+    el.classList.add("flash");
+  }
+
+  function setupReplyGestures() {
+    const box = $("messages");
+    box.addEventListener("click", (e) => {
+      const btn = e.target.closest(".msg-reply-btn");
+      if (btn) { setReply(msgCache[btn.dataset.reply]); return; }
+      const q = e.target.closest(".msg-quote[data-jump]");
+      if (q) jumpToMessage(q.dataset.jump);
+    });
+    // Celular: arrastar o balão pra direita responde (igual ao WhatsApp).
+    let sx = 0, sy = 0, el = null, dx = 0, horizontal = null;
+    box.addEventListener("touchstart", (e) => {
+      el = e.target.closest(".msg.can-reply");
+      if (!el || e.target.closest("audio, video, a")) { el = null; return; }
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; horizontal = null;
+    }, { passive: true });
+    box.addEventListener("touchmove", (e) => {
+      if (!el) return;
+      const mx = e.touches[0].clientX - sx, my = e.touches[0].clientY - sy;
+      if (horizontal === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) horizontal = Math.abs(mx) > Math.abs(my);
+      if (!horizontal) return;
+      dx = Math.max(0, Math.min(mx, 80));
+      el.style.transform = `translateX(${dx}px)`;
+      el.classList.toggle("swipe-armed", dx >= 56);
+    }, { passive: true });
+    const end = () => {
+      if (!el) return;
+      const target = el, armed = dx >= 56;
+      target.style.transform = "";
+      target.classList.remove("swipe-armed");
+      el = null;
+      if (armed) setReply(msgCache[target.dataset.mid]);
+    };
+    box.addEventListener("touchend", end);
+    box.addEventListener("touchcancel", end);
   }
 
   function renderMessage(m, animate) {
@@ -798,6 +917,7 @@
       $("bot-toggle-icon").textContent = "⏸";
       $("bot-toggle-label").textContent = "Pausar bot e assumir";
       input.value = "";
+      clearReply();
     }
   }
 
@@ -960,9 +1080,13 @@
       const { data: { publicUrl } } = sb.storage.from("whatsapp-media").getPublicUrl(path);
       const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(currentChat)}/messages`, {
         method: "POST",
-        body: JSON.stringify({ mediaUrl: publicUrl, mediaType: "audio" }),
+        body: JSON.stringify({ mediaUrl: publicUrl, mediaType: "audio", replyToId: replyTarget ? replyTarget.id : undefined }),
       });
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "HTTP " + res.status);
+      }
+      clearReply();
       const c = byId[currentChat];
       if (c) { c.bot_paused = true; updateChatHeader(c); updateBotControls(c); renderContacts(); }
       await loadMessages(currentChat, true);
@@ -1000,12 +1124,14 @@
           mediaType,
           caption: caption || undefined,
           filename: mediaType === "document" ? file.name : undefined,
+          replyToId: replyTarget ? replyTarget.id : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast(data.error || "Falha ao enviar."); return; }
       $("composer-input").value = "";
       autoGrow();
+      clearReply();
       const c = byId[currentChat] || { wa_id: currentChat };
       c.bot_paused = true;
       byId[currentChat] = c;
@@ -1032,7 +1158,7 @@
     try {
       const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(currentChat)}/messages`, {
         method: "POST",
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, replyToId: replyTarget ? replyTarget.id : undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1042,6 +1168,7 @@
       }
       input.value = "";
       autoGrow();
+      clearReply();
       // POST ja pausa o bot no servidor. Reflete local e recarrega (dedupe por id).
       const c = byId[currentChat] || { wa_id: currentChat };
       c.bot_paused = true;
@@ -1476,7 +1603,9 @@
   }
   const micBtn = $("app-mic-btn");
   if (micBtn) micBtn.addEventListener("click", toggleAppAudioRecording);
+  setupReplyGestures();
   $("composer-input").addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && replyTarget) { clearReply(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();

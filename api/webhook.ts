@@ -176,6 +176,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               continue;
             }
 
+            // Grava o wamid (o painel cita essa mensagem ao responder) e, se o
+            // cliente respondeu uma mensagem nossa, qual foi.
+            const reply = {
+              wa_message_id: messageId,
+              reply_to_id: msg.context?.id ? await stateRepo.findMessageIdByWamid(msg.context.id) : undefined,
+            };
+
             const msgType: string = msg.type;
             const isMedia = ['image', 'video', 'audio', 'document', 'sticker'].includes(msgType);
 
@@ -185,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               try {
                 await stateRepo.getOrCreateContact(senderId, nameByWaId[senderId]);
                 await stateRepo.updateLastSeen(senderId);
-                await stateRepo.appendMessage(senderId, "user", text);
+                await stateRepo.appendMessage(senderId, "user", text, undefined, undefined, reply);
                 await applyContactSignals(senderId, text);
                 await orchestrator.processMessage(senderId, text, senderId);
                 await notifyIncoming(senderId, text, nameByWaId[senderId]);
@@ -222,7 +229,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   media_url: mediaUrl ?? undefined,
                   media_mime: mimeType,
                   media_filename: filename || undefined,
-                });
+                }, undefined, reply);
 
                 await notifyIncoming(senderId, content, nameByWaId[senderId]);
               } catch (procErr) {

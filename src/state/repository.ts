@@ -8,6 +8,12 @@ export interface MediaFields {
   media_filename?: string;
 }
 
+/** Campos do "responder" (supabase-message-reply.sql). */
+export interface ReplyFields {
+  wa_message_id?: string;
+  reply_to_id?: number;
+}
+
 export interface Message {
   id: number;
   wa_id: string;
@@ -45,20 +51,41 @@ export class StateRepository {
     role: "user" | "assistant" | "system" | "tool",
     content: string,
     media?: MediaFields,
-    agentName?: string
+    agentName?: string,
+    reply?: ReplyFields
   ): Promise<number> {
     const supabase = getSupabase();
     const createdAt = Date.now();
-    const { data, error } = await supabase
+    const base = { wa_id: waId, role, content, created_at: createdAt, ...(media ?? {}), ...(agentName ? { agent_name: agentName } : {}) };
+    const replyFields = Object.fromEntries(Object.entries(reply ?? {}).filter(([, v]) => v != null));
+    let { data, error } = await supabase
       .from("messages")
-      .insert({ wa_id: waId, role, content, created_at: createdAt, ...(media ?? {}), ...(agentName ? { agent_name: agentName } : {}) })
+      .insert({ ...base, ...replyFields })
       .select("id")
       .single();
-    if (error) {
+    // Sem a migração do "responder", as colunas não existem: grava sem elas
+    // em vez de perder a mensagem.
+    if (error && Object.keys(replyFields).length && SCHEMA_MISSING.has(error.code ?? "")) {
+      ({ data, error } = await supabase.from("messages").insert(base).select("id").single());
+    }
+    if (error || !data) {
       logger.error({ error, waId }, "Erro ao inserir mensagem no Supabase");
-      throw error;
+      throw error ?? new Error("insert em messages sem retorno");
     }
     return data.id as number;
+  }
+
+  /** messages.id da mensagem com esse wamid (cliente respondendo uma nossa). Best-effort. */
+  async findMessageIdByWamid(wamid: string): Promise<number | undefined> {
+    if (!wamid) return undefined;
+    const { data, error } = await getSupabase()
+      .from("messages")
+      .select("id")
+      .eq("wa_message_id", wamid)
+      .limit(1)
+      .maybeSingle();
+    if (error) return undefined;
+    return (data as any)?.id ?? undefined;
   }
 
   async getHistory(waId: string, limit: number = 10): Promise<Message[]> {

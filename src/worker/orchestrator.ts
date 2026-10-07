@@ -7,6 +7,7 @@ import { logger } from "../logger";
 import { config } from "../config";
 import { routeIntent, RoutedIntent, detectUnit, detectNivel, mentionsSeletiva } from "./intent-router";
 import { matchDirectResponse } from "../kb/direct-responses";
+import { isPassaporteIdealQuestion, PASSAPORTE_IDEAL_REPLY, PASSAPORTE_IDEAL_LLM } from "../kb/passaporte-ideal";
 import { unitAbbrev } from "../kb/contact-tags";
 import {
   isSeletivaContentQuestion,
@@ -164,6 +165,23 @@ export class MessageOrchestrator {
           studentId,
           `Limite de ${MAX_BOT_RESPONSES} respostas do bot atingido — passando para atendimento humano`
         );
+        return;
+      }
+
+      // PASSAPORTE IDEAL = taxa de pré-matrícula (kb/passaporte-ideal.ts). ANTES
+      // da Seletiva: "matrícula" + campanha no histórico virava o bloco do
+      // resultado. Resposta fixa 1x por conversa; depois o LLM (que tem a mesma
+      // informação) responde curto.
+      if (isPassaporteIdealQuestion(userMessage)) {
+        if (await this.stateRepository.isBotPaused(studentId)) return;
+        if (conversationHistory.some((m) => m.role === "assistant" && m.content === PASSAPORTE_IDEAL_REPLY)) {
+          await this.runLLMFlow(conversationId, studentId, userMessage, conversationHistory);
+          return;
+        }
+        logger.info({ studentId }, "Passaporte Ideal — resposta fixa");
+        await this.stateRepository.appendMessage(conversationId, "assistant", PASSAPORTE_IDEAL_REPLY);
+        await this.whatsappClient.sendMessage(studentId, PASSAPORTE_IDEAL_REPLY);
+        await this.recordTurnOutcome(userMessage, true);
         return;
       }
 
@@ -2053,6 +2071,7 @@ const IDENTIDADE_ATENDIMENTO =
 // e uma instância da Vercel pode viver de um dia pro outro.
 const dadosColegio = () => [
   "DADOS OFICIAIS (use VERBATIM — nunca invente outros):",
+  PASSAPORTE_IDEAL_LLM,
   `• Telefones fixos (NUNCA ofereça WhatsApp — o cliente já está no WhatsApp): Batista Campos ${UNIT_SECRETARIA_PHONE["Batista Campos"]} · Augusto Montenegro ${UNIT_SECRETARIA_PHONE["Augusto Montenegro"]} · Cidade Nova/Ananindeua ${UNIT_SECRETARIA_PHONE["Cidade Nova"]}.`,
   `• Secretaria atende ${SECRETARIA_HORARIO_CURTO}. SEMPRE diga o horário junto do telefone, na mesma frase — quem liga fora disso não é atendido e acha que o número está errado.`,
   "• Endereços (dê a rua completa quando perguntarem): Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esq. WE-21), Coqueiro, Ananindeua-PA.",

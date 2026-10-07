@@ -19,6 +19,10 @@ const whatsapp = new WhatsAppClient(
   appConfig.whatsapp.businessAccountId
 );
 
+// A Meta às vezes não devolve o id ("unknown"): aí a mensagem só não pode ser citada.
+const wamidOf = (sent: { messageId: string }) =>
+  sent.messageId && sent.messageId !== "unknown" ? sent.messageId : undefined;
+
 // /api/admin/contacts/:wa_id/messages — GET histórico, POST takeover humano
 export async function messages(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
@@ -52,20 +56,39 @@ export async function messages(req: VercelRequest, res: VercelResponse) {
       );
       const before = req.query.before ? Number(req.query.before) : null;
 
-      let q = sb
-        .from("messages")
-        .select("id, wa_id, role, content, created_at, media_type, media_url, media_mime, media_filename, agent_name")
-        .eq("wa_id", wa_id)
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .limit(limit);
-      if (before != null && !Number.isNaN(before)) q = q.lt("created_at", before);
+      const BASE_COLS = "id, wa_id, role, content, created_at, media_type, media_url, media_mime, media_filename, agent_name";
+      const page = (cols: string) => {
+        let q = sb
+          .from("messages")
+          .select(cols)
+          .eq("wa_id", wa_id)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(limit);
+        if (before != null && !Number.isNaN(before)) q = q.lt("created_at", before);
+        return q;
+      };
 
-      const { data } = await q;
-      const batch = data || [];
+      // Colunas do "responder" (supabase-message-reply.sql); sem a migração,
+      // cai no select antigo e o painel só não mostra o botão de responder.
+      let { data, error } = await page(`${BASE_COLS}, wa_message_id, reply_to_id`);
+      if (error) ({ data } = await page(BASE_COLS));
+      const batch = ((data || []) as unknown) as any[];
       const hasMore = batch.length === limit;
       // Veio descendente (do mais novo pro mais antigo); inverte pra ascendente.
       const msgs = batch.slice().reverse();
+
+      // Citação: anexa a mensagem respondida (pode estar fora desta página).
+      const replyIds = [...new Set(msgs.map((m) => m.reply_to_id).filter((v) => v != null))];
+      if (replyIds.length) {
+        const { data: quoted } = await sb
+          .from("messages")
+          .select("id, role, content, media_type, agent_name")
+          .eq("wa_id", wa_id)
+          .in("id", replyIds);
+        const byQuotedId = new Map(((quoted || []) as any[]).map((q) => [q.id, q]));
+        for (const m of msgs) if (m.reply_to_id != null) m.reply_to = byQuotedId.get(m.reply_to_id) ?? null;
+      }
       res.status(200).json({ messages: msgs, hasMore });
     } catch (error) {
       logger.error({ error, wa_id }, "Erro em GET /api/admin/contacts/:wa_id/messages");
@@ -84,6 +107,7 @@ export async function messages(req: VercelRequest, res: VercelResponse) {
       mediaType?: string;
       caption?: string;
       filename?: string;
+      replyToId?: number; // messages.id da mensagem citada ("responder")
     };
     const text = (body.text || "").trim();
     const mediaUrl = (body.mediaUrl || "").trim();
@@ -94,6 +118,25 @@ export async function messages(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    // Responder: busca o wamid da mensagem citada — é ele que faz a mensagem
+    // chegar pro cliente como "respondendo a".
+    let replyToId: number | undefined;
+    let replyWamid: string | undefined;
+    if (body.replyToId != null) {
+      const { data: quoted, error: qErr } = await getSupabase()
+        .from("messages")
+        .select("id, wa_message_id")
+        .eq("wa_id", wa_id)
+        .eq("id", Number(body.replyToId))
+        .maybeSingle();
+      if (qErr || !(quoted as any)?.wa_message_id) {
+        res.status(422).json({ error: "Não dá pra responder essa mensagem (é antiga). Envie sem citar." });
+        return;
+      }
+      replyToId = (quoted as any).id;
+      replyWamid = (quoted as any).wa_message_id;
+    }
+
     try {
       await repo.pauseBot(wa_id, "Atendimento humano via painel");
 
@@ -101,15 +144,16 @@ export async function messages(req: VercelRequest, res: VercelResponse) {
         const caption = (body.caption || "").trim();
         const filename = (body.filename || "").trim();
 
+        let sent: { messageId: string };
         if (mediaType === "image" || mediaType === "sticker") {
-          await whatsapp.sendImage(wa_id, mediaUrl, caption || undefined);
+          sent = await whatsapp.sendImage(wa_id, mediaUrl, caption || undefined, replyWamid);
         } else if (mediaType === "video") {
-          await whatsapp.sendVideo(wa_id, mediaUrl, caption || undefined);
+          sent = await whatsapp.sendVideo(wa_id, mediaUrl, caption || undefined, replyWamid);
         } else if (mediaType === "audio") {
-          await whatsapp.sendAudio(wa_id, mediaUrl);
+          sent = await whatsapp.sendAudio(wa_id, mediaUrl, replyWamid);
         } else {
           // document or unknown
-          await whatsapp.sendDocument(wa_id, mediaUrl, filename || undefined);
+          sent = await whatsapp.sendDocument(wa_id, mediaUrl, filename || undefined, replyWamid);
         }
 
         const content = caption || (filename ? `[documento: ${filename}]` : `[${mediaType || 'arquivo'}]`);
@@ -117,10 +161,13 @@ export async function messages(req: VercelRequest, res: VercelResponse) {
           media_type: mediaType || "document",
           media_url: mediaUrl,
           media_filename: filename || undefined,
-        }, authUser.name);
+        }, authUser.name, { wa_message_id: wamidOf(sent), reply_to_id: replyToId });
       } else {
-        await whatsapp.sendMessage(wa_id, text);
-        await repo.appendMessage(wa_id, "assistant", text, undefined, authUser.name);
+        const sent = await whatsapp.sendMessage(wa_id, text, replyWamid);
+        await repo.appendMessage(wa_id, "assistant", text, undefined, authUser.name, {
+          wa_message_id: wamidOf(sent),
+          reply_to_id: replyToId,
+        });
       }
 
       res.status(200).json({ ok: true, wa_id });

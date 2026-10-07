@@ -1902,3 +1902,47 @@ describe("Desconto na matrícula depois da Seletiva: 20% até 20/10, 10% até 30
     expect(seletivaInfoLLM(t("2026-11-02T10:00-03:00"))).not.toMatch(/\d+% de desconto/);
   });
 });
+
+describe("Orchestrator: Passaporte Ideal = taxa de pré-matrícula (06/10/2026)", () => {
+  beforeEach(() => {
+    config.seletivaEncerrada = true;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-06T18:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const sentOf = (m: ReturnType<typeof buildMocks>) =>
+    (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+  // Print real: a campanha da Seletiva no histórico + "matrícula" mandava o
+  // bloco do resultado em vez de explicar o passaporte.
+  const CAMPANHA = "📩 O *resultado da Seletiva Ideal 2027* já foi enviado por *e-mail*!";
+
+  it.each([
+    'Estou fazendo matrícula do meu filho e gostaria de saber o que é "passaporte ideal"?',
+    "O que é passaporte ideal?",
+    "quanto é o passaporte?",
+  ])("'%s' → taxa de pré-matrícula, nunca o bloco da Seletiva", async (msg) => {
+    const m = buildMocks({ history: [{ role: "assistant", content: CAMPANHA }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", msg, "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/taxa de pr[ée]-matr[ií]cula/i);
+    expect(sent).not.toMatch(/Seletiva/);
+    expect(sent).not.toMatch(/equipe/i);
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("resposta fixa já enviada → segue pro LLM, sem repetir o bloco", async () => {
+    const { PASSAPORTE_IDEAL_REPLY } = await import("../src/kb/passaporte-ideal");
+    const m = buildMocks({ history: [{ role: "assistant", content: PASSAPORTE_IDEAL_REPLY }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "e o passaporte é pago onde?", "u1");
+    expect(m.llm.generateMessage).toHaveBeenCalled();
+    expect(sentOf(m)).not.toContain(PASSAPORTE_IDEAL_REPLY);
+  });
+
+  it("o LLM sabe o que é o passaporte", () => {
+    expect(buildSystemPrompt()).toMatch(/PASSAPORTE IDEAL: é a TAXA DE PRÉ-MATRÍCULA/);
+  });
+});

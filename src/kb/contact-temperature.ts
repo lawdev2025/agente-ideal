@@ -15,6 +15,13 @@
  * /api/jobs/temperature (de hora em hora). Este módulo é a regra em TS, que os
  * testes cobrem; o SQL em public/admin/supabase-contact-temperature.sql é o
  * espelho set-based que roda de fato. Se mexer em um, mexa no outro.
+ *
+ * JEV (08/10/2026): depois desta regra, o job pede ao Jev que leia a conversa
+ * INTEIRA de quem ficou em silêncio e decida quente/morno/frio pelo sentido
+ * (classifyTemperatura em src/worker/jev-router.ts). Essa leitura fica em
+ * contacts.jev_temperature e vence esta regra enquanto for mais nova que a
+ * última mensagem (supabase-jev-satisfacao-temperatura.sql). Esta função
+ * continua sendo o fallback: Jev desligado, fora do ar ou com confiança baixa.
  */
 export type Temperature = "quente" | "morno" | "frio";
 

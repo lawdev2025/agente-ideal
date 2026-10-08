@@ -153,6 +153,17 @@ const NIVEL_LABEL: Record<string, string | undefined> = {
   nenhum: undefined,
 };
 
+// Escala da satisfação: o índice É a nota (0 a 5). O Jev devolve a média
+// ponderada pelas probabilidades, então a nota sai decimal (ex.: 4,3).
+export const SATISFACAO_CRITERIA = [
+  "furioso: xinga, ameaça desistir ou reclamar, muito irritado com o atendimento",
+  "insatisfeito: reclama, diz que não foi atendido, que a resposta não ajudou ou que já perguntou várias vezes",
+  "um pouco frustrado ou confuso: não entendeu a resposta, insiste na mesma dúvida",
+  "neutro: só pergunta ou informa algo, sem emoção",
+  "satisfeito: agradece, concorda, a dúvida foi resolvida",
+  "muito satisfeito: elogia, demonstra alegria ou entusiasmo com o colégio",
+];
+
 export const UNIDADE_CRITERIA: Record<string, unknown> = {
   batista_campos: "Batista Campos (sede)",
   augusto_montenegro: "Augusto Montenegro",
@@ -198,6 +209,8 @@ export interface JevDecision {
   nivelConfidence: number;
   /** Probabilidade (0-1) de o cliente ter pedido um humano. */
   humano: number;
+  /** Satisfação do cliente com o atendimento até aqui, de 0 a 5 (decimal). */
+  satisfacao: number | null;
   model: string;
   latencyMs: number;
   inputTokens: number | null;
@@ -270,6 +283,12 @@ export function buildJevQuestions(faqs: DirectResponse[] = []): Record<string, J
         false: "qualquer outra coisa, inclusive dizer que vai passar na escola, agradecer ou se despedir",
       },
     },
+    satisfacao: {
+      type: "score",
+      instructions:
+        "Quão satisfeito o cliente está com o atendimento do Colégio Ideal nesta conversa até agora, considerando principalmente a `mensagem_atual_do_cliente`?",
+      criteria: SATISFACAO_CRITERIA,
+    },
     continuacao: {
       type: "noul",
       instructions:
@@ -306,6 +325,7 @@ export function parseJevDecision(res: JevResponse): JevDecision | null {
     nivel: nivel?.type === "choice" ? NIVEL_LABEL[nivel.choice] : undefined,
     nivelConfidence: nivel?.type === "choice" ? nivel.confidence : 0,
     humano: pHumano,
+    satisfacao: res.answers.satisfacao?.type === "score" ? res.answers.satisfacao.score : null,
     model: res.model,
     latencyMs: res.latencyMs,
     inputTokens: res.usage?.input_tokens ?? null,
@@ -355,4 +375,79 @@ export function routesAgree(legacy: string, jev: string): boolean | null {
   if (legacy === "faq" && jev.startsWith(FAQ_PREFIX)) return true;
   if (legacy === "llm_livre" && LIVRE_EQUIVALENTES.has(jev)) return true;
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// SATISFAÇÃO DO CONTATO
+// ---------------------------------------------------------------------------
+
+// Peso da leitura nova na média. 0,5 = a mensagem atual vale metade, o
+// histórico a outra metade: um "ok" neutro não derruba quem estava satisfeito,
+// mas uma reclamação puxa a barra pra baixo na hora.
+export const SATISFACAO_PESO_NOVO = 0.5;
+
+/** Média móvel da satisfação do contato, arredondada em 1 casa (0 a 5). */
+export function nextSatisfaction(prev: number | null | undefined, leitura: number): number {
+  const v = prev == null ? leitura : prev * (1 - SATISFACAO_PESO_NOVO) + leitura * SATISFACAO_PESO_NOVO;
+  return Math.round(Math.min(5, Math.max(0, v)) * 10) / 10;
+}
+
+// ---------------------------------------------------------------------------
+// TEMPERATURA PELA CONVERSA (job de hora em hora)
+// ---------------------------------------------------------------------------
+
+export type Temperatura = "quente" | "morno" | "frio";
+
+// Definições do dono do colégio (08/10/2026). O Jev lê a conversa INTEIRA de
+// um contato que ficou em silêncio e escolhe uma delas.
+export const TEMPERATURA_CRITERIA: Record<Temperatura, unknown> = {
+  quente: {
+    cobre: "cliente encaminhado: recebeu o link (visita, matrícula, inscrição) e demonstrou que vai seguir, está decidido ou prestes a fazer a matrícula",
+  },
+  morno: {
+    cobre: "cliente engajou e está no processo, mas parou de responder; ou só agendou a visita/teste e não fez mais nada; ou ainda está pesquisando",
+  },
+  frio: {
+    cobre: "cliente mandou só uma ou duas mensagens e sumiu, sem engajar de verdade na conversa",
+  },
+};
+
+// Abaixo disto a temperatura pela regra (silêncio + link) continua valendo.
+export const TEMPERATURA_MIN_CONF = 0.5;
+const TEMPERATURA_TURNS = 16;
+
+export interface TemperaturaDecision {
+  temperatura: Temperatura;
+  confidence: number;
+}
+
+export async function classifyTemperatura(
+  client: JevClient,
+  history: Array<{ role: string; content: string }>
+): Promise<TemperaturaDecision | null> {
+  const conversa = history
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .slice(-TEMPERATURA_TURNS)
+    .map((m) => ({
+      quem: m.role === "user" ? "cliente" : "colegio",
+      texto: m.content.slice(0, STATE_CHARS_PER_TURN),
+    }));
+  if (!conversa.some((t) => t.quem === "cliente")) return null;
+  const res = await client.evaluate(
+    {
+      mensagens_do_cliente: conversa.filter((t) => t.quem === "cliente").length,
+      conversa,
+    },
+    {
+      temperatura: {
+        type: "choice",
+        instructions:
+          "Conversa de WhatsApp de um cliente com o Colégio Ideal (escola), que parou de responder. Em que temperatura de lead este cliente está?",
+        criteria: TEMPERATURA_CRITERIA as Record<string, never>,
+      },
+    }
+  );
+  const a = res?.answers.temperatura;
+  if (!a || a.type !== "choice") return null;
+  return { temperatura: a.choice as Temperatura, confidence: a.confidence };
 }

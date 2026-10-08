@@ -58,3 +58,21 @@ export async function recordJevShadow(row: JevShadowRow): Promise<void> {
     logger.warn({ err }, "jev_shadow: insert falhou");
   }
 }
+
+/**
+ * Grava a satisfação do contato (0-5, média móvel — ver nextSatisfaction).
+ * Best-effort: antes de supabase-jev-satisfacao-temperatura.sql a coluna não
+ * existe e o update só loga.
+ */
+export async function recordSatisfaction(waId: string, value: number): Promise<void> {
+  if (!isSupabaseEnabled()) return;
+  try {
+    const { error } = await getSupabase()
+      .from("contacts")
+      .update({ satisfaction: value, satisfaction_at: Date.now() })
+      .eq("wa_id", waId);
+    if (error) logger.warn({ error }, "satisfaction: update falhou");
+  } catch (err) {
+    logger.warn({ err }, "satisfaction: update falhou");
+  }
+}

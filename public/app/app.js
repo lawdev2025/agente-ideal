@@ -324,6 +324,7 @@
       displayName(c), c.bot_paused ? 1 : 0, unread[c.wa_id] || 0,
       c.last_message_role, c.last_message, fmtTime(c.last_message_at || c.last_seen_at),
       c.temperature, c.tag, c.seletiva_status, c.seletiva_resultado, c.unit_tag,
+      c.satisfaction,
     ].join("");
   }
 
@@ -456,6 +457,28 @@
       ' style="--tm-row:' + atraso + 's">' + barras + "</span>";
   }
 
+  // SATISFAÇÃO 0-5 lida pelo JEV a cada mensagem do cliente (média móvel,
+  // ver nextSatisfaction em src/worker/jev-router.ts). Barra + nota com 1
+  // casa ("4,3"). Cor: verde >= 4, âmbar >= 2,5, vermelho abaixo — vermelho é
+  // cliente pra resgatar. Sem leitura ainda -> não mostra nada.
+  function satInfo(v) {
+    if (v == null || v === "" || isNaN(Number(v))) return null;
+    const n = Math.min(5, Math.max(0, Number(v)));
+    const label = n.toFixed(1).replace(".", ",");
+    const cls = n >= 4 ? "sat-alta" : n >= 2.5 ? "sat-media" : "sat-baixa";
+    const humor = n >= 4 ? "satisfeito" : n >= 2.5 ? "neutro" : "insatisfeito";
+    return { n, label, cls, title: "Satisfação " + label + " de 5 (" + humor + ") — lida pelo JEV" };
+  }
+
+  function satHtml(v, extraCls) {
+    const s = satInfo(v);
+    if (!s) return "";
+    return '<span class="sat ' + s.cls + (extraCls ? " " + extraCls : "") + '" role="img"' +
+      ' aria-label="' + s.title + '" title="' + s.title + '">' +
+      '<span class="sat-bar"><i style="width:' + (s.n / 5 * 100).toFixed(0) + '%"></i></span>' +
+      "<b>" + s.label + "</b></span>";
+  }
+
   // Variante de cor do avatar (a1..a4) determinística por wa_id.
   function avatarVariant(wa) {
     let h = 0;
@@ -519,6 +542,7 @@
               </div>
               <div class="row-bottom">
                 <span class="row-preview">${escapeHtml(preview + (c.last_message || ""))}</span>
+                ${satHtml(c.satisfaction)}
                 ${n > 0 ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : `<span class="chip ${st}">${st === "bot" ? "Bot" : "Time"}</span>`}
               </div>
             </div>
@@ -649,6 +673,8 @@
     const botActive = !c.bot_paused;
     $("chat-status").textContent = botActive ? "Bot ativo" : "Você está atendendo";
     $("chat-dot").className = "hdr-dot " + (botActive ? "bot" : "manual");
+    const sat = $("chat-sat");
+    if (sat) sat.innerHTML = satHtml(c.satisfaction, "sat-hdr");
   }
 
   async function loadMessages(waId) {

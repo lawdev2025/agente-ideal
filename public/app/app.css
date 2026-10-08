@@ -194,6 +194,36 @@ body {
 
 /* pull-to-refresh: o spinner mora numa faixa de altura 0; o JS empurra */
 .ptr-host { height: 0; position: relative; z-index: 0; }
+
+/* ---------------- BARRA DE SATISFAÇÃO ---------------- */
+/* Nota 0-5 lida pelo JEV (média móvel por contato). Mora na linha de baixo do
+   card, à direita da prévia, e no topo do chat. Barra curta + número: o número
+   é o que se lê, a barra é o que se percebe de relance rolando a lista. */
+.sat {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  font-size: 11.5px; line-height: 1;
+  --sat-track: #E5E2DE;
+}
+.sat b { font-weight: 700; color: var(--sat-ink); font-variant-numeric: tabular-nums; }
+.sat-bar {
+  display: block; width: 30px; height: 5px; border-radius: 3px;
+  background: var(--sat-track); overflow: hidden;
+}
+.sat-bar i { display: block; height: 100%; border-radius: 3px; background: var(--sat-ink); }
+.sat-alta  { --sat-ink: var(--ok); }
+.sat-media { --sat-ink: var(--warn); }
+.sat-baixa { --sat-ink: var(--brand-deep); }
+.ideal.dark .sat { --sat-track: #3A2F31; }
+.ideal.dark .sat-baixa { --sat-ink: var(--brand-bright); }
+/* No topo do chat fica depois do "Bot ativo", sobre o fundo vermelho do
+   cabeçalho: usa os mesmos tons claros da bolinha de status (.hdr-dot) em vez
+   das cores do card, que sumiriam no vermelho. */
+.sat.sat-hdr { margin-left: 8px; --sat-track: rgba(255,255,255,.25); }
+.sat-hdr.sat-alta  { --sat-ink: #7BE8A8; }
+.sat-hdr.sat-media { --sat-ink: #FFD178; }
+.sat-hdr.sat-baixa { --sat-ink: #FFB3B8; }
+.ideal.dark .sat.sat-hdr { --sat-track: rgba(255,255,255,.25); }
+.ideal.dark .sat-hdr.sat-baixa { --sat-ink: #FFB3B8; }
 .ptr-host .ptr-spin {
   position: absolute; left: 50%; top: 6px;
   transform: translateX(-50%) translateY(-40px); opacity: 0;

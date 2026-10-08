@@ -37,8 +37,8 @@ import {
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 import { JevClient } from "../llm/jev";
-import { classifyWithJev, JevDecision } from "./jev-router";
-import { recordJevShadow } from "../learning/jev-shadow";
+import { classifyWithJev, JevDecision, nextSatisfaction } from "./jev-router";
+import { recordJevShadow, recordSatisfaction } from "../learning/jev-shadow";
 import { loadActiveDirectResponses, DirectResponse } from "../kb/direct-responses";
 
 export interface ConversationMessage {
@@ -99,6 +99,7 @@ export class MessageOrchestrator {
     const trace = { route: "?" };
     let jevPending: Promise<JevDecision | null> | null = null;
     let jevHistory: ConversationMessage[] = [];
+    let jevPrevSatisfaction: number | null = null;
     try {
       logger.info(
         { conversationId, messageLength: userMessage.length },
@@ -150,6 +151,7 @@ export class MessageOrchestrator {
       }));
       if (this.jev) {
         jevHistory = conversationHistory;
+        jevPrevSatisfaction = contact.satisfaction ?? null;
         jevPending = this.classifyWithJev(conversationHistory, userMessage);
       }
 
@@ -584,14 +586,20 @@ export class MessageOrchestrator {
       );
     } finally {
       if (jevPending) {
+        const decision = await jevPending;
         await recordJevShadow({
           waId: studentId,
           message: userMessage,
           legacyRoute: trace.route,
           legacyUnit: detectUnit(userMessage) ?? this.findRecentUnitFromUser(jevHistory),
           legacyNivel: detectNivel(userMessage),
-          decision: await jevPending,
+          decision,
         });
+        // Barra de satisfação do CRM: a leitura desta mensagem entra na média
+        // do contato. Vale em qualquer modo do Jev (não muda a resposta).
+        if (decision?.satisfacao != null) {
+          await recordSatisfaction(studentId, nextSatisfaction(jevPrevSatisfaction, decision.satisfacao));
+        }
       }
     }
   }

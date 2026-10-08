@@ -16,6 +16,9 @@ import {
   parseJevDecision,
   routesAgree,
   ROUTE_CRITERIA,
+  nextSatisfaction,
+  classifyTemperatura,
+  SATISFACAO_CRITERIA,
 } from "../src/worker/jev-router";
 import { MessageOrchestrator, legacyRouteLabel } from "../src/worker/orchestrator";
 import { routeIntent } from "../src/worker/intent-router";
@@ -33,6 +36,7 @@ function jevApiResponse(rota: string, confidence = 0.9): Omit<JevResponse, "late
       unidade: { type: "choice", choice: "cidade_nova", confidence: 0.99, probabilities: { cidade_nova: 1 } },
       nivel: { type: "choice", choice: "fundamental_2", confidence: 0.95, probabilities: { fundamental_2: 1 } },
       humano: { type: "noul", noul: 0.02 },
+      satisfacao: { type: "score", score: 4.3, confidence: 0.8, probabilities: { "4": 0.7, "5": 0.3 } },
     },
     usage: { input_tokens: 1900, output_tokens: 60 },
   };
@@ -116,7 +120,7 @@ describe("jev-router", () => {
 
   it("decisão: traduz unidade/nível para os rótulos do bot", () => {
     const d = parseJevDecision({ ...jevApiResponse("valores"), latencyMs: 300 });
-    expect(d).toMatchObject({ route: "valores", unit: "Cidade Nova", nivel: "Fundamental 2", humano: 0.02, inputTokens: 1900 });
+    expect(d).toMatchObject({ route: "valores", unit: "Cidade Nova", nivel: "Fundamental 2", humano: 0.02, satisfacao: 4.3, inputTokens: 1900 });
   });
 
   it("concordância regex × Jev", () => {
@@ -135,6 +139,49 @@ describe("jev-router", () => {
     expect(label("quero fazer uma visita")).toBe("visita");
     expect(label("quero matricular meu filho")).toBe("matricula");
     expect(label("como é o 6º ano?")).toBe("nivel_info");
+  });
+});
+
+describe("satisfação", () => {
+  it("escala de 0 a 5: 6 níveis, o índice é a nota", () => {
+    expect(SATISFACAO_CRITERIA).toHaveLength(6);
+    const q = buildJevQuestions();
+    expect(q.satisfacao.type).toBe("score");
+  });
+
+  it("média móvel: 1ª leitura é a própria nota, depois metade/metade, 1 casa", () => {
+    expect(nextSatisfaction(null, 4.27)).toBe(4.3);
+    expect(nextSatisfaction(4.6, 1)).toBe(2.8);
+    expect(nextSatisfaction(5, 5)).toBe(5);
+    expect(nextSatisfaction(0.2, -1)).toBe(0);
+  });
+});
+
+describe("temperatura pela conversa", () => {
+  const conversa = [
+    { role: "user", content: "quero matricular" },
+    { role: "assistant", content: "Agende: https://x" },
+    { role: "tool", content: "Tool x" },
+  ];
+
+  it("manda a conversa sem tool e devolve a escolha com confiança", async () => {
+    const fetchImpl = fakeFetch(async () => new Response(JSON.stringify({
+      model: "jev-1.13.0",
+      answers: { temperatura: { type: "choice", choice: "quente", confidence: 0.9, probabilities: { quente: 0.95 } } },
+    }), { status: 200 }));
+    const client = new JevClient({ apiKey: "k", model: "m", timeoutMs: 1000, fetchImpl });
+    expect(await classifyTemperatura(client, conversa)).toEqual({ temperatura: "quente", confidence: 0.9 });
+    const body = JSON.parse((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    expect(body.state.mensagens_do_cliente).toBe(1);
+    expect(body.state.conversa).toHaveLength(2);
+    expect(Object.keys(body.questions.temperatura.criteria)).toEqual(["quente", "morno", "frio"]);
+  });
+
+  it("conversa sem mensagem do cliente → null, sem chamar a API", async () => {
+    const fetchImpl = fakeFetch(async () => new Response("{}", { status: 200 }));
+    const client = new JevClient({ apiKey: "k", model: "m", timeoutMs: 1000, fetchImpl });
+    expect(await classifyTemperatura(client, [{ role: "assistant", content: "oi" }])).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
@@ -158,8 +205,9 @@ describe("orquestrador em modo sombra", () => {
     return { llm, stateRepo, whatsapp, escalation };
   }
 
-  it("grava regex × Jev sem mudar a resposta enviada", async () => {
+  it("grava regex × Jev e a satisfação, sem mudar a resposta enviada", async () => {
     const spy = vi.spyOn(shadow, "recordJevShadow").mockResolvedValue();
+    const satSpy = vi.spyOn(shadow, "recordSatisfaction").mockResolvedValue();
     const m = mocks();
     const jev = new JevClient({
       apiKey: "k", model: "m", timeoutMs: 1000,
@@ -174,7 +222,10 @@ describe("orquestrador em modo sombra", () => {
     expect(row.legacyRoute).toBe("visita");
     expect(row.decision?.route).toBe("visita");
     expect(row.legacyUnit).toBe("Cidade Nova");
+    // 1ª leitura de satisfação do contato = a própria nota do Jev.
+    expect(satSpy).toHaveBeenCalledWith("u1", 4.3);
     spy.mockRestore();
+    satSpy.mockRestore();
   });
 
   it("Jev fora do ar: atendimento segue igual e a linha é gravada sem decisão", async () => {

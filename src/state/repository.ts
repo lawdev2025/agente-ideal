@@ -34,6 +34,8 @@ export interface Contact {
   paused_reason: string | null;
   paused_at: number | null;
   last_seen_at: number | null;
+  /** Satisfação 0-5 lida pelo Jev (supabase-jev-satisfacao-temperatura.sql). */
+  satisfaction?: number | null;
 }
 
 /**

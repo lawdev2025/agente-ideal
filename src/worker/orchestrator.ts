@@ -38,7 +38,8 @@ import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 import { JevClient } from "../llm/jev";
 import { classifyWithJev, JevDecision, nextSatisfaction } from "./jev-router";
-import { recordJevShadow, recordSatisfaction } from "../learning/jev-shadow";
+import { recordJevShadow, recordSatisfaction, recordAlerta } from "../learning/jev-shadow";
+import { avaliarAlerta, contarRepeticoes } from "./jev-alert";
 import { loadActiveDirectResponses, DirectResponse } from "../kb/direct-responses";
 
 export interface ConversationMessage {
@@ -100,6 +101,7 @@ export class MessageOrchestrator {
     let jevPending: Promise<JevDecision | null> | null = null;
     let jevHistory: ConversationMessage[] = [];
     let jevPrevSatisfaction: number | null = null;
+    let jevContact: Contact | null = null;
     try {
       logger.info(
         { conversationId, messageLength: userMessage.length },
@@ -152,6 +154,7 @@ export class MessageOrchestrator {
       if (this.jev) {
         jevHistory = conversationHistory;
         jevPrevSatisfaction = contact.satisfaction ?? null;
+        jevContact = contact;
         jevPending = this.classifyWithJev(conversationHistory, userMessage);
       }
 
@@ -598,9 +601,43 @@ export class MessageOrchestrator {
         // Barra de satisfação do CRM: a leitura desta mensagem entra na média
         // do contato. Vale em qualquer modo do Jev (não muda a resposta).
         if (decision?.satisfacao != null) {
-          await recordSatisfaction(studentId, nextSatisfaction(jevPrevSatisfaction, decision.satisfacao));
+          const media = nextSatisfaction(jevPrevSatisfaction, decision.satisfacao);
+          await recordSatisfaction(studentId, media);
+          await this.updateAlerta(studentId, userMessage, jevHistory, jevContact, decision, media);
         }
       }
+    }
+  }
+
+  // ALERTA do CRM (src/worker/jev-alert.ts): abre/atualiza/encerra a faixa
+  // "Cliente irritado há X min · motivo" + "Assumir conversa". O estado do bot
+  // é relido aqui (e não o do início do turno) porque o próprio turno pode ter
+  // pausado — pedido de atendente, limite de respostas — e aí já tem humano.
+  private async updateAlerta(
+    waId: string,
+    userMessage: string,
+    history: ConversationMessage[],
+    contact: Contact | null,
+    decision: JevDecision,
+    media: number
+  ): Promise<void> {
+    try {
+      const base = {
+        leitura: decision.satisfacao ?? 3,
+        media,
+        emocao: decision.emocao,
+        motivo: decision.motivo,
+        repeticoes: contarRepeticoes(history, userMessage),
+        alertaAberto: contact?.alert_at != null,
+      };
+      let acao = avaliarAlerta({ ...base, botPausado: false });
+      if (acao.acao === "abrir" || acao.acao === "atualizar") {
+        const pausado = await this.stateRepository.isBotPaused(waId);
+        if (pausado) acao = avaliarAlerta({ ...base, botPausado: true });
+      }
+      await recordAlerta(waId, acao, contact?.name ?? null);
+    } catch (err) {
+      logger.warn({ err }, "alerta: avaliação falhou (ignorado)");
     }
   }
 

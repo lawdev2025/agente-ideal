@@ -215,10 +215,20 @@
     }
   }
 
+  // Conversa com ALERTA aberto (cliente insatisfeito, bot ainda respondendo)
+  // sobe pro topo: alerta no meio da lista ninguém vê. Entre elas, o alerta
+  // mais antigo primeiro — é quem está esperando há mais tempo. O resto segue
+  // pela última mensagem, como sempre.
   function sortedContacts() {
     return contacts
       .slice()
-      .sort((a, b) => parseTs(b.last_message_at || b.last_seen_at) - parseTs(a.last_message_at || a.last_seen_at));
+      .sort((a, b) => {
+        const aa = alertInfo(a), ab = alertInfo(b);
+        if (aa && ab) return parseTs(a.alert_at) - parseTs(b.alert_at);
+        if (aa) return -1;
+        if (ab) return 1;
+        return parseTs(b.last_message_at || b.last_seen_at) - parseTs(a.last_message_at || a.last_seen_at);
+      });
   }
 
   // Filtros da fila — espelham os do /admin (setupContactFilters lá).
@@ -324,7 +334,7 @@
       displayName(c), c.bot_paused ? 1 : 0, unread[c.wa_id] || 0,
       c.last_message_role, c.last_message, fmtTime(c.last_message_at || c.last_seen_at),
       c.temperature, c.tag, c.seletiva_status, c.seletiva_resultado, c.unit_tag,
-      c.satisfaction,
+      c.alert_title, c.alert_reason, alertAgo(c),
     ].join("");
   }
 
@@ -479,6 +489,73 @@
       "<b>" + s.label + "</b></span>";
   }
 
+  // ALERTA de cliente insatisfeito (src/worker/jev-alert.ts): o JEV lê cada
+  // mensagem e, quando a conversa vira problema, o contato ganha alert_at
+  // (início), alert_title ("Cliente irritado") e alert_reason ("repetiu a
+  // pergunta 3× sem resposta útil"). Com o bot pausado já tem gente na
+  // conversa — aí o alerta não aparece.
+  function alertInfo(c) {
+    if (!c || !c.alert_at || c.bot_paused) return null;
+    return { title: c.alert_title || "Cliente insatisfeito", reason: c.alert_reason || "", at: parseTs(c.alert_at) };
+  }
+
+  // "há 12 min" — granularidade de minuto, que também entra no rowSig: a
+  // linha só é redesenhada quando o texto muda (ver alertTick).
+  function alertAgo(c) {
+    const a = alertInfo(c);
+    if (!a) return "";
+    const min = Math.max(0, Math.floor((Date.now() - a.at) / 60000));
+    if (min < 1) return "agora";
+    if (min < 60) return "há " + min + " min";
+    const h = Math.floor(min / 60);
+    if (h < 24) return "há " + h + " h";
+    return "há " + Math.floor(h / 24) + " d";
+  }
+
+  function alertHtml(c) {
+    const a = alertInfo(c);
+    if (!a) return "";
+    return '<div class="alert-strip" role="alert">' +
+      '<span class="al-dot" aria-hidden="true"></span>' +
+      '<span class="al-txt"><b>' + escapeHtml(a.title) + " " + alertAgo(c) + "</b>" +
+      (a.reason ? '<span class="al-why"> · ' + escapeHtml(a.reason) + "</span>" : "") +
+      "</span>" +
+      '<button type="button" class="al-take">Assumir conversa</button>' +
+      "</div>";
+  }
+
+  // "Assumir conversa": desliga o bot desse contato, tira o alerta e abre o
+  // chat. O servidor também limpa o alerta ao pausar (clearAlerta no
+  // handler de /pause), então ele não volta num refresh.
+  async function assumirConversa(waId, btn) {
+    const c = byId[waId] || { wa_id: waId };
+    if (btn) { btn.disabled = true; btn.textContent = "Assumindo…"; }
+    try {
+      if (!c.bot_paused) {
+        const res = await authedFetch(`/api/admin/contacts/${encodeURIComponent(waId)}/pause`, {
+          method: "PATCH",
+          body: JSON.stringify({ paused: true }),
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+      }
+      c.bot_paused = true;
+      c.alert_at = null; c.alert_title = null; c.alert_reason = null;
+      byId[waId] = c;
+      renderContacts();
+      await openChat(waId);
+      toast("Bot desligado — a conversa é sua.");
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = "Assumir conversa"; }
+      toast("Não consegui assumir a conversa.");
+    }
+  }
+
+  // O "há X min" envelhece sozinho: a cada minuto, se houver alerta na tela,
+  // re-renderiza (só as linhas com alerta mudam de assinatura).
+  setInterval(() => {
+    if (contacts.some((c) => alertInfo(c))) scheduleRenderContacts();
+  }, 60000);
+
   // Variante de cor do avatar (a1..a4) determinística por wa_id.
   function avatarVariant(wa) {
     let h = 0;
@@ -516,7 +593,8 @@
 
   function contactRow(c, pos) {
     const wrap = document.createElement("div");
-    wrap.className = "card-wrap";
+    const alerta = alertHtml(c);
+    wrap.className = "card-wrap" + (alerta ? " has-alert" : "");
     wrap.dataset.wa = c.wa_id;
     const st = c.bot_paused ? "manual" : "bot";
     const n = unread[c.wa_id] || 0;
@@ -542,14 +620,19 @@
               </div>
               <div class="row-bottom">
                 <span class="row-preview">${escapeHtml(preview + (c.last_message || ""))}</span>
-                ${satHtml(c.satisfaction)}
                 ${n > 0 ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : `<span class="chip ${st}">${st === "bot" ? "Bot" : "Time"}</span>`}
               </div>
             </div>
           </div>
+          ${alerta}
         </div>
       </div>`;
     attachSwipe(wrap, c.wa_id);
+    const take = wrap.querySelector(".al-take");
+    if (take) take.addEventListener("click", (e) => {
+      e.stopPropagation();
+      assumirConversa(c.wa_id, take);
+    });
     return wrap;
   }
 
@@ -561,6 +644,9 @@
     const setDx = (v) => { s.dx = v; front.style.transform = "translateX(" + v + "px)"; };
 
     front.addEventListener("pointerdown", (e) => {
+      // Toque no "Assumir conversa" é do botão: sem isto o pointerup do card
+      // tratava como toque curto e abria o chat antes (e sem) desligar o bot.
+      if (e.target.closest && e.target.closest(".al-take")) return;
       s.active = true; s.x = e.clientX; s.y = e.clientY; s.base = s.dx; s.dir = null; s.moved = 0;
       front.classList.add("dragging");
     });

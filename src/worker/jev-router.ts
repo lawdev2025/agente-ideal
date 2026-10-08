@@ -164,6 +164,27 @@ export const SATISFACAO_CRITERIA = [
   "muito satisfeito: elogia, demonstra alegria ou entusiasmo com o colégio",
 ];
 
+export const EMOCAO_CRITERIA: Record<string, unknown> = {
+  irritado: "bravo, indignado, reclama com força, usa 'absurdo', caixa alta ou ameaça desistir",
+  frustrado: "cansado de não conseguir o que quer, desanimado com as respostas",
+  confuso: "não entendeu a resposta, pede explicação de novo",
+  ansioso: "preocupado, com pressa, aflito com prazo ou resultado",
+  neutro: "pergunta ou informa sem emoção aparente",
+  satisfeito: "agradece, elogia, contente",
+};
+
+// Motivo da insatisfação. A chave vira um texto FIXO no alerta do CRM
+// (src/worker/jev-alert.ts) — o Jev não escreve texto, só escolhe.
+export const MOTIVO_CRITERIA: Record<string, unknown> = {
+  sem_resposta_util: "o bot respondeu, mas a resposta não resolveu a dúvida dele",
+  quer_valor: "quer saber o valor/mensalidade e não recebe o número",
+  ninguem_responde: "reclama de demora ou de que ninguém responde",
+  resultado_seletiva: "problema com o resultado da Seletiva (não chegou, não entende, contesta)",
+  quer_pessoa: "quer falar com uma pessoa e não com o robô",
+  atendimento_ruim: "reclama do atendimento ou do colégio em geral",
+  nenhum: "o cliente não está insatisfeito",
+};
+
 export const UNIDADE_CRITERIA: Record<string, unknown> = {
   batista_campos: "Batista Campos (sede)",
   augusto_montenegro: "Augusto Montenegro",
@@ -211,6 +232,10 @@ export interface JevDecision {
   humano: number;
   /** Satisfação do cliente com o atendimento até aqui, de 0 a 5 (decimal). */
   satisfacao: number | null;
+  /** Emoção dominante da mensagem atual (chave de EMOCAO_CRITERIA). */
+  emocao: string | null;
+  /** Por que o cliente está insatisfeito (chave de MOTIVO_CRITERIA). */
+  motivo: string | null;
   model: string;
   latencyMs: number;
   inputTokens: number | null;
@@ -289,6 +314,17 @@ export function buildJevQuestions(faqs: DirectResponse[] = []): Record<string, J
         "Quão satisfeito o cliente está com o atendimento do Colégio Ideal nesta conversa até agora, considerando principalmente a `mensagem_atual_do_cliente`?",
       criteria: SATISFACAO_CRITERIA,
     },
+    emocao: {
+      type: "choice",
+      instructions: "Qual emoção domina a `mensagem_atual_do_cliente`, considerando a conversa?",
+      criteria: EMOCAO_CRITERIA as Record<string, never>,
+    },
+    motivo: {
+      type: "choice",
+      instructions:
+        "Se o cliente está insatisfeito, frustrado ou irritado com o atendimento, qual é o motivo principal? Se não está, escolha nenhum.",
+      criteria: MOTIVO_CRITERIA as Record<string, never>,
+    },
     continuacao: {
       type: "noul",
       instructions:
@@ -326,6 +362,8 @@ export function parseJevDecision(res: JevResponse): JevDecision | null {
     nivelConfidence: nivel?.type === "choice" ? nivel.confidence : 0,
     humano: pHumano,
     satisfacao: res.answers.satisfacao?.type === "score" ? res.answers.satisfacao.score : null,
+    emocao: res.answers.emocao?.type === "choice" ? res.answers.emocao.choice : null,
+    motivo: res.answers.motivo?.type === "choice" ? res.answers.motivo.choice : null,
     model: res.model,
     latencyMs: res.latencyMs,
     inputTokens: res.usage?.input_tokens ?? null,

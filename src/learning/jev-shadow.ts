@@ -1,6 +1,8 @@
 import { getSupabase, isSupabaseEnabled } from "../db/supabase-client";
 import { logger } from "../logger";
 import { JevDecision, routesAgree } from "../worker/jev-router";
+import type { AlertaAcao } from "../worker/jev-alert";
+import { sendPushToAll } from "../push/web-push";
 
 export interface JevShadowRow {
   waId: string;
@@ -74,5 +76,49 @@ export async function recordSatisfaction(waId: string, value: number): Promise<v
     if (error) logger.warn({ error }, "satisfaction: update falhou");
   } catch (err) {
     logger.warn({ err }, "satisfaction: update falhou");
+  }
+}
+
+/**
+ * Abre, atualiza ou encerra o alerta de cliente insatisfeito do contato
+ * (colunas alert_* de supabase-jev-alerta.sql). Ao ABRIR, avisa o celular do
+ * time com push heads-up — é pra alguém assumir agora. Best-effort.
+ */
+export async function recordAlerta(
+  waId: string,
+  acao: AlertaAcao,
+  nome: string | null,
+  now: number = Date.now()
+): Promise<void> {
+  if (acao.acao === "nada" || !isSupabaseEnabled()) return;
+  const patch =
+    acao.acao === "encerrar"
+      ? { alert_title: null, alert_reason: null, alert_at: null, alert_updated_at: now }
+      : acao.acao === "abrir"
+        ? { alert_title: acao.titulo, alert_reason: acao.motivo, alert_at: now, alert_updated_at: now }
+        : { alert_title: acao.titulo, alert_reason: acao.motivo, alert_updated_at: now };
+  try {
+    const { error } = await getSupabase().from("contacts").update(patch).eq("wa_id", waId);
+    if (error) {
+      logger.warn({ error }, "alerta: update falhou");
+      return;
+    }
+  } catch (err) {
+    logger.warn({ err }, "alerta: update falhou");
+    return;
+  }
+  logger.info({ waId, acao: acao.acao }, "Alerta de cliente insatisfeito");
+  if (acao.acao === "abrir") {
+    try {
+      await sendPushToAll({
+        title: `🔴 ${acao.titulo}: ${nome || waId}`,
+        body: `${acao.motivo} — toque para assumir a conversa`,
+        wa_id: waId,
+        tag: `crm-alerta-${waId}`,
+        urgent: true,
+      });
+    } catch (err) {
+      logger.warn({ err }, "alerta: push falhou (ignorado)");
+    }
   }
 }

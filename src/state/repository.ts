@@ -36,6 +36,8 @@ export interface Contact {
   last_seen_at: number | null;
   /** Satisfação 0-5 lida pelo Jev (supabase-jev-satisfacao-temperatura.sql). */
   satisfaction?: number | null;
+  /** Início do alerta de cliente insatisfeito aberto (supabase-jev-alerta.sql). */
+  alert_at?: number | null;
 }
 
 /**

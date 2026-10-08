@@ -139,6 +139,7 @@ export async function messages(req: VercelRequest, res: VercelResponse) {
 
     try {
       await repo.pauseBot(wa_id, "Atendimento humano via painel");
+      await clearAlerta(wa_id);
 
       if (mediaUrl) {
         const caption = (body.caption || "").trim();
@@ -187,6 +188,22 @@ export async function messages(req: VercelRequest, res: VercelResponse) {
   res.status(405).json({ error: "Method not allowed" });
 }
 
+// Humano assumiu a conversa (pausou o bot ou respondeu pelo painel) → o alerta
+// de cliente insatisfeito (src/worker/jev-alert.ts) cumpriu o papel e sai da
+// lista. Separado do pauseBot e sem propagar erro: antes de
+// supabase-jev-alerta.sql a coluna não existe e a pausa não pode falhar.
+async function clearAlerta(wa_id: string): Promise<void> {
+  try {
+    const { error } = await getSupabase()
+      .from("contacts")
+      .update({ alert_title: null, alert_reason: null, alert_at: null, alert_updated_at: Date.now() })
+      .eq("wa_id", wa_id);
+    if (error) logger.warn({ error, wa_id }, "limpar alerta falhou (ignorado)");
+  } catch (err) {
+    logger.warn({ err, wa_id }, "limpar alerta falhou (ignorado)");
+  }
+}
+
 // /api/admin/contacts/:wa_id/pause — PATCH pausa/retoma o bot
 export async function pause(req: VercelRequest, res: VercelResponse) {
   if (!applyCors(req, res)) return;
@@ -211,6 +228,7 @@ export async function pause(req: VercelRequest, res: VercelResponse) {
   try {
     if (body.paused) {
       await repo.pauseBot(wa_id, "Pausado via painel admin");
+      await clearAlerta(wa_id);
     } else {
       await repo.resumeBot(wa_id);
     }

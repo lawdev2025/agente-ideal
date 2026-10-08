@@ -185,29 +185,54 @@ describe("temperatura pela conversa", () => {
   });
 });
 
+describe("orquestrador: alerta de cliente insatisfeito", () => {
+  it("cliente irritado com bot ativo → abre alerta com título e motivo", async () => {
+    const shadowSpy = vi.spyOn(shadow, "recordJevShadow").mockResolvedValue();
+    const satSpy = vi.spyOn(shadow, "recordSatisfaction").mockResolvedValue();
+    const alertSpy = vi.spyOn(shadow, "recordAlerta").mockResolvedValue();
+    const api = jevApiResponse("valores", 0.95);
+    api.answers.satisfacao = { type: "score", score: 0.9, confidence: 0.9, probabilities: { "0": 0.3, "1": 0.7 } };
+    api.answers.emocao = { type: "choice", choice: "irritado", confidence: 0.9, probabilities: { irritado: 0.95 } };
+    api.answers.motivo = { type: "choice", choice: "quer_valor", confidence: 0.9, probabilities: { quer_valor: 0.95 } };
+    const jev = new JevClient({ apiKey: "k", model: "m", timeoutMs: 1000, fetchImpl: fakeFetch(async () => new Response(JSON.stringify(api), { status: 200 })) });
+    const m = orchestratorMocks();
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation, undefined, jev);
+    await orch.processMessage("u1", "Que absurdo, ninguém me diz o valor da mensalidade", "u1");
+    expect(alertSpy).toHaveBeenCalledWith(
+      "u1",
+      { acao: "abrir", titulo: "Cliente irritado", motivo: "quer o valor da mensalidade e não recebeu" },
+      "Carla"
+    );
+    shadowSpy.mockRestore(); satSpy.mockRestore(); alertSpy.mockRestore();
+  });
+});
+
+function orchestratorMocks() {
+  const llm = { generateMessage: vi.fn(async () => ({ message: "ok", toolCalls: [] })) } as unknown as LLMProvider;
+  const stateRepo = {
+    getHistory: vi.fn(async () => [
+      { id: 1, wa_id: "u1", role: "assistant", content: "Olá! Como posso te chamar?", created_at: 1 },
+      { id: 2, wa_id: "u1", role: "user", content: "Carla", created_at: 2 },
+      { id: 3, wa_id: "u1", role: "assistant", content: "Prazer, Carla!", created_at: 3 },
+    ]),
+    appendMessage: vi.fn(async () => 1),
+    isBotPaused: vi.fn(async () => false),
+    getOrCreateContact: vi.fn(async () => ({ wa_id: "u1", name: "Carla", phone: null, bot_paused: false, paused_reason: null, paused_at: null, last_seen_at: null })),
+    setContactUnitTag: vi.fn(async () => {}),
+    markSeletivaAgendada: vi.fn(async () => {}),
+  } as unknown as StateRepository;
+  const whatsapp = { sendMessage: vi.fn(async () => ({ messageId: "m1" })), sendImage: vi.fn() } as unknown as WhatsAppClient;
+  const escalation = { escalateToGroup: vi.fn(async () => ({ messageId: "e1" })) } as unknown as EscalationHandler;
+  return { llm, stateRepo, whatsapp, escalation };
+}
+
 describe("orquestrador em modo sombra", () => {
-  function mocks() {
-    const llm = { generateMessage: vi.fn(async () => ({ message: "ok", toolCalls: [] })) } as unknown as LLMProvider;
-    const stateRepo = {
-      getHistory: vi.fn(async () => [
-        { id: 1, wa_id: "u1", role: "assistant", content: "Olá! Como posso te chamar?", created_at: 1 },
-        { id: 2, wa_id: "u1", role: "user", content: "Carla", created_at: 2 },
-        { id: 3, wa_id: "u1", role: "assistant", content: "Prazer, Carla!", created_at: 3 },
-      ]),
-      appendMessage: vi.fn(async () => 1),
-      isBotPaused: vi.fn(async () => false),
-      getOrCreateContact: vi.fn(async () => ({ wa_id: "u1", name: "Carla", phone: null, bot_paused: false, paused_reason: null, paused_at: null, last_seen_at: null })),
-      setContactUnitTag: vi.fn(async () => {}),
-      markSeletivaAgendada: vi.fn(async () => {}),
-    } as unknown as StateRepository;
-    const whatsapp = { sendMessage: vi.fn(async () => ({ messageId: "m1" })), sendImage: vi.fn() } as unknown as WhatsAppClient;
-    const escalation = { escalateToGroup: vi.fn(async () => ({ messageId: "e1" })) } as unknown as EscalationHandler;
-    return { llm, stateRepo, whatsapp, escalation };
-  }
+  const mocks = orchestratorMocks;
 
   it("grava regex × Jev e a satisfação, sem mudar a resposta enviada", async () => {
     const spy = vi.spyOn(shadow, "recordJevShadow").mockResolvedValue();
     const satSpy = vi.spyOn(shadow, "recordSatisfaction").mockResolvedValue();
+    const alertSpy = vi.spyOn(shadow, "recordAlerta").mockResolvedValue();
     const m = mocks();
     const jev = new JevClient({
       apiKey: "k", model: "m", timeoutMs: 1000,
@@ -224,8 +249,11 @@ describe("orquestrador em modo sombra", () => {
     expect(row.legacyUnit).toBe("Cidade Nova");
     // 1ª leitura de satisfação do contato = a própria nota do Jev.
     expect(satSpy).toHaveBeenCalledWith("u1", 4.3);
+    // Satisfeito (4,3) e sem alerta aberto → nada a fazer com o alerta.
+    expect(alertSpy).toHaveBeenCalledWith("u1", { acao: "nada" }, "Carla");
     spy.mockRestore();
     satSpy.mockRestore();
+    alertSpy.mockRestore();
   });
 
   it("Jev fora do ar: atendimento segue igual e a linha é gravada sem decisão", async () => {

@@ -195,6 +195,56 @@ body {
 /* pull-to-refresh: o spinner mora numa faixa de altura 0; o JS empurra */
 .ptr-host { height: 0; position: relative; z-index: 0; }
 
+/* ---------------- ALERTA DE CLIENTE INSATISFEITO ---------------- */
+/* Só aparece na conversa que virou problema (regras em src/worker/jev-alert.ts):
+   card levemente rosado, anel vinho no avatar e uma faixa embaixo da mensagem
+   com "Cliente irritado há 12 min · motivo" + "Assumir conversa" (desliga o
+   bot e abre o chat). A faixa mora DENTRO do card pra deslizar junto no swipe. */
+.card-wrap.has-alert { max-height: 220px; }
+.card.card-alert, .has-alert .card.swipe-front {
+  background: var(--al-card); border-color: var(--al-line); overflow: hidden;
+}
+.has-alert .avatar { box-shadow: 0 0 0 2px var(--al-ink); }
+/* Quebra sozinha: com espaço, texto e botão numa linha; no celular estreito
+   o texto ocupa a linha toda (até 2 linhas, sem esconder o motivo, que é o
+   que diz POR QUE assumir) e o botão desce pra direita. Sem media query —
+   depende da largura do card, não da tela. */
+.alert-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: 9px 12px 9px 18px;
+  background: var(--al-strip); border-top: 1px solid var(--al-line);
+  font-size: 13px; line-height: 1.3;
+}
+.al-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  align-self: flex-start; margin-top: 5px; /* alinha com a 1ª linha do texto */
+  background: var(--al-ink); box-shadow: 0 0 0 0 var(--al-ink);
+  animation: alPulse 1.8s ease-out infinite;
+}
+.al-txt {
+  flex: 1 1 260px; min-width: 0;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.al-txt b { color: var(--al-ink); font-weight: 700; }
+.al-why { color: var(--dim); }
+.al-take {
+  flex: none; margin-left: auto; border: none; cursor: pointer;
+  background: var(--al-btn); color: #fff;
+  font: 700 12.5px 'Lato', sans-serif;
+  padding: 8px 14px; border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(80, 20, 20, .25);
+}
+.al-take:active { transform: scale(.97); }
+.al-take:disabled { opacity: .7; cursor: default; }
+@keyframes alPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(163, 22, 33, .45); }
+  70%  { box-shadow: 0 0 0 7px rgba(163, 22, 33, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(163, 22, 33, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .al-dot { animation: none; } }
+.ideal { --al-card: #FFF8F8; --al-strip: #F9E1E1; --al-line: #F0CACA; --al-ink: #8E1620; --al-btn: #8E1620; }
+.ideal.dark { --al-card: #2A1C1F; --al-strip: #3A1F22; --al-line: #4A282C; --al-ink: #F2666B; --al-btn: #C8202E; }
+
 /* ---------------- BARRA DE SATISFAÇÃO ---------------- */
 /* Nota 0-5 lida pelo JEV (média móvel por contato). Mora na linha de baixo do
    card, à direita da prévia, e no topo do chat. Barra curta + número: o número

@@ -46,6 +46,27 @@ function gatilhoMatches(gatilho: string, normMessage: string): boolean {
 }
 
 /**
+ * Linhas ativas da school_faq, ou null se o banco falhar. Compartilhado com o
+ * Jev, que usa cada linha como uma opção de assunto (src/worker/jev-router.ts).
+ */
+export async function loadActiveDirectResponses(): Promise<DirectResponse[] | null> {
+  if (!isSupabaseEnabled()) return null;
+  try {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from("school_faq")
+      .select("*")
+      .eq("ativo", true);
+    if (error) throw error;
+    return (data ?? []) as DirectResponse[];
+  } catch (err) {
+    // Falha de banco NÃO pode derrubar a conversa — só seguimos sem FAQ.
+    logger.error({ err }, "loadActiveDirectResponses: falha ao ler school_faq");
+    return null;
+  }
+}
+
+/**
  * Procura uma Resposta Direta que case com a mensagem. Devolve a resposta
  * (texto exato) ou null se nenhuma bater. Em caso de empate, vence a de maior
  * prioridade e, depois, o gatilho mais específico (mais longo).
@@ -55,20 +76,8 @@ export async function matchDirectResponse(message: string): Promise<string | nul
   const normMessage = normalize(message);
   if (!normMessage.trim()) return null;
 
-  let rows: DirectResponse[];
-  try {
-    const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from("school_faq")
-      .select("*")
-      .eq("ativo", true);
-    if (error) throw error;
-    rows = (data ?? []) as DirectResponse[];
-  } catch (err) {
-    // Falha de banco NÃO pode derrubar a conversa — só seguimos sem FAQ.
-    logger.error({ err }, "matchDirectResponse: falha ao ler school_faq");
-    return null;
-  }
+  const rows = await loadActiveDirectResponses();
+  if (!rows) return null;
 
   let best: { resposta: string; prioridade: number; len: number } | null = null;
   for (const row of rows) {

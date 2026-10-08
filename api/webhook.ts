@@ -13,6 +13,7 @@ import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
 import { MessageOrchestrator } from "../src/worker/orchestrator";
 import { LearningRepository } from "../src/learning/repository";
+import { JevClient } from "../src/llm/jev";
 import { sendPushToAll } from "../src/push/web-push";
 import { downloadWaMediaToStorage } from "../src/whatsapp/media";
 
@@ -41,12 +42,22 @@ const escalationHandler = new EscalationHandler(
   appConfig.telegram.chatId
 );
 const learningRepo = new LearningRepository();
+// Jev só existe com chave e JEV_MODE != off (ver src/config/env.ts).
+const jevClient =
+  appConfig.jev.mode !== "off"
+    ? new JevClient({
+        apiKey: appConfig.jev.apiKey,
+        model: appConfig.jev.model,
+        timeoutMs: appConfig.jev.timeoutMs,
+      })
+    : undefined;
 const orchestrator = new MessageOrchestrator(
   llmProvider,
   stateRepo,
   whatsappClient,
   escalationHandler,
-  learningRepo
+  learningRepo,
+  jevClient
 );
 
 async function readRawBody(req: VercelRequest): Promise<string> {

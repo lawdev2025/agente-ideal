@@ -44,6 +44,13 @@ export interface Config {
     apiKey: string;
     model: string;
   };
+  /** Jev (TypeSafe): roteador de intenção. mode "off" quando não há chave. */
+  jev: {
+    apiKey: string;
+    mode: "off" | "shadow" | "live";
+    model: string;
+    timeoutMs: number;
+  };
   telegram: {
     botToken: string;
     chatId: string;
@@ -91,6 +98,12 @@ export const config: Config = {
   claude: {
     apiKey: rawConfig.ANTHROPIC_API_KEY,
     model: rawConfig.CLAUDE_MODEL,
+  },
+  jev: {
+    apiKey: rawConfig.TYPESAFE_API_KEY,
+    mode: rawConfig.TYPESAFE_API_KEY ? rawConfig.JEV_MODE : "off",
+    model: rawConfig.JEV_MODEL,
+    timeoutMs: rawConfig.JEV_TIMEOUT_MS,
   },
   telegram: {
     botToken: rawConfig.TELEGRAM_BOT_TOKEN,

@@ -36,6 +36,10 @@ import {
 } from "../kb/seletiva-encerrada";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
+import { JevClient } from "../llm/jev";
+import { classifyWithJev, JevDecision } from "./jev-router";
+import { recordJevShadow } from "../learning/jev-shadow";
+import { loadActiveDirectResponses, DirectResponse } from "../kb/direct-responses";
 
 export interface ConversationMessage {
   role: string;
@@ -77,7 +81,10 @@ export class MessageOrchestrator {
     private escalationHandler: EscalationHandler,
     // Opcional: quando ausente (ex.: testes), o aprendizado é simplesmente
     // ignorado e o bot se comporta exatamente como antes.
-    private learning?: LearningRepository
+    private learning?: LearningRepository,
+    // Opcional: Jev (TypeSafe) em modo sombra — classifica a mensagem em
+    // paralelo e grava ao lado da rota que o regex escolheu. Ausente = no-op.
+    private jev?: JevClient
   ) {}
 
   async processMessage(
@@ -85,6 +92,13 @@ export class MessageOrchestrator {
     userMessage: string,
     studentId: string
   ): Promise<void> {
+    // MODO SOMBRA DO JEV: `trace.route` recebe o rótulo de cada caminho que o
+    // fluxo abaixo toma (mesmos ids das rotas do Jev, ver jev-router.ts). O
+    // Jev roda em paralelo desde o carregamento do histórico e, no finally, a
+    // decisão dele é gravada ao lado do trace — sem mudar a resposta enviada.
+    const trace = { route: "?" };
+    let jevPending: Promise<JevDecision | null> | null = null;
+    let jevHistory: ConversationMessage[] = [];
     try {
       logger.info(
         { conversationId, messageLength: userMessage.length },
@@ -134,6 +148,10 @@ export class MessageOrchestrator {
         role: msg.role,
         content: msg.content,
       }));
+      if (this.jev) {
+        jevHistory = conversationHistory;
+        jevPending = this.classifyWithJev(conversationHistory, userMessage);
+      }
 
       // TAG DE UNIDADE: gravada aqui, num ponto só, assim que a unidade é
       // conhecida — pela mensagem atual OU pelo histórico. O webhook também
@@ -154,6 +172,7 @@ export class MessageOrchestrator {
       // reiniciar) pra que ATÉ resposta fixa (preço, FAQ, visita) conte no limite.
       const botMsgsThisSession = countSessionBotMessages(history);
       if (botMsgsThisSession >= MAX_BOT_RESPONSES) {
+        trace.route = "limite";
         if (await this.stateRepository.isBotPaused(studentId)) {
           // Handoff do limite já aconteceu → mantém silêncio (humano no controle).
           logger.info({ studentId }, "Pós-limite, já em handoff humano — silêncio");
@@ -176,6 +195,7 @@ export class MessageOrchestrator {
       // resultado. Resposta fixa 1x por conversa; depois o LLM (que tem a mesma
       // informação) responde curto.
       if (isPassaporteIdealQuestion(userMessage)) {
+        trace.route = "passaporte_ideal";
         if (await this.stateRepository.isBotPaused(studentId)) return;
         if (conversationHistory.some((m) => m.role === "assistant" && m.content === PASSAPORTE_IDEAL_REPLY)) {
           await this.runLLMFlow(conversationId, studentId, userMessage, conversationHistory);
@@ -197,6 +217,7 @@ export class MessageOrchestrator {
       if (config.seletivaEncerrada) {
         const topico = detectSeletivaEncerradaTopic(userMessage, conversationHistory);
         if (topico) {
+          trace.route = `seletiva_${topico}`;
           // Só quem chegou tarde vira "agendada": quem pergunta do resultado ou
           // do dia da prova já está inscrito.
           if (topico === "agendamento") await this.stateRepository.markSeletivaAgendada(studentId);
@@ -242,6 +263,7 @@ export class MessageOrchestrator {
       // aqui o assunto é mais específico: quem pergunta isso não precisa da
       // secretaria, já tem a resposta.
       if (isSeletivaInscricaoPaymentQuestion(userMessage)) {
+        trace.route = "seletiva_pagamento_inscricao";
         const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
         logger.info({ studentId, unit }, "Confirmação de inscrição da Seletiva — comprovante no dia da prova");
         const reply = buildSeletivaInscricaoStatusReply(unit);
@@ -260,6 +282,7 @@ export class MessageOrchestrator {
       // inscrição. Vem ANTES do guard de preço e do roteador: a frase cita série
       // e cairia em matrícula ("Fundamental 1…"). Ver kb/seletiva-conteudo.ts.
       if (isSeletivaContentQuestion(userMessage)) {
+        trace.route = "seletiva_edital";
         const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
         logger.info({ studentId, unit }, "Conteúdo da prova da Seletiva — edital");
         // Edital pela série da mensagem; sem série, pela dos últimos turnos do
@@ -285,6 +308,7 @@ export class MessageOrchestrator {
       }
 
       if (isPaymentOrSegundaChamadaQuestion(userMessage)) {
+        trace.route = "pagamento";
         await this.handlePaymentRequest(
           conversationId,
           studentId,
@@ -298,6 +322,7 @@ export class MessageOrchestrator {
       // matrícula/material → SEMPRE resposta presencial fixa. Sem LLM, sem
       // escalação, sem intermediário "coordenação te chama".
       if (isPriceOrMaterialQuestion(userMessage)) {
+        trace.route = "valores";
         logger.info({ studentId }, "Price/material question — sending presential reply");
         const reply = buildPresentialValuesReply(detectUnit(userMessage), userMessage);
         await this.stateRepository.appendMessage(conversationId, "assistant", reply);
@@ -310,6 +335,7 @@ export class MessageOrchestrator {
       // então aqui só registramos e saímos. O atendente humano cuida no
       // painel; quando ele clicar "Retomar Bot", o flag volta a 0.
       if (await this.stateRepository.isBotPaused(studentId)) {
+        trace.route = "pausado";
         logger.info(
           { studentId },
           "Bot paused for this contact — skipping LLM response"
@@ -357,6 +383,7 @@ export class MessageOrchestrator {
       const pendingAsk = detectPendingUnitAsk(conversationHistory);
       const followUpUnit = pendingAsk ? detectUnit(userMessage) : undefined;
       if (pendingAsk && followUpUnit) {
+        trace.route = "resposta_unidade";
         const reply =
           pendingAsk === "seletiva"
             ? buildSeletivaReplyWithUnit(followUpUnit)
@@ -382,6 +409,7 @@ export class MessageOrchestrator {
       // Sem isto "me manda o link" caía no link de VISITA e "não sei" no LLM,
       // que repetia a pergunta. Outro assunto ("quanto custa?") segue o fluxo.
       if (pendingAsk === "seletiva" && isSeletivaUnitSkip(userMessage)) {
+        trace.route = "seletiva_agendamento";
         await this.sendSeletivaLinkSemUnidade(conversationId, studentId, userMessage);
         await this.recordTurnOutcome(userMessage, true);
         return;
@@ -395,6 +423,7 @@ export class MessageOrchestrator {
       // valores e o handoff humano continuam tendo prioridade.
       const direct = await matchDirectResponse(userMessage);
       if (direct) {
+        trace.route = "faq";
         logger.info({ studentId }, "Direct response (school_faq) matched — sending verbatim");
         await this.stateRepository.appendMessage(conversationId, "assistant", direct);
         await this.whatsappClient.sendMessage(studentId, direct);
@@ -409,6 +438,7 @@ export class MessageOrchestrator {
 
       const intent: RoutedIntent = routeIntent(userMessage, false);
       logger.info({ intent: intent.kind }, "Routed intent");
+      trace.route = legacyRouteLabel(intent, userMessage);
 
       // Cliente pediu explicitamente um ATENDENTE humano: desativa o bot, avisa o
       // time e manda a mensagem de "já vou chamar um atendente" com a observação
@@ -515,6 +545,7 @@ export class MessageOrchestrator {
           logger.warn({ err }, "learning.lookup falhou — seguindo pro LLM");
         }
         if (cachedKind) {
+          trace.route = legacyRouteLabel(this.buildIntentFromCache(cachedKind, userMessage), userMessage);
           logger.info(
             { intent: cachedKind, via: "learning-cache" },
             "Cache aprendido respondeu (LLM evitado)"
@@ -533,6 +564,7 @@ export class MessageOrchestrator {
 
       // Ambiguous case — let the LLM handle it (greetings, name capture,
       // free-form chat after escalation, etc.)
+      trace.route = "llm_livre";
       await this.runLLMFlow(
         conversationId,
         studentId,
@@ -550,6 +582,38 @@ export class MessageOrchestrator {
         `Error processing message: ${error instanceof Error ? error.message : String(error)}`,
         { skipPause: true }
       );
+    } finally {
+      if (jevPending) {
+        await recordJevShadow({
+          waId: studentId,
+          message: userMessage,
+          legacyRoute: trace.route,
+          legacyUnit: detectUnit(userMessage) ?? this.findRecentUnitFromUser(jevHistory),
+          legacyNivel: detectNivel(userMessage),
+          decision: await jevPending,
+        });
+      }
+    }
+  }
+
+  // FAQ do painel como opções do Jev. Cache curto por instância warm: evita uma
+  // leitura extra do banco a cada mensagem só pra montar a pergunta.
+  private faqCache: { rows: DirectResponse[]; at: number } | null = null;
+
+  private async classifyWithJev(
+    history: ConversationMessage[],
+    userMessage: string
+  ): Promise<JevDecision | null> {
+    if (!this.jev) return null;
+    try {
+      if (!this.faqCache || Date.now() - this.faqCache.at > FAQ_CACHE_MS) {
+        const rows = await loadActiveDirectResponses();
+        this.faqCache = { rows: rows ?? [], at: Date.now() };
+      }
+      return await classifyWithJev(this.jev, history, userMessage, this.faqCache.rows);
+    } catch (err) {
+      logger.warn({ err }, "Jev: classificação falhou (ignorado)");
+      return null;
     }
   }
 
@@ -1928,6 +1992,46 @@ const HUMAN_HANDOFF_REPLY =
 // Máximo de mensagens que o bot envia por sessão antes de passar pra atendimento
 // humano. Contém o custo de token do Claude — ordem do colégio.
 const MAX_BOT_RESPONSES = 7;
+
+// Validade do cache da school_faq usada pra montar as opções do Jev.
+const FAQ_CACHE_MS = 5 * 60 * 1000;
+
+/**
+ * Rótulo do caminho que o roteador por regex escolheu, no MESMO vocabulário
+ * das rotas do Jev (jev-router.ts) — é o legacy_route do modo sombra.
+ */
+export function legacyRouteLabel(intent: RoutedIntent, userMessage: string): string {
+  switch (intent.kind) {
+    case "human_request":
+      return "humano";
+    case "escalate":
+      return "fora_escopo";
+    case "soft_redirect":
+      return /bolsa|desconto/i.test(intent.reason)
+        ? "bolsa_desconto"
+        : /alimenta|transporte/i.test(intent.reason)
+          ? "transporte_alimentacao"
+          : "evento_calendario";
+    case "seletiva_request":
+      return "seletiva_agendamento";
+    case "rematricula_request":
+      return "rematricula";
+    case "transfer_request":
+      return "transferencia";
+    case "document_request":
+      return "documento";
+    case "visit_request":
+      return "visita";
+    case "enrollment_contact":
+      return "contato";
+    case "unit_info":
+      return "unidade_info";
+    case "enrollment_info":
+      return !intent.nivel && MATRICULA_INTERESSE.test(userMessage) ? "matricula" : "nivel_info";
+    case "ask_llm":
+      return "llm_livre";
+  }
+}
 
 // Conta quantas mensagens o bot já enviou NA SESSÃO ATUAL. A sessão recomeça na
 // saudação oficial ("...atendimento oficial...") ou no ack de "reiniciar"

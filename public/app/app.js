@@ -493,9 +493,11 @@
   // mensagem e, quando a conversa vira problema, o contato ganha alert_at
   // (início), alert_title ("Cliente irritado") e alert_reason ("repetiu a
   // pergunta 3× sem resposta útil"). Com o bot pausado já tem gente na
-  // conversa — aí o alerta não aparece.
+  // conversa — aí o alerta não aparece. Passou a janela de 24h do WhatsApp
+  // (windowClosed) também some: não dá mais pra responder, então o alerta só
+  // acumulava (fim de semana sem ninguém no time).
   function alertInfo(c) {
-    if (!c || !c.alert_at || c.bot_paused) return null;
+    if (!c || !c.alert_at || c.bot_paused || windowClosed(c)) return null;
     return { title: c.alert_title || "Cliente insatisfeito", reason: c.alert_reason || "", at: parseTs(c.alert_at) };
   }
 

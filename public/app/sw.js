@@ -6,14 +6,14 @@
 //
 // IMPORTANTE: bump CACHE quando mudar arquivos do shell, senao o celular serve
 // a versao velha do cache. O Vercel atualiza no servidor, mas o SW intercepta.
-const CACHE = "crm-ideal-v33";
+const CACHE = "crm-ideal-v34";
 const SHELL = [
   "/app/",
   "/app/index.html",
   "/app/ideal-ui.css",
   "/app/proto.css",
-  "/app/app.css",
-  "/app/app.js?v=28",
+  "/app/app.css?v=2",
+  "/app/app.js?v=29",
   "/app/manifest.webmanifest",
   "/app/icons/icon-192.png",
   "/app/icons/icon-512.png",

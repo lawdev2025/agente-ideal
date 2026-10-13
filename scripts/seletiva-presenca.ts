@@ -122,7 +122,8 @@ async function main() {
     for (let i = 0; i < d.toRealizou.length; i += CHUNK) {
       const { error } = await sb.from("contacts")
         .update({ seletiva_status: "realizou", seletiva_at: now })
-        .in("wa_id", d.toRealizou.slice(i, i + CHUNK));
+        .in("wa_id", d.toRealizou.slice(i, i + CHUNK))
+        .or("seletiva_status.is.null,seletiva_status.neq.matriculado");
       if (error) throw error;
     }
   }

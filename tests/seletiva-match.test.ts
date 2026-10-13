@@ -216,3 +216,18 @@ describe("entrega do resultado", () => {
     expect(r.toNaoRecebeu.sort()).toEqual(["559177776666", "559199991111"]);
   });
 });
+
+describe("matriculado: topo da escada", () => {
+  const mat = [{ wa_id: "559166665555", seletiva_status: "matriculado", seletiva_resultado: null }];
+  const key = new Set(["9166665555"]);
+  it("planilha de inscrição não volta pra inscrito", () => {
+    expect(decideSeletivaUpdates(mat, key, new Set()).toInscrito).toEqual([]);
+  });
+  it("planilha de presença não volta pra realizou", () => {
+    expect(decidePresenca(mat, key).toRealizou).toEqual([]);
+  });
+  it("selo de resultado não volta", () => {
+    const r = decideResultado(mat, new Set(), key);
+    expect([...r.toRecebeu, ...r.toNaoRecebeu]).toEqual([]);
+  });
+});

@@ -15,10 +15,15 @@
  */
 import { classifyContactTag } from "./contact-tags";
 
-// Escada (só sobe): vazio → pendente / agendada → inscrito → realizou.
-//   agendada → chegou depois do fim das inscrições (bot, 25/09/2026)
-//   realizou → fez a prova (planilha de presença, scripts/seletiva-presenca.ts)
-export type SeletivaStatus = "inscrito" | "pendente" | "agendada" | "realizou";
+// Escada (só sobe): vazio → pendente / agendada → inscrito → realizou → matriculado.
+//   agendada    → chegou depois do fim das inscrições (bot, 25/09/2026)
+//   realizou    → fez a prova (planilha de presença, scripts/seletiva-presenca.ts)
+//   matriculado → aluno está na lista de matrículas 2027 (scripts/seletiva-matriculados.ts):
+//                 sai das listas e campanhas da Seletiva; nada o rebaixa.
+export type SeletivaStatus = "inscrito" | "pendente" | "agendada" | "realizou" | "matriculado";
+
+// Acima de inscrito: reler planilha de inscrição/agendados não mexe.
+const ACIMA_DE_INSCRITO = new Set(["realizou", "matriculado"]);
 
 // Colégio em Belém/Ananindeua: número digitado sem DDD é daqui.
 export const DEFAULT_DDD = "91";
@@ -153,7 +158,7 @@ export function decideSeletivaUpdates(
       inscritosNoCrm++;
       // "realizou" está ACIMA de inscrito: reler a planilha de inscrição não
       // pode desfazer a presença na prova.
-      if (c.seletiva_status !== "inscrito" && c.seletiva_status !== "realizou") toInscrito.push(c.wa_id);
+      if (c.seletiva_status !== "inscrito" && !ACIMA_DE_INSCRITO.has(c.seletiva_status ?? "")) toInscrito.push(c.wa_id);
       continue;
     }
     if (!c.seletiva_status && interessados.has(c.wa_id)) toPendente.push(c.wa_id);
@@ -183,7 +188,7 @@ export function decidePresenca(contacts: SeletivaContact[], presencaKeys: Set<st
     if (!key || !presencaKeys.has(key)) continue;
     matched.add(key);
     presentesNoCrm++;
-    if (c.seletiva_status !== "realizou") toRealizou.push(c.wa_id);
+    if (!ACIMA_DE_INSCRITO.has(c.seletiva_status ?? "")) toRealizou.push(c.wa_id);
   }
   const semContato: string[] = [];
   for (const k of presencaKeys) if (!matched.has(k)) semContato.push(k);
@@ -258,6 +263,8 @@ export function decideResultado(
   const toRecebeu: string[] = [];
   const toNaoRecebeu: string[] = [];
   for (const c of contacts) {
+    // Matriculado já saiu da Seletiva: o selo de resultado não volta.
+    if (c.seletiva_status === "matriculado") continue;
     const key = phoneKey(c.wa_id);
     let alvo: SeletivaResultado | null = null;
     if (key && naoRecebeuKeys.has(key)) alvo = "nao_recebeu";

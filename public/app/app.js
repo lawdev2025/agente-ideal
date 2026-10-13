@@ -244,7 +244,7 @@
   // Seletiva: "interessados" = qualquer status; "resultado-*" olha a entrega do
   // resultado (seletiva_resultado); os outros casam o status.
   function matchSeletiva(c, filtro) {
-    if (filtro === "interessados") return !!c.seletiva_status;
+    if (filtro === "interessados") return !!c.seletiva_status && c.seletiva_status !== "matriculado";
     if (filtro === "resultado-recebeu") return c.seletiva_resultado === "recebeu";
     if (filtro === "resultado-nao-recebeu") return c.seletiva_resultado === "nao_recebeu";
     return c.seletiva_status === filtro;
@@ -576,7 +576,8 @@
 
   // Rótulo do selo por seletiva_status. "agendada" = chegou depois do fim das
   // inscrições e espera o agendamento do teste (Seletiva encerrada em 25/09/2026).
-  const SELETIVA_SELO = { realizou: "Seletivas realizaram", inscrito: "Seletiva · inscrito", pendente: "Seletiva · pendente", agendada: "Seletivas agendadas" };
+  // "matriculado" = aluno na lista de matrículas 2027: saiu da Seletiva.
+  const SELETIVA_SELO = { matriculado: "Matriculado", realizou: "Seletivas realizaram", inscrito: "Seletiva · inscrito", pendente: "Seletiva · pendente", agendada: "Seletivas agendadas" };
   // Selo da entrega do resultado (seletiva_resultado), ao lado do status.
   const RESULTADO_SELO = { recebeu: "Resultado recebido", nao_recebeu: "Resultado não recebido" };
 
@@ -584,6 +585,8 @@
   // pela planilha ou pelo webhook). Com status, o selo combinado substitui o
   // "Seletiva" solto da intenção, pra não repetir a palavra na linha.
   function tagsHtml(c) {
+    // Matriculado: só esse selo — intenção e resultado da Seletiva já não importam.
+    if (c.seletiva_status === "matriculado") return `<span class="itag itag-sel-matriculado">${SELETIVA_SELO.matriculado}</span>`;
     const sel = SELETIVA_SELO[c.seletiva_status] ? c.seletiva_status : null;
     const ti = tagInfo(c.tag);
     const intent = ti && !(sel && c.tag === "seletiva") ? `<span class="itag ${ti.cls}">${ti.label}</span>` : "";

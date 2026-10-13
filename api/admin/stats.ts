@@ -58,6 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { count: seletivaPendentes },
       { count: seletivaAgendadas },
       { count: seletivaRealizaram },
+      { count: seletivaMatriculados },
       { count: resultadoRecebeu },
       { count: resultadoNaoRecebeu },
     ] = await Promise.all([
@@ -83,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "pendente")),
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "agendada")),
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "realizou")),
+      scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_status", "matriculado")),
       // Entrega do resultado (supabase-contact-seletiva-resultado.sql).
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_resultado", "recebeu")),
       scopeContacts(sb.from("contacts").select("*", { count: "exact", head: true }).eq("seletiva_resultado", "nao_recebeu")),
@@ -198,6 +200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         pendentes: seletivaPendentes ?? 0,
         agendadas: seletivaAgendadas ?? 0,
         realizaram: seletivaRealizaram ?? 0,
+        matriculados: seletivaMatriculados ?? 0,
         resultadoRecebeu: resultadoRecebeu ?? 0,
         resultadoNaoRecebeu: resultadoNaoRecebeu ?? 0,
       },

@@ -564,7 +564,8 @@ const TEMPLATE_AUDIENCIAS = [
     ['seletiva-agendadas', 'Seletivas agendadas', q => q.eq('seletiva_status', 'agendada')],
     ['seletiva-pendentes', 'Seletiva · pendentes', q => q.eq('seletiva_status', 'pendente')],
     ['seletiva-inscritos', 'Seletiva · inscritos que não fizeram a prova', q => q.eq('seletiva_status', 'inscrito')],
-    ['seletiva-interessados', 'Seletiva · todos os interessados', q => q.not('seletiva_status', 'is', null)],
+    ['seletiva-interessados', 'Seletiva · todos os interessados', q => q.not('seletiva_status', 'is', null).neq('seletiva_status', 'matriculado')],
+    ['matriculados', 'Matriculados 2027', q => q.eq('seletiva_status', 'matriculado')],
     ['tag-matricula', 'Tag Matrícula', q => q.eq('tag', 'matricula')],
     ['tag-rematricula', 'Tag Rematrícula', q => q.eq('tag', 'rematricula')],
     ['tag-eixo', 'Tag Eixo', q => q.eq('tag', 'eixo')],
@@ -1066,10 +1067,11 @@ async function loadDashboardStats() {
                 const selPendentes = sel.pendentes ?? 0;
                 const selAgendadas = sel.agendadas ?? 0;
                 const selRealizaram = sel.realizaram ?? 0;
+                const selMatriculados = sel.matriculados ?? 0;
                 const selEl = document.getElementById('stat-seletiva');
                 if (selEl) selEl.textContent = selRealizaram + selInscritos + selPendentes + selAgendadas;
                 const selTrend = document.getElementById('stat-seletiva-trend');
-                if (selTrend) selTrend.innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${selRealizaram} fizeram a prova · ${selInscritos} inscritos que faltaram · ${selPendentes} pendentes · ${selAgendadas} agendadas`;
+                if (selTrend) selTrend.innerHTML = `<i class="fa-solid fa-graduation-cap"></i> ${selRealizaram} fizeram a prova · ${selInscritos} inscritos que faltaram · ${selPendentes} pendentes · ${selAgendadas} agendadas · ${selMatriculados} já matriculados`;
                 // Entrega do resultado (contacts.seletiva_resultado, scripts/seletiva-resultado.ts).
                 const resRecebeu = sel.resultadoRecebeu ?? 0;
                 const resNao = sel.resultadoNaoRecebeu ?? 0;
@@ -1295,7 +1297,7 @@ async function countSeletivaInteressados() {
     if (!_sb) return 0;
     const { count: comStatus } = await _sb.from('contacts')
         .select('*', { count: 'exact', head: true })
-        .not('seletiva_status', 'is', null);
+        .not('seletiva_status', 'is', null).neq('seletiva_status', 'matriculado');
     // Cinto de segurança: tag de Seletiva sem status (gravação do status falhou)
     // continua na fatia em vez de sumir do painel.
     const { count: soTag } = await _sb.from('contacts')
@@ -1367,7 +1369,7 @@ const DONUT_CONFIGS = {
             if (!_sb) return null;
             const rawKey = Object.entries(DONUT_CONFIGS.intencoes.labels).find(([, v]) => v === label)?.[0] || label;
             if (rawKey === 'seletiva') {
-                const comStatus = await pagedSelect('contacts', 'wa_id', (q) => q.not('seletiva_status', 'is', null));
+                const comStatus = await pagedSelect('contacts', 'wa_id', (q) => q.not('seletiva_status', 'is', null).neq('seletiva_status', 'matriculado'));
                 const soTag = await pagedSelect('contacts', 'wa_id', (q) => q.eq('tag', 'seletiva').is('seletiva_status', null));
                 return [...new Set([...comStatus, ...soTag].map(r => r.wa_id).filter(Boolean))];
             }
@@ -1724,7 +1726,7 @@ const contactFilters = { unidade: '', segmento: '', interesse: '', temperatura: 
 // Seletiva: "interessados" = qualquer status; "resultado-*" olha a entrega do
 // resultado (seletiva_resultado); os outros casam o status.
 function matchSeletiva(c, filtro) {
-    if (filtro === 'interessados') return !!c.seletiva_status;
+    if (filtro === 'interessados') return !!c.seletiva_status && c.seletiva_status !== 'matriculado';
     if (filtro === 'resultado-recebeu') return c.seletiva_resultado === 'recebeu';
     if (filtro === 'resultado-nao-recebeu') return c.seletiva_resultado === 'nao_recebeu';
     return c.seletiva_status === filtro;
@@ -1861,13 +1863,16 @@ function tempInfo(t) {
 
 // Rótulo do selo por seletiva_status. "agendada" = chegou depois do fim das
 // inscrições e espera o agendamento do teste (Seletiva encerrada em 25/09/2026).
-const SELETIVA_SELO = { realizou: 'Seletivas realizaram', inscrito: 'Seletiva · inscrito', pendente: 'Seletiva · pendente', agendada: 'Seletivas agendadas' };
+// "matriculado" = aluno na lista de matrículas 2027: saiu da Seletiva.
+const SELETIVA_SELO = { matriculado: 'Matriculado', realizou: 'Seletivas realizaram', inscrito: 'Seletiva · inscrito', pendente: 'Seletiva · pendente', agendada: 'Seletivas agendadas' };
 // Selo da entrega do resultado (seletiva_resultado), ao lado do status.
 const RESULTADO_SELO = { recebeu: 'Resultado recebido', nao_recebeu: 'Resultado não recebido' };
 
 // Selos da lista: intenção + status da Seletiva (seletiva_status). Com status,
 // o selo combinado substitui o "Seletiva" solto da intenção, pra não repetir.
 function tagsHtml(contact) {
+    // Matriculado: só esse selo — intenção e resultado da Seletiva já não importam.
+    if (contact.seletiva_status === 'matriculado') return `<span class="itag itag-sel-matriculado">${SELETIVA_SELO.matriculado}</span>`;
     const sel = SELETIVA_SELO[contact.seletiva_status] ? contact.seletiva_status : null;
     const ti = tagInfo(contact.tag);
     const intent = ti && !(sel && contact.tag === 'seletiva') ? `<span class="itag ${ti.cls}">${ti.label}</span>` : '';

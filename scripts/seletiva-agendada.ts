@@ -100,7 +100,7 @@ async function main() {
     const k = phoneKey(c.wa_id);
     if (!k || !keys.has(k)) continue;
     matched.add(k);
-    if (c.seletiva_status === "realizou") { realizou++; continue; }
+    if (c.seletiva_status === "realizou" || c.seletiva_status === "matriculado") { realizou++; continue; }
     if (c.seletiva_status === "agendada") continue;
     toAgendada.push(c.wa_id);
     const s = c.seletiva_status || "sem status";
@@ -124,8 +124,8 @@ async function main() {
       const { error } = await sb.from("contacts")
         .update({ seletiva_status: "agendada", seletiva_at: now })
         .in("wa_id", toAgendada.slice(i, i + CHUNK))
-        // Trava no banco também: quem fez a prova nunca volta pra agendada.
-        .or("seletiva_status.is.null,seletiva_status.neq.realizou");
+        // Trava no banco também: quem fez a prova ou matriculou nunca volta pra agendada.
+        .or("seletiva_status.is.null,seletiva_status.not.in.(realizou,matriculado)");
       if (error) throw error;
     }
   }
@@ -136,7 +136,7 @@ async function main() {
   console.log(`   Planilhas: ${files.length} arquivo(s) · ${fmt(keys.size)} telefones únicos`);
   console.log(`   Achados no CRM: ${fmt(matched.size)} · já eram agendada: ${fmt(matched.size - toAgendada.length - realizou)}`);
   console.log(`   Marcados agendada agora: ${fmt(toAgendada.length)} (antes: ${vieram})`);
-  console.log(`   Mantidos como "realizou" (já fizeram a prova): ${fmt(realizou)}`);
+  console.log(`   Mantidos (já fizeram a prova ou matricularam): ${fmt(realizou)}`);
   console.log(`   Nunca falaram no WhatsApp: ${fmt(keys.size - matched.size)} → ${dryRun ? `criaria ${fmt(novos.length)}` : `criados agora ${fmt(criados)}`} contato(s) como agendada`);
 }
 

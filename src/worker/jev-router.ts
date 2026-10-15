@@ -416,6 +416,53 @@ export function routesAgree(legacy: string, jev: string): boolean | null {
 }
 
 // ---------------------------------------------------------------------------
+// MODO LIVE: JEV COMO VETO DO BLOCO FIXO
+// ---------------------------------------------------------------------------
+//
+// Calibrado com 1 semana de modo sombra (803 mensagens, 08-15/10/2026, ver
+// data/jev-shadow/): quando o regex ia mandar um bloco fixo e o Jev discordava
+// com confiança alta, o Jev estava certo na grande maioria (bloco do resultado
+// da Seletiva pra quem pergunta desconto/valor, agendamento pra quem pergunta
+// o conteúdo da prova, link de visita pra quem não conseguiu se matricular).
+// Já quando o regex mandava pro LLM e o Jev sugeria um bloco fixo, o LLM com
+// contexto respondia bem — então o Jev NUNCA puxa um bloco fixo sozinho: ele só
+// veta o do regex, e a cascata segue pro próximo portão (ou pro LLM).
+
+export const LIVE_MIN = 0.8;
+
+// Caminhos que o Jev não veta: segurança (pedido de humano, limite, pausa) e o
+// próprio LLM livre, que é pra onde o veto manda.
+const NAO_VETAVEIS = new Set(["humano", "pausado", "limite", "reiniciar", "fora_escopo", "llm_livre"]);
+
+// Pares que na prática dão a mesma resposta: "matrícula do 7º ano" é nivel_info
+// pro regex e matricula pro Jev; "Batista Campos" sozinho é unidade_info pro
+// regex e resposta_unidade pro Jev.
+const EQUIVALENTES = [new Set(["nivel_info", "matricula"]), new Set(["unidade_info", "resposta_unidade"])];
+
+export type JevVeredito = { acao: "seguir" } | { acao: "vetar" } | { acao: "trocar"; rota: string };
+
+/**
+ * O portão `regexRoute` pode mandar a resposta dele? `trocas` são as rotas que
+ * o portão sabe responder no lugar (ex.: os tópicos da Seletiva encerrada) —
+ * se o Jev escolheu uma delas, troca em vez de vetar.
+ */
+export function jevVeredito(
+  regexRoute: string,
+  decision: JevDecision | null,
+  trocas: readonly string[] = []
+): JevVeredito {
+  if (!decision || NAO_VETAVEIS.has(regexRoute)) return { acao: "seguir" };
+  const jev = decision.route;
+  if (routesAgree(regexRoute, jev)) return { acao: "seguir" };
+  if (EQUIVALENTES.some((g) => g.has(regexRoute) && g.has(jev))) return { acao: "seguir" };
+  // Continuação já passou pelo corte CONTINUACAO_MIN (Noul próprio): o cliente
+  // só respondeu o que o colégio pediu, e bloco fixo ali é sempre errado.
+  if (jev !== "continuacao" && decision.confidence < LIVE_MIN) return { acao: "seguir" };
+  if (trocas.includes(jev)) return { acao: "trocar", rota: jev };
+  return { acao: "vetar" };
+}
+
+// ---------------------------------------------------------------------------
 // SATISFAÇÃO DO CONTATO
 // ---------------------------------------------------------------------------
 

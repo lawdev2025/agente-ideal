@@ -4,7 +4,7 @@ import { LLMProvider } from "../src/llm/provider";
 import { StateRepository } from "../src/state/repository";
 import { WhatsAppClient } from "../src/whatsapp/client";
 import { EscalationHandler } from "../src/handoff/telegram";
-import { routeIntent, detectNivel } from "../src/worker/intent-router";
+import { routeIntent, detectNivel, NIVEL_MILITAR } from "../src/worker/intent-router";
 import { config } from "../src/config";
 import {
   SELETIVA_PROVA_DIA_REPLY,
@@ -1483,6 +1483,17 @@ describe("Intent router: soft_redirect vs escalate (hard handoff)", () => {
     expect(detectNivel("quinta serie")).toBe("Fundamental 1");
     expect(detectNivel("sexta série")).toBe("Fundamental 2");
     expect(detectNivel("primeira série")).toBe("Ensino Médio");
+  });
+
+  // Achado no modo sombra do Jev: o [1-5]º ano do Fundamental 1 pegava "1° ano
+  // do ensino médio" e o bot respondia "Que bom seu interesse no Fundamental 1".
+  it("'Nº ano do (ensino) médio' é Médio (1º/2º) ou Pré-Enem (3º), não Fundamental", () => {
+    expect(detectNivel("bolsas para o 1° ano do ensino médio")).toBe("Ensino Médio");
+    expect(detectNivel("matrícula para 2 ano do ensino médio")).toBe("Ensino Médio");
+    expect(detectNivel("primeiro ano do médio")).toBe("Ensino Médio");
+    expect(detectNivel("3º ano do médio")).toBe("Pré-Enem");
+    expect(detectNivel("2º ano do ensino médio militar")).toBe(NIVEL_MILITAR);
+    expect(detectNivel("1º ano do ensino fundamental")).toBe("Fundamental 1");
   });
 
   // Segmento MILITAR: é nível, não tag. A sequência tem dois estágios (sinal

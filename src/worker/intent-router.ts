@@ -155,6 +155,21 @@ const NIVEL_PATTERNS: Array<{ regex: RegExp; nivel: string; requires?: RegExp }>
       /\b(maternal|jardim\s*[iI1]?\b|jardim\s+de\s+inf[âa]ncia|educa[çc][ãa]o\s+infantil|ber[çc][áa]rio|pr[ée][-\s]?escola|cre+che|infantil|ideal\s*j[úu]nior|j[úu]nior|jr)\b/i,
     nivel: "Educação Infantil",
   },
+  // "Nº ano DO MÉDIO" antes do Fundamental 1: o [1-5]º ano de lá pegava o "1°
+  // ano do ensino médio" e o bot respondia Fundamental 1 (achado no modo sombra
+  // do Jev, 10/2026). O 3º ano do médio é Pré-Enem; "...médio militar" é militar.
+  {
+    regex: /\bano\s+(?:do\s+)?(?:ensino\s+)?m[ée]dio\s+militar\b/i,
+    nivel: NIVEL_MILITAR,
+  },
+  {
+    regex: /\b([12][ºo°]?|primeiro|segundo)\s*ano\s+(?:do\s+)?(?:ensino\s+)?m[ée]dio\b(?!\s+militar)/i,
+    nivel: "Ensino Médio",
+  },
+  {
+    regex: /\b(3[ºo°]?|terceiro)\s*ano\s+(?:do\s+)?(?:ensino\s+)?m[ée]dio\b(?!\s+militar)/i,
+    nivel: "Pré-Enem",
+  },
   // Fundamental 1 — inclui o ordinal POR EXTENSO ("quinta série", "quinto
   // ano"). RAIZ DE BUG: só o formato numérico era reconhecido, então "Quinta
   // série" virava enrollment_info SEM nível e caía no fraseamento por LLM, que

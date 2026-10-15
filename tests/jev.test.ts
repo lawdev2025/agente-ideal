@@ -19,6 +19,9 @@ import {
   nextSatisfaction,
   classifyTemperatura,
   SATISFACAO_CRITERIA,
+  jevVeredito,
+  JevDecision,
+  LIVE_MIN,
 } from "../src/worker/jev-router";
 import { MessageOrchestrator, legacyRouteLabel } from "../src/worker/orchestrator";
 import { routeIntent } from "../src/worker/intent-router";
@@ -275,5 +278,85 @@ describe("orquestrador em modo sombra", () => {
     await orch.processMessage("u1", "quero fazer uma visita na cidade nova", "u1");
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("modo live: veto do bloco fixo", () => {
+  const dec = (route: string, confidence: number): JevDecision =>
+    ({ route, rawRoute: route, confidence } as JevDecision);
+  const SEL = ["seletiva_resultado", "seletiva_edital", "seletiva_agendamento"];
+
+  it("concorda, rota equivalente ou confiança baixa → segue o regex", () => {
+    expect(jevVeredito("valores", dec("valores", 0.99))).toEqual({ acao: "seguir" });
+    expect(jevVeredito("nivel_info", dec("matricula", 0.99))).toEqual({ acao: "seguir" });
+    expect(jevVeredito("unidade_info", dec("resposta_unidade", 1))).toEqual({ acao: "seguir" });
+    expect(jevVeredito("seletiva_resultado", dec("bolsa_desconto", LIVE_MIN - 0.01))).toEqual({ acao: "seguir" });
+    expect(jevVeredito("valores", null)).toEqual({ acao: "seguir" });
+  });
+
+  it("discorda com confiança alta → veta; se o portão sabe a rota do Jev, troca", () => {
+    expect(jevVeredito("seletiva_resultado", dec("bolsa_desconto", 1))).toEqual({ acao: "vetar" });
+    expect(jevVeredito("seletiva_agendamento", dec("seletiva_edital", 1), SEL)).toEqual({ acao: "trocar", rota: "seletiva_edital" });
+  });
+
+  it("continuação veta bloco fixo mesmo com a rota bruta incerta", () => {
+    expect(jevVeredito("seletiva_resultado", dec("continuacao", 0.3))).toEqual({ acao: "vetar" });
+  });
+
+  it("nunca veta humano, fora de escopo, pausa, limite nem o LLM livre", () => {
+    for (const r of ["humano", "fora_escopo", "pausado", "limite", "llm_livre"]) {
+      expect(jevVeredito(r, dec("valores", 1))).toEqual({ acao: "seguir" });
+    }
+  });
+});
+
+describe("orquestrador em modo live", () => {
+  const jevCom = (rota: string, conf: number) =>
+    new JevClient({
+      apiKey: "k", model: "m", timeoutMs: 1000,
+      fetchImpl: fakeFetch(async () => new Response(JSON.stringify(jevApiResponse(rota, conf)), { status: 200 })),
+    });
+
+  it("Jev discorda com confiança alta → bloco fixo do regex vetado, LLM responde", async () => {
+    const spy = vi.spyOn(shadow, "recordJevShadow").mockResolvedValue();
+    const satSpy = vi.spyOn(shadow, "recordSatisfaction").mockResolvedValue();
+    const alertSpy = vi.spyOn(shadow, "recordAlerta").mockResolvedValue();
+    const m = orchestratorMocks();
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation, undefined, jevCom("matricula", 0.97), true);
+    // Regex: "link" → visita. Cliente na verdade não conseguiu se matricular.
+    await orch.processMessage("u1", "não consegui fazer a matrícula pelo link de visita", "u1");
+
+    expect(m.llm.generateMessage).toHaveBeenCalled();
+    const row = spy.mock.calls[0][0];
+    expect(row.legacyRoute).toBe("visita");
+    expect(row.finalRoute).toBe("llm_livre");
+    spy.mockRestore(); satSpy.mockRestore(); alertSpy.mockRestore();
+  });
+
+  it("Jev concorda → resposta do regex igual, final = legacy", async () => {
+    const spy = vi.spyOn(shadow, "recordJevShadow").mockResolvedValue();
+    const satSpy = vi.spyOn(shadow, "recordSatisfaction").mockResolvedValue();
+    const alertSpy = vi.spyOn(shadow, "recordAlerta").mockResolvedValue();
+    const m = orchestratorMocks();
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation, undefined, jevCom("visita", 0.97), true);
+    await orch.processMessage("u1", "quero fazer uma visita na cidade nova", "u1");
+
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(m.whatsapp.sendMessage).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0]).toMatchObject({ legacyRoute: "visita", finalRoute: "visita" });
+    spy.mockRestore(); satSpy.mockRestore(); alertSpy.mockRestore();
+  });
+
+  it("modo sombra com o mesmo desacordo → regex responde, nada muda", async () => {
+    const spy = vi.spyOn(shadow, "recordJevShadow").mockResolvedValue();
+    const satSpy = vi.spyOn(shadow, "recordSatisfaction").mockResolvedValue();
+    const alertSpy = vi.spyOn(shadow, "recordAlerta").mockResolvedValue();
+    const m = orchestratorMocks();
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation, undefined, jevCom("matricula", 0.97));
+    await orch.processMessage("u1", "não consegui fazer a matrícula pelo link de visita", "u1");
+
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    expect(spy.mock.calls[0][0]).toMatchObject({ legacyRoute: "visita", finalRoute: undefined });
+    spy.mockRestore(); satSpy.mockRestore(); alertSpy.mockRestore();
   });
 });

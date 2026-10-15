@@ -8,6 +8,8 @@ export interface JevShadowRow {
   waId: string;
   message: string;
   legacyRoute: string;
+  /** Modo live: o caminho que realmente respondeu (≠ legacyRoute quando o Jev vetou). */
+  finalRoute?: string;
   legacyUnit?: string;
   legacyNivel?: string;
   decision: JevDecision | null;
@@ -22,6 +24,7 @@ export async function recordJevShadow(row: JevShadowRow): Promise<void> {
   logger.info(
     {
       legacy: row.legacyRoute,
+      final: row.finalRoute,
       jev: d?.route ?? null,
       conf: d?.confidence ?? null,
       agree: d ? routesAgree(row.legacyRoute, d.route) : null,
@@ -31,30 +34,36 @@ export async function recordJevShadow(row: JevShadowRow): Promise<void> {
   );
   if (!isSupabaseEnabled()) return;
   try {
-    const { error } = await getSupabase()
-      .from("jev_shadow")
-      .insert({
-        created_at: Date.now(),
-        wa_id: row.waId,
-        message: row.message.slice(0, 1000),
-        legacy_route: row.legacyRoute,
-        jev_route: d?.route ?? null,
-        jev_raw_route: d?.rawRoute ?? null,
-        jev_confidence: d?.confidence ?? null,
-        jev_continuacao: d?.continuacao ?? null,
-        agree: d ? routesAgree(row.legacyRoute, d.route) : null,
-        jev_top: d?.top ?? null,
-        legacy_unit: row.legacyUnit ?? null,
-        jev_unit: d?.unit ?? null,
-        jev_unit_confidence: d?.unitConfidence ?? null,
-        legacy_nivel: row.legacyNivel ?? null,
-        jev_nivel: d?.nivel ?? null,
-        jev_nivel_confidence: d?.nivelConfidence ?? null,
-        jev_humano: d?.humano ?? null,
-        latency_ms: d?.latencyMs ?? null,
-        input_tokens: d?.inputTokens ?? null,
-        model: d?.model ?? null,
-      });
+    const linha: Record<string, unknown> = {
+      created_at: Date.now(),
+      wa_id: row.waId,
+      message: row.message.slice(0, 1000),
+      legacy_route: row.legacyRoute,
+      jev_route: d?.route ?? null,
+      jev_raw_route: d?.rawRoute ?? null,
+      jev_confidence: d?.confidence ?? null,
+      jev_continuacao: d?.continuacao ?? null,
+      agree: d ? routesAgree(row.legacyRoute, d.route) : null,
+      jev_top: d?.top ?? null,
+      legacy_unit: row.legacyUnit ?? null,
+      jev_unit: d?.unit ?? null,
+      jev_unit_confidence: d?.unitConfidence ?? null,
+      legacy_nivel: row.legacyNivel ?? null,
+      jev_nivel: d?.nivel ?? null,
+      jev_nivel_confidence: d?.nivelConfidence ?? null,
+      jev_humano: d?.humano ?? null,
+      latency_ms: d?.latencyMs ?? null,
+      input_tokens: d?.inputTokens ?? null,
+      model: d?.model ?? null,
+    };
+    if (row.finalRoute !== undefined) linha.final_route = row.finalRoute;
+    let { error } = await getSupabase().from("jev_shadow").insert(linha);
+    // Antes de rodar supabase-jev-live.sql a coluna final_route não existe
+    // (PGRST204): grava sem ela pra não perder a linha.
+    if (error?.code === "PGRST204" && "final_route" in linha) {
+      delete linha.final_route;
+      ({ error } = await getSupabase().from("jev_shadow").insert(linha));
+    }
     if (error) logger.warn({ error }, "jev_shadow: insert falhou");
   } catch (err) {
     logger.warn({ err }, "jev_shadow: insert falhou");

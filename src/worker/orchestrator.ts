@@ -37,7 +37,7 @@ import {
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 import { JevClient } from "../llm/jev";
-import { classifyWithJev, JevDecision, nextSatisfaction } from "./jev-router";
+import { classifyWithJev, JevDecision, JevVeredito, jevVeredito, nextSatisfaction } from "./jev-router";
 import { recordJevShadow, recordSatisfaction, recordAlerta } from "../learning/jev-shadow";
 import { avaliarAlerta, contarRepeticoes } from "./jev-alert";
 import { loadActiveDirectResponses, DirectResponse } from "../kb/direct-responses";
@@ -85,7 +85,10 @@ export class MessageOrchestrator {
     private learning?: LearningRepository,
     // Opcional: Jev (TypeSafe) em modo sombra — classifica a mensagem em
     // paralelo e grava ao lado da rota que o regex escolheu. Ausente = no-op.
-    private jev?: JevClient
+    private jev?: JevClient,
+    // JEV_MODE=live: o Jev veta o bloco fixo que o regex escolheu errado (ver
+    // jevVeredito em jev-router.ts). false = só sombra.
+    private jevLive: boolean = false
   ) {}
 
   async processMessage(
@@ -97,7 +100,10 @@ export class MessageOrchestrator {
     // fluxo abaixo toma (mesmos ids das rotas do Jev, ver jev-router.ts). O
     // Jev roda em paralelo desde o carregamento do histórico e, no finally, a
     // decisão dele é gravada ao lado do trace — sem mudar a resposta enviada.
-    const trace = { route: "?" };
+    // MODO LIVE: cada portão de resposta fixa pergunta ao `gate` se pode
+    // responder. Veto → o portão é pulado e a cascata segue; `trace.vetoed`
+    // guarda as rotas que o regex teria mandado.
+    const trace = { route: "?", vetoed: [] as string[] };
     let jevPending: Promise<JevDecision | null> | null = null;
     let jevHistory: ConversationMessage[] = [];
     let jevPrevSatisfaction: number | null = null;
@@ -157,6 +163,16 @@ export class MessageOrchestrator {
         jevContact = contact;
         jevPending = this.classifyWithJev(conversationHistory, userMessage);
       }
+      const gate = async (route: string, trocas: readonly string[] = []): Promise<JevVeredito> => {
+        if (!this.jevLive || !jevPending) return { acao: "seguir" };
+        const v = jevVeredito(route, await jevPending, trocas);
+        if (v.acao !== "seguir") {
+          trace.vetoed.push(route);
+          logger.info({ studentId, regex: route, jev: v }, "Jev live: bloco fixo do regex vetado");
+        }
+        return v;
+      };
+      const pode = async (route: string) => (await gate(route)).acao === "seguir";
 
       // TAG DE UNIDADE: gravada aqui, num ponto só, assim que a unidade é
       // conhecida — pela mensagem atual OU pelo histórico. O webhook também
@@ -199,7 +215,7 @@ export class MessageOrchestrator {
       // da Seletiva: "matrícula" + campanha no histórico virava o bloco do
       // resultado. Resposta fixa 1x por conversa; depois o LLM (que tem a mesma
       // informação) responde curto.
-      if (isPassaporteIdealQuestion(userMessage)) {
+      if (isPassaporteIdealQuestion(userMessage) && (await pode("passaporte_ideal"))) {
         trace.route = "passaporte_ideal";
         if (await this.stateRepository.isBotPaused(studentId)) return;
         if (conversationHistory.some((m) => m.role === "assistant" && m.content === PASSAPORTE_IDEAL_REPLY)) {
@@ -220,7 +236,14 @@ export class MessageOrchestrator {
       // não pergunta de resultado ganha o status "agendada" — inclusive com o
       // bot pausado, mas aí o humano é quem responde.
       if (config.seletivaEncerrada) {
-        const topico = detectSeletivaEncerradaTopic(userMessage, conversationHistory);
+        let topico = detectSeletivaEncerradaTopic(userMessage, conversationHistory);
+        if (topico) {
+          // Live: o Jev pode trocar o tópico (agendamento → edital) ou vetar
+          // a Seletiva inteira ("desconto pra servidor público?").
+          const v = await gate(`seletiva_${topico}`, SELETIVA_ROTAS_JEV);
+          if (v.acao === "vetar") topico = null;
+          else if (v.acao === "trocar") topico = v.rota.slice("seletiva_".length) as typeof topico;
+        }
         if (topico) {
           trace.route = `seletiva_${topico}`;
           // Só quem chegou tarde vira "agendada": quem pergunta do resultado ou
@@ -267,7 +290,7 @@ export class MessageOrchestrator {
       // fluxo de pagamento porque "pagamento da inscrição" casa com os dois, e
       // aqui o assunto é mais específico: quem pergunta isso não precisa da
       // secretaria, já tem a resposta.
-      if (isSeletivaInscricaoPaymentQuestion(userMessage)) {
+      if (isSeletivaInscricaoPaymentQuestion(userMessage) && (await pode("seletiva_pagamento_inscricao"))) {
         trace.route = "seletiva_pagamento_inscricao";
         const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
         logger.info({ studentId, unit }, "Confirmação de inscrição da Seletiva — comprovante no dia da prova");
@@ -286,7 +309,7 @@ export class MessageOrchestrator {
       // cai?") → está no EDITAL, na página da Seletiva abaixo dos botões de
       // inscrição. Vem ANTES do guard de preço e do roteador: a frase cita série
       // e cairia em matrícula ("Fundamental 1…"). Ver kb/seletiva-conteudo.ts.
-      if (isSeletivaContentQuestion(userMessage)) {
+      if (isSeletivaContentQuestion(userMessage) && (await pode("seletiva_edital"))) {
         trace.route = "seletiva_edital";
         const unit = detectUnit(userMessage) ?? this.findRecentUnitFromUser(conversationHistory);
         logger.info({ studentId, unit }, "Conteúdo da prova da Seletiva — edital");
@@ -312,7 +335,7 @@ export class MessageOrchestrator {
         return;
       }
 
-      if (isPaymentOrSegundaChamadaQuestion(userMessage)) {
+      if (isPaymentOrSegundaChamadaQuestion(userMessage) && (await pode("pagamento"))) {
         trace.route = "pagamento";
         await this.handlePaymentRequest(
           conversationId,
@@ -326,7 +349,7 @@ export class MessageOrchestrator {
       // ORDEM DO COLÉGIO (regra dura): pergunta sobre valor/mensalidade/
       // matrícula/material → SEMPRE resposta presencial fixa. Sem LLM, sem
       // escalação, sem intermediário "coordenação te chama".
-      if (isPriceOrMaterialQuestion(userMessage)) {
+      if (isPriceOrMaterialQuestion(userMessage) && (await pode("valores"))) {
         trace.route = "valores";
         logger.info({ studentId }, "Price/material question — sending presential reply");
         const reply = buildPresentialValuesReply(detectUnit(userMessage), userMessage);
@@ -387,7 +410,7 @@ export class MessageOrchestrator {
       // segue em silêncio.
       const pendingAsk = detectPendingUnitAsk(conversationHistory);
       const followUpUnit = pendingAsk ? detectUnit(userMessage) : undefined;
-      if (pendingAsk && followUpUnit) {
+      if (pendingAsk && followUpUnit && (await pode("resposta_unidade"))) {
         trace.route = "resposta_unidade";
         const reply =
           pendingAsk === "seletiva"
@@ -413,7 +436,7 @@ export class MessageOrchestrator {
       // uma vez e não insiste — manda o link e ele escolhe a unidade na página.
       // Sem isto "me manda o link" caía no link de VISITA e "não sei" no LLM,
       // que repetia a pergunta. Outro assunto ("quanto custa?") segue o fluxo.
-      if (pendingAsk === "seletiva" && isSeletivaUnitSkip(userMessage)) {
+      if (pendingAsk === "seletiva" && isSeletivaUnitSkip(userMessage) && (await pode("seletiva_agendamento"))) {
         trace.route = "seletiva_agendamento";
         await this.sendSeletivaLinkSemUnidade(conversationId, studentId, userMessage);
         await this.recordTurnOutcome(userMessage, true);
@@ -427,7 +450,7 @@ export class MessageOrchestrator {
       // Fica depois do guard de preço (linha ~75) e do pause: a política de
       // valores e o handoff humano continuam tendo prioridade.
       const direct = await matchDirectResponse(userMessage);
-      if (direct) {
+      if (direct && (await pode("faq"))) {
         trace.route = "faq";
         logger.info({ studentId }, "Direct response (school_faq) matched — sending verbatim");
         await this.stateRepository.appendMessage(conversationId, "assistant", direct);
@@ -444,6 +467,15 @@ export class MessageOrchestrator {
       const intent: RoutedIntent = routeIntent(userMessage, false);
       logger.info({ intent: intent.kind }, "Routed intent");
       trace.route = legacyRouteLabel(intent, userMessage);
+
+      // Live: o Jev vetou o caminho do regex → o LLM responde com o contexto.
+      // Pula também o cache aprendido, que só reaprenderia o mesmo erro.
+      // (humano e fora_escopo nunca são vetados — ver jevVeredito.)
+      if (!(await pode(trace.route))) {
+        trace.route = "llm_livre";
+        await this.runLLMFlow(conversationId, studentId, userMessage, conversationHistory);
+        return;
+      }
 
       // Cliente pediu explicitamente um ATENDENTE humano: desativa o bot, avisa o
       // time e manda a mensagem de "já vou chamar um atendente" com a observação
@@ -551,6 +583,9 @@ export class MessageOrchestrator {
         }
         if (cachedKind) {
           trace.route = legacyRouteLabel(this.buildIntentFromCache(cachedKind, userMessage), userMessage);
+          if (!(await pode(trace.route))) cachedKind = null;
+        }
+        if (cachedKind) {
           logger.info(
             { intent: cachedKind, via: "learning-cache" },
             "Cache aprendido respondeu (LLM evitado)"
@@ -593,7 +628,9 @@ export class MessageOrchestrator {
         await recordJevShadow({
           waId: studentId,
           message: userMessage,
-          legacyRoute: trace.route,
+          // Com veto, a rota do regex é a primeira vetada; final é o que saiu.
+          legacyRoute: trace.vetoed[0] ?? trace.route,
+          finalRoute: this.jevLive ? trace.route : undefined,
           legacyUnit: detectUnit(userMessage) ?? this.findRecentUnitFromUser(jevHistory),
           legacyNivel: detectNivel(userMessage),
           decision,
@@ -2037,6 +2074,16 @@ const HUMAN_HANDOFF_REPLY =
 // Máximo de mensagens que o bot envia por sessão antes de passar pra atendimento
 // humano. Contém o custo de token do Claude — ordem do colégio.
 const MAX_BOT_RESPONSES = 7;
+
+// Tópicos da Seletiva encerrada que o portão sabe responder: no modo live o
+// Jev pode trocar um pelo outro (ex.: agendamento → edital).
+const SELETIVA_ROTAS_JEV = [
+  "seletiva_resultado",
+  "seletiva_resultado_nao_recebido",
+  "seletiva_prova",
+  "seletiva_edital",
+  "seletiva_agendamento",
+] as const;
 
 // Validade do cache da school_faq usada pra montar as opções do Jev.
 const FAQ_CACHE_MS = 5 * 60 * 1000;

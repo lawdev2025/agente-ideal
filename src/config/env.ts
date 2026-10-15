@@ -33,7 +33,7 @@ const EnvSchema = z.object({
   // Jev (TypeSafe) — classificador de intenção que decide QUAL resposta dar
   // (não escreve texto). Sem chave = desligado. "shadow" (default) só registra
   // o que o Jev escolheria ao lado do que o roteador por regex escolheu, sem
-  // mudar a resposta; "live" deixa o Jev decidir. Ver src/llm/jev.ts.
+  // mudar a resposta; "live" deixa o Jev vetar o bloco fixo errado (jevVeredito).
   TYPESAFE_API_KEY: z.string().default(''),
   JEV_MODE: z.enum(['off', 'shadow', 'live']).default('shadow'),
   JEV_MODEL: z.string().default('jev-1.13.0'),

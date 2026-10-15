@@ -57,7 +57,8 @@ const orchestrator = new MessageOrchestrator(
   whatsappClient,
   escalationHandler,
   learningRepo,
-  jevClient
+  jevClient,
+  appConfig.jev.mode === "live"
 );
 
 async function readRawBody(req: VercelRequest): Promise<string> {

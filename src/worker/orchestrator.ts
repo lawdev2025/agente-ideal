@@ -13,6 +13,11 @@ import {
   isSeletivaContentQuestion,
   pickSeletivaEditais,
   SELETIVA_EDITAIS,
+  SELETIVA_EDITAIS_ARQUIVO,
+  SELETIVA_EDITAL_MIME,
+  SELETIVA_EDITAL_ASK_SEGMENTO_REPLY,
+  isSeletivaEditalSegmentoAsk,
+  parseSeletivaEditalSegmento,
   SeletivaEdital,
 } from "../kb/seletiva-conteudo";
 import {
@@ -33,11 +38,22 @@ import {
   isSeletivaPosResultadoContexto,
   seletivaDescontoDica,
   SELETIVA_MATRICULA_HORARIO,
+  seletivaAgendadaDatas,
+  SELETIVA_AGENDADA_HORARIOS,
+  SELETIVA_AGENDADA_URL,
 } from "../kb/seletiva-encerrada";
 import { LearningRepository } from "../learning/repository";
 import type { CacheableIntentKind } from "../learning/normalize";
 import { JevClient } from "../llm/jev";
-import { classifyWithJev, JevDecision, JevVeredito, jevVeredito, nextSatisfaction } from "./jev-router";
+import {
+  classifyWithJev,
+  editalPeloNivelJev,
+  JevDecision,
+  JevVeredito,
+  jevVeredito,
+  jevPedeEdital,
+  nextSatisfaction,
+} from "./jev-router";
 import { recordJevShadow, recordSatisfaction, recordAlerta } from "../learning/jev-shadow";
 import { avaliarAlerta, contarRepeticoes } from "./jev-alert";
 import { loadActiveDirectResponses, DirectResponse } from "../kb/direct-responses";
@@ -235,8 +251,27 @@ export class MessageOrchestrator {
       // respostas diretas do painel, pra nenhuma resposta velha escapar. Quem
       // não pergunta de resultado ganha o status "agendada" — inclusive com o
       // bot pausado, mas aí o humano é quem responde.
+      // EDITAL — resposta à pergunta de segmento ("2", "6º ano", "militar"):
+      // manda o arquivo. Antes de tudo da Seletiva, porque "2" sozinho não diz
+      // nada e cairia no roteador.
+      if (config.seletivaEncerrada) {
+        const lastBot = [...conversationHistory].reverse().find((m) => m.role === "assistant");
+        const editais =
+          lastBot && isSeletivaEditalSegmentoAsk(lastBot.content) ? parseSeletivaEditalSegmento(userMessage) : null;
+        if (editais) {
+          trace.route = "seletiva_edital";
+          if (await this.stateRepository.isBotPaused(studentId)) return;
+          await this.replySeletivaEdital(conversationId, studentId, userMessage, conversationHistory, editais);
+          return;
+        }
+      }
+
       if (config.seletivaEncerrada) {
         let topico = detectSeletivaEncerradaTopic(userMessage, conversationHistory);
+        // Live: pedido de edital que o regex não pegou ("manda as regras do
+        // teste") — a única rota que o Jev puxa sozinho (ver jevPedeEdital).
+        const jevLive = this.jevLive && jevPending ? await jevPending : null;
+        if (!topico && jevPedeEdital(jevLive)) topico = "edital";
         if (topico) {
           // Live: o Jev pode trocar o tópico (agendamento → edital) ou vetar
           // a Seletiva inteira ("desconto pra servidor público?").
@@ -253,6 +288,25 @@ export class MessageOrchestrator {
             logger.info({ studentId, topico }, "Seletiva encerrada — bot pausado, só marcou o status");
             return;
           }
+          if (topico === "edital") {
+            // Segmento pela mensagem, pelos últimos turnos do cliente ou pelo
+            // Jev; sem nenhum, pergunta antes de mandar o arquivo.
+            const recentUserText = conversationHistory
+              .filter((m) => m.role === "user")
+              .slice(-4)
+              .map((m) => m.content)
+              .join("\n");
+            const pelaConversa = pickSeletivaEditais(userMessage) ?? pickSeletivaEditais(recentUserText);
+            const peloJev = editalPeloNivelJev(jevLive);
+            await this.replySeletivaEdital(
+              conversationId,
+              studentId,
+              userMessage,
+              conversationHistory,
+              pelaConversa ?? (peloJev ? [peloJev] : null)
+            );
+            return;
+          }
           const reply =
             topico === "resultado_nao_recebido"
               ? seletivaNaoRecebidoReply()
@@ -260,9 +314,7 @@ export class MessageOrchestrator {
               ? seletivaResultadoReply()
               : topico === "prova"
                 ? SELETIVA_PROVA_DIA_REPLY
-                : topico === "edital"
-                  ? buildSeletivaEditalReply(userMessage, conversationHistory)
-                  : seletivaAgendamentoReply();
+                : seletivaAgendamentoReply();
           // RAIZ DE BUG (26/09, cliente recebeu o bloco 3x seguidas): resposta
           // fixa sai UMA vez por conversa. Se ela já foi mandada, a próxima
           // dúvida ("Ela tem identidade?") vai pro LLM, que tem os mesmos dados
@@ -1305,6 +1357,68 @@ export class MessageOrchestrator {
   // de unidade não pode sair do texto do bot: a pergunta "em qual unidade?"
   // lista as três e começa por Batista Campos, então varrer o histórico inteiro
   // marcaria BC em qualquer contato que só viu o menu.
+  // EDITAL DO TESTE AGENDADO EM ARQUIVO. Sem segmento → pergunta qual (a
+  // resposta volta pelo follow-up do processMessage). Com segmento → texto +
+  // o PDF de cada edital. Resposta fixa 1x por conversa: pergunta já feita
+  // ou edital já mandado → o LLM responde a dúvida.
+  private async replySeletivaEdital(
+    conversationId: string,
+    studentId: string,
+    userMessage: string,
+    history: ConversationMessage[],
+    editais: SeletivaEdital[] | null
+  ): Promise<void> {
+    const jaFoi = (content: string) => history.some((m) => m.role === "assistant" && m.content === content);
+    if (!editais) {
+      if (jaFoi(SELETIVA_EDITAL_ASK_SEGMENTO_REPLY)) {
+        await this.runLLMFlow(conversationId, studentId, userMessage, history);
+        return;
+      }
+      logger.info({ studentId }, "Edital da Seletiva — perguntando o segmento");
+      await this.stateRepository.appendMessage(conversationId, "assistant", SELETIVA_EDITAL_ASK_SEGMENTO_REPLY);
+      await this.whatsappClient.sendMessage(studentId, SELETIVA_EDITAL_ASK_SEGMENTO_REPLY);
+      await this.recordTurnOutcome(userMessage, true);
+      return;
+    }
+    const pendentes = editais.filter((e) => !jaFoi(editalArquivoCaption(e)));
+    if (!pendentes.length) {
+      logger.info({ studentId, editais }, "Edital da Seletiva já enviado — segue pro LLM");
+      await this.runLLMFlow(conversationId, studentId, userMessage, history);
+      return;
+    }
+    logger.info({ studentId, editais: pendentes }, "Edital da Seletiva — enviando arquivo");
+    const reply = buildSeletivaEditalArquivoReply(pendentes);
+    await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+    await this.whatsappClient.sendMessage(studentId, reply);
+    for (const e of pendentes) await this.sendAndRecordEdital(conversationId, studentId, e);
+    await this.recordTurnOutcome(userMessage, true);
+  }
+
+  // Mesmo contrato do sendAndRecordArt: grava no histórico (o CRM monta a
+  // bolha do arquivo) só se o envio deu certo. Falhou → manda o link.
+  private async sendAndRecordEdital(conversationId: string, studentId: string, e: SeletivaEdital): Promise<void> {
+    const arq = SELETIVA_EDITAIS_ARQUIVO[e];
+    try {
+      await this.whatsappClient.sendDocument(studentId, arq.url, arq.filename);
+    } catch (err) {
+      logger.error({ err, studentId, edital: e }, "Falha ao enviar o arquivo do edital — mandando o link");
+      const link = `📄 Edital ${arq.segmento}: ${arq.url}`;
+      await this.stateRepository.appendMessage(conversationId, "assistant", link);
+      await this.whatsappClient.sendMessage(studentId, link);
+      return;
+    }
+    try {
+      await this.stateRepository.appendMessage(conversationId, "assistant", editalArquivoCaption(e), {
+        media_type: "document",
+        media_url: arq.url,
+        media_mime: SELETIVA_EDITAL_MIME,
+        media_filename: arq.filename,
+      });
+    } catch (err) {
+      logger.warn({ err, studentId }, "Edital enviado mas nao registrado no historico");
+    }
+  }
+
   private findRecentUnitFromUser(history: ConversationMessage[]): string | undefined {
     for (let i = history.length - 1; i >= 0; i--) {
       const msg = history[i];
@@ -1972,7 +2086,7 @@ export function detectSeletivaEncerradaTopic(
   if (citaSeletiva) {
     if (resultado) return qualResultado();
     if (atrasado) return "agendamento";
-    if (now < SELETIVA_PROVA_FIM_MS && edital) return "edital";
+    if (edital) return "edital";
     if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaQuestion(userMessage)) return "prova";
     return "agendamento";
   }
@@ -1989,7 +2103,7 @@ export function detectSeletivaEncerradaTopic(
       (now >= SELETIVA_PROVA_FIM_MS && isSeletivaPosResultadoContexto(userMessage))) &&
     !atrasado;
   if (resultadoPeloContexto && seletivaNoContexto) return qualResultado();
-  if (now < SELETIVA_PROVA_FIM_MS && edital && seletivaNoContexto) return "edital";
+  if (edital && seletivaNoContexto) return "edital";
   if (now < SELETIVA_PROVA_FIM_MS && isSeletivaProvaDiaSemNome(userMessage, seletivaNoContexto)) return "prova";
 
   if (
@@ -2246,29 +2360,30 @@ function buildSeletivaConteudoReply(unit: string | undefined, editais: SeletivaE
   return abertura + links + "\n\n" + pagina + `👉 ${SELETIVA_LANDING_URL}\n\n` + fecho;
 }
 
-// Seletiva encerrada, véspera/dia da prova: pediu o EDITAL → só o(s) link(s),
-// pela série da mensagem ou dos últimos turnos (sem série, os dois principais).
-// Sem link de inscrição nem pergunta de unidade — a inscrição já fechou.
-function buildSeletivaEditalReply(userMessage: string, history: ConversationMessage[]): string {
-  const recentUserText = history
-    .filter((m) => m.role === "user")
-    .slice(-4)
-    .map((m) => m.content)
-    .join("\n");
-  const editais =
-    pickSeletivaEditais(userMessage) ??
-    pickSeletivaEditais(recentUserText) ??
-    (["regular", "jr"] as SeletivaEdital[]);
-  const links = editais
-    .map((e) => `📄 Edital ${SELETIVA_EDITAIS[e].label}: ${SELETIVA_EDITAIS[e].url}`)
-    .join("\n");
+// Registro do arquivo no histórico — também é a marca de "já mandei este".
+function editalArquivoCaption(e: SeletivaEdital): string {
+  return `[Edital ${SELETIVA_EDITAIS_ARQUIVO[e].segmento}]`;
+}
+
+// Texto que acompanha o(s) arquivo(s) do edital do teste agendado. Com teste
+// aberto, fecha com a data e o link da inscrição (mesma fonte da resposta de
+// agendamento, então a data vira sozinha).
+export function buildSeletivaEditalArquivoReply(editais: SeletivaEdital[], now: number = Date.now()): string {
+  const segmentos = editais.map((e) => `*${SELETIVA_EDITAIS_ARQUIVO[e].segmento}*`).join(" e ");
+  // O edital Militar não traz a regra da série anterior (ver buildSeletivaConteudoReply).
+  const anexo = editais.every((e) => e === "militar")
+    ? ""
+    : "\n\n📚 O conteúdo de cada série está no *Anexo I*: a prova cobre o conteúdo da *série anterior* à que o aluno vai cursar em 2027.";
+  const datas = seletivaAgendadaDatas(now);
+  const dias = datas.length > 1 ? `nos dias ${datas.map((d) => `*${d}*`).join(" ou ")}` : `no dia *${datas[0]}*`;
+  const teste = datas.length
+    ? `\n\n📝 Teste agendado ${dias}, ${SELETIVA_AGENDADA_HORARIOS}. Inscrição: ${SELETIVA_AGENDADA_URL}`
+    : "";
   return (
-    "Aqui está o edital da *Seletiva Ideal 2027* 😊\n" +
-    links +
-    // O edital Militar não traz a regra da série anterior (ver buildSeletivaConteudoReply).
-    (editais.length === 1 && editais[0] === "militar"
-      ? ""
-      : "\n\nO conteúdo de cada série está no *Anexo I*. A prova cobre o conteúdo da *série anterior* à que o aluno vai cursar em 2027.")
+    `Aqui ${editais.length > 1 ? "estão os editais" : "está o edital"} do *teste agendado* da *Seletiva Ideal 2027* — ${segmentos} 👇` +
+    anexo +
+    teste +
+    "\n\nFicou alguma dúvida? É só me perguntar por aqui 😊"
   );
 }
 

@@ -1,6 +1,7 @@
 import { JevClient, JevQuestion, JevResponse } from "../llm/jev";
 import { DirectResponse } from "../kb/direct-responses";
 import { NIVEL_MILITAR } from "./intent-router";
+import type { SeletivaEdital } from "../kb/seletiva-conteudo";
 
 /**
  * Jev como CURADOR de intenção: lê a conversa e escolhe qual das respostas que
@@ -73,8 +74,12 @@ export const ROUTE_CRITERIA: Record<JevRoute, unknown> = {
     cobre: "dia, horário ou local da prova/teste da Seletiva já agendado; chegar atrasado; o que levar no dia",
   },
   seletiva_edital: {
-    cobre: "conteúdo da prova da Seletiva, edital, o que estudar, qual série estudar para a prova",
-    nao_cobre: "preparação para vestibular, ENEM ou concurso militar (nivel_info)",
+    cobre:
+      "quer o EDITAL da Seletiva ou do teste agendado: pede o edital, o arquivo/PDF/documento com as regras, " +
+      "'manda o edital', 'tem o edital?'; ou pergunta o conteúdo da prova, o que estudar, qual série estudar, " +
+      "quantas questões, quais matérias caem, as regras do teste",
+    nao_cobre:
+      "preparação para vestibular, ENEM ou concurso militar (nivel_info); só quer se inscrever ou saber a data do teste (seletiva_agendamento)",
   },
   seletiva_agendamento: {
     cobre: "quer fazer a Seletiva / prova de bolsa, se inscrever, perdeu o prazo, agendar o teste",
@@ -460,6 +465,32 @@ export function jevVeredito(
   if (jev !== "continuacao" && decision.confidence < LIVE_MIN) return { acao: "seguir" };
   if (trocas.includes(jev)) return { acao: "trocar", rota: jev };
   return { acao: "vetar" };
+}
+
+/**
+ * ÚNICA exceção ao "o Jev nunca puxa bloco fixo sozinho": pedido de EDITAL
+ * (dono, 16/10/2026). O regex só pega "edital" escrito; o Jev reconhece
+ * "manda as regras do teste", "quantas questões tem a prova?". Mandar o
+ * arquivo do edital pra quem não pediu é inofensivo — por isso só aqui.
+ */
+export function jevPedeEdital(decision: JevDecision | null): boolean {
+  return !!decision && decision.route === "seletiva_edital" && decision.confidence >= LIVE_MIN;
+}
+
+// Segmento do Jev (rótulo de NIVEL_LABEL) → edital do teste agendado. Infantil
+// e 1º ano não têm Seletiva; aí o bot pergunta o segmento.
+const NIVEL_EDITAL: Record<string, SeletivaEdital> = {
+  "Fundamental 1": "jr",
+  "Fundamental 2": "regular",
+  "Ensino Médio": "regular",
+  "Pré-Enem": "regular",
+  [NIVEL_MILITAR]: "militar",
+};
+export const NIVEL_EDITAL_MIN = 0.7;
+
+export function editalPeloNivelJev(decision: JevDecision | null): SeletivaEdital | null {
+  if (!decision?.nivel || decision.nivelConfidence < NIVEL_EDITAL_MIN) return null;
+  return NIVEL_EDITAL[decision.nivel] ?? null;
 }
 
 // ---------------------------------------------------------------------------

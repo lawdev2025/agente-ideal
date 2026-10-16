@@ -18,6 +18,7 @@ import {
   descontoMatriculaAtual,
 } from "../src/kb/seletiva-encerrada";
 import { buildSystemPrompt } from "../src/llm/prompts/system-prompt";
+import { SELETIVA_EDITAIS_ARQUIVO, SELETIVA_EDITAL_ASK_SEGMENTO_REPLY } from "../src/kb/seletiva-conteudo";
 
 function buildMocks(opts: {
   history?: Array<{ role: string; content: string }>;
@@ -59,6 +60,7 @@ function buildMocks(opts: {
   const whatsapp = {
     sendMessage: vi.fn(async () => ({ messageId: "m1" })),
     sendImage: vi.fn(async () => ({ messageId: "i1" })),
+    sendDocument: vi.fn(async () => ({ messageId: "d1" })),
   } as unknown as WhatsAppClient;
   const escalation = {
     escalateToGroup: vi.fn(async () => ({ messageId: "e1" })),
@@ -1698,7 +1700,7 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
   });
 
   // Print real de 26/09: o bloco saiu 3x seguidas ("edital", "Ela tem identidade", "?").
-  it("pedido de edital → link do edital da série, não o bloco do dia", async () => {
+  it("pedido de edital → arquivo do edital da série, não o bloco do dia", async () => {
     vi.setSystemTime(new Date("2026-09-26T13:00:00Z"));
     const m = buildMocks({
       history: [
@@ -1710,8 +1712,13 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", "Gostaria de saber sobre o edital para 1 ano do ensino médio", "u1");
     const sent = sentOf(m);
-    expect(sent).toContain("EDITAL-SELETIVA-IDEAL-2027.pdf");
+    expect(sent).toMatch(/6º ano ao Ensino Médio/);
     expect(sent).not.toMatch(/Port[õo]es/);
+    expect(m.whatsapp.sendDocument).toHaveBeenCalledWith(
+      "u1",
+      SELETIVA_EDITAIS_ARQUIVO.regular.url,
+      SELETIVA_EDITAIS_ARQUIVO.regular.filename
+    );
   });
 
   it("bloco do dia já enviado → próxima dúvida vai pro LLM, sem repetir o bloco", async () => {
@@ -1990,5 +1997,104 @@ describe("Orchestrator: Passaporte Ideal = taxa de pré-matrícula (06/10/2026)"
 
   it("o LLM sabe o que é o passaporte", () => {
     expect(buildSystemPrompt()).toMatch(/PASSAPORTE IDEAL: é a TAXA DE PRÉ-MATRÍCULA/);
+  });
+});
+
+describe("Orchestrator: edital do teste agendado em arquivo", () => {
+  beforeEach(() => {
+    config.seletivaEncerrada = true;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-16T13:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const sentOf = (m: ReturnType<typeof buildMocks>) =>
+    (m.whatsapp.sendMessage as any).mock.calls.map((c: any) => c[1]).join("\n");
+  const docsOf = (m: ReturnType<typeof buildMocks>) =>
+    (m.whatsapp.sendDocument as any).mock.calls.map((c: any) => c[1]);
+
+  it.each(["vocês tem o edital da seletiva?", "me manda o edital", "onde vejo o edital do teste agendado?"])(
+    "'%s' sem segmento → pergunta o segmento antes de mandar",
+    async (msg) => {
+      const m = buildMocks({});
+      const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+      await orch.processMessage("u1", msg, "u1");
+      expect(sentOf(m)).toBe(SELETIVA_EDITAL_ASK_SEGMENTO_REPLY);
+      expect(m.whatsapp.sendDocument).not.toHaveBeenCalled();
+      expect(m.llm.generateMessage).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ["1", "jr"],
+    ["2", "regular"],
+    ["3", "militar"],
+    ["ele vai pro 7º ano", "regular"],
+    ["4º ano", "jr"],
+    ["turma militar", "militar"],
+    ["Ensino Médio", "regular"],
+  ] as const)("resposta '%s' à pergunta de segmento → arquivo %s", async (resp, edital) => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "me manda o edital" },
+        { role: "assistant", content: SELETIVA_EDITAL_ASK_SEGMENTO_REPLY },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", resp, "u1");
+    expect(docsOf(m)).toEqual([SELETIVA_EDITAIS_ARQUIVO[edital].url]);
+    expect(sentOf(m)).toContain(SELETIVA_EDITAIS_ARQUIVO[edital].segmento);
+    expect(m.stateRepo.appendMessage).toHaveBeenCalledWith(
+      "u1",
+      "assistant",
+      `[Edital ${SELETIVA_EDITAIS_ARQUIVO[edital].segmento}]`,
+      expect.objectContaining({ media_type: "document", media_url: SELETIVA_EDITAIS_ARQUIVO[edital].url })
+    );
+  });
+
+  it("'3º ano' é ambíguo → manda os dois editais (Jr e regular)", async () => {
+    const m = buildMocks({
+      history: [{ role: "assistant", content: SELETIVA_EDITAL_ASK_SEGMENTO_REPLY }],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "3º ano", "u1");
+    expect(docsOf(m).sort()).toEqual([SELETIVA_EDITAIS_ARQUIVO.jr.url, SELETIVA_EDITAIS_ARQUIVO.regular.url].sort());
+  });
+
+  it("texto do edital traz a data do teste e o link de inscrição enquanto há teste aberto", async () => {
+    const m = buildMocks({});
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "edital da seletiva pro 8º ano", "u1");
+    expect(sentOf(m)).toContain("20/10");
+    expect(sentOf(m)).toContain(SELETIVA_AGENDADA_URL);
+  });
+
+  it("edital já enviado → a próxima dúvida vai pro LLM, sem repetir o arquivo", async () => {
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "edital do 8º ano" },
+        { role: "assistant", content: `[Edital ${SELETIVA_EDITAIS_ARQUIVO.regular.segmento}]` },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "e o edital do 8º ano, quantas questões?", "u1");
+    expect(m.whatsapp.sendDocument).not.toHaveBeenCalled();
+    expect(m.llm.generateMessage).toHaveBeenCalled();
+  });
+
+  it("falha no envio do arquivo → manda o link do edital", async () => {
+    const m = buildMocks({});
+    (m.whatsapp.sendDocument as any).mockRejectedValueOnce(new Error("media falhou"));
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "edital da seletiva militar", "u1");
+    expect(sentOf(m)).toContain(SELETIVA_EDITAIS_ARQUIVO.militar.url);
+  });
+
+  it("'2' sem a pergunta de segmento antes NÃO vira edital", async () => {
+    const m = buildMocks({ history: [{ role: "assistant", content: "Bom dia! Como posso ajudar?" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "2", "u1");
+    expect(m.whatsapp.sendDocument).not.toHaveBeenCalled();
   });
 });

@@ -224,7 +224,11 @@ function orchestratorMocks() {
     setContactUnitTag: vi.fn(async () => {}),
     markSeletivaAgendada: vi.fn(async () => {}),
   } as unknown as StateRepository;
-  const whatsapp = { sendMessage: vi.fn(async () => ({ messageId: "m1" })), sendImage: vi.fn() } as unknown as WhatsAppClient;
+  const whatsapp = {
+    sendMessage: vi.fn(async () => ({ messageId: "m1" })),
+    sendImage: vi.fn(),
+    sendDocument: vi.fn(async () => ({ messageId: "d1" })),
+  } as unknown as WhatsAppClient;
   const escalation = { escalateToGroup: vi.fn(async () => ({ messageId: "e1" })) } as unknown as EscalationHandler;
   return { llm, stateRepo, whatsapp, escalation };
 }
@@ -330,6 +334,18 @@ describe("orquestrador em modo live", () => {
     const row = spy.mock.calls[0][0];
     expect(row.legacyRoute).toBe("visita");
     expect(row.finalRoute).toBe("llm_livre");
+    spy.mockRestore(); satSpy.mockRestore(); alertSpy.mockRestore();
+  });
+
+  it("pedido de edital que o regex não pega → Jev puxa o arquivo do segmento dele", async () => {
+    const spy = vi.spyOn(shadow, "recordJevShadow").mockResolvedValue();
+    const satSpy = vi.spyOn(shadow, "recordSatisfaction").mockResolvedValue();
+    const alertSpy = vi.spyOn(shadow, "recordAlerta").mockResolvedValue();
+    const m = orchestratorMocks();
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation, undefined, jevCom("seletiva_edital", 0.95), true);
+    await orch.processMessage("u1", "pode me mandar as regras do teste, por favor?", "u1");
+    // nivel fundamental_2 no jevApiResponse → edital do 6º ano ao Médio.
+    expect((m.whatsapp.sendDocument as any).mock.calls[0][1]).toContain("edital-seletiva-ideal-2027-teste-agendado");
     spy.mockRestore(); satSpy.mockRestore(); alertSpy.mockRestore();
   });
 

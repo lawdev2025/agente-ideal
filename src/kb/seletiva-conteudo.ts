@@ -90,3 +90,57 @@ export function pickSeletivaEditais(text: string): SeletivaEdital[] | null {
   if (regular) return ["regular"];
   return null;
 }
+
+// ── EDITAL DO TESTE AGENDADO, EM ARQUIVO ────────────────────────────────────
+// Os editais do teste agendado (pasta editais/ da raiz, versão "TESTE
+// AGENDADO", convertidos em PDF) ficam em public/editais/ e vão como DOCUMENTO
+// PDF no WhatsApp — nunca .docx. Trocou o edital? Exporte em PDF e
+// substitua o arquivo em public/editais/ mantendo o nome.
+const EDITAIS_BASE_URL = "https://agente-ideal.vercel.app/editais";
+
+export const SELETIVA_EDITAIS_ARQUIVO: Record<SeletivaEdital, { url: string; filename: string; segmento: string }> = {
+  regular: {
+    url: `${EDITAIS_BASE_URL}/edital-seletiva-ideal-2027-teste-agendado.pdf`,
+    filename: "Edital Seletiva Ideal 2027 - 6º ano ao Ensino Médio - Teste Agendado.pdf",
+    segmento: "do 6º ano ao Ensino Médio",
+  },
+  jr: {
+    url: `${EDITAIS_BASE_URL}/edital-seletiva-ideal-jr-2027-teste-agendado.pdf`,
+    filename: "Edital Seletiva Ideal Jr 2027 - 2º ao 5º ano - Teste Agendado.pdf",
+    segmento: "do 2º ao 5º ano (Ideal Jr)",
+  },
+  militar: {
+    url: `${EDITAIS_BASE_URL}/edital-ideal-militar-2027-teste-agendado.pdf`,
+    filename: "Edital Ideal Militar 2027 - Teste Agendado.pdf",
+    segmento: "das turmas militares",
+  },
+};
+
+export const SELETIVA_EDITAL_MIME = "application/pdf";
+
+// Pergunta de segmento antes de mandar o arquivo. A 2ª frase é a MARCA que o
+// orquestrador usa pra reconhecer a resposta do cliente ("2", "médio").
+export const SELETIVA_EDITAL_ASK_SEGMENTO_REPLY =
+  "Claro! Te mando o *edital* do teste agendado da *Seletiva Ideal 2027* em arquivo 📄\n\n" +
+  "Pra eu mandar o certo: qual *segmento* o aluno vai cursar em 2027?\n" +
+  "1️⃣ *2º ao 5º ano* (Ideal Jr)\n" +
+  "2️⃣ *6º ano ao Ensino Médio*\n" +
+  "3️⃣ *Turmas Militares*";
+
+export function isSeletivaEditalSegmentoAsk(botText: string): boolean {
+  return /qual \*?segmento\*? o aluno vai cursar em 2027/i.test(botText || "");
+}
+
+// Resposta à pergunta de segmento: a série/turma citada, o número da opção ou o
+// nome do segmento. "3º ano" sozinho é ambíguo (Fundamental ou terceirão) → os
+// dois editais, como no pickSeletivaEditais.
+export function parseSeletivaEditalSegmento(text: string): SeletivaEdital[] | null {
+  const t = (text || "").trim();
+  const pelaSerie = pickSeletivaEditais(t);
+  if (pelaSerie) return pelaSerie;
+  if (/^\s*(?:op[çc][ãa]o\s*)?1\s*(?:️⃣)?\s*$|1️⃣|\bjr\b|j[úu]nior|anos\s+iniciais/i.test(t)) return ["jr"];
+  if (/^\s*(?:op[çc][ãa]o\s*)?2\s*(?:️⃣)?\s*$|2️⃣|\bregular\b/i.test(t)) return ["regular"];
+  if (/^\s*(?:op[çc][ãa]o\s*)?3\s*(?:️⃣)?\s*$|3️⃣/i.test(t)) return ["militar"];
+  if (/\b(?:3\s*[ºo°]?|terceiro)\s+ano\b/i.test(t)) return ["regular", "jr"];
+  return null;
+}

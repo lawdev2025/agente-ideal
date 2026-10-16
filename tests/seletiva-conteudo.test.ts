@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { isSeletivaContentQuestion, pickSeletivaEditais } from "../src/kb/seletiva-conteudo";
+import {
+  isSeletivaContentQuestion,
+  pickSeletivaEditais,
+  parseSeletivaEditalSegmento,
+  isSeletivaEditalSegmentoAsk,
+  SELETIVA_EDITAL_ASK_SEGMENTO_REPLY,
+  SELETIVA_EDITAIS_ARQUIVO,
+} from "../src/kb/seletiva-conteudo";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { classifyContactTag } from "../src/kb/contact-tags";
 
 const PRINT =
@@ -57,5 +66,36 @@ describe("classifyContactTag: conteúdo da prova é Seletiva", () => {
   });
   it("pergunta de valor da série continua matrícula", () => {
     expect(classifyContactTag("quanto custa o 9 ano?")).toBe("matricula");
+  });
+});
+
+describe("parseSeletivaEditalSegmento: resposta à pergunta de segmento", () => {
+  const casos: Array<[string, ReturnType<typeof parseSeletivaEditalSegmento>]> = [
+    ["1", ["jr"]],
+    ["2", ["regular"]],
+    ["3", ["militar"]],
+    ["opção 2", ["regular"]],
+    ["Ideal Jr", ["jr"]],
+    ["fundamental 1", ["jr"]],
+    ["9º ano", ["regular"]],
+    ["médio", ["regular"]],
+    ["militar", ["militar"]],
+    ["terceiro ano", ["regular", "jr"]],
+    ["obrigada", null],
+  ];
+  for (const [t, esperado] of casos)
+    it(`'${t}' → ${JSON.stringify(esperado)}`, () => expect(parseSeletivaEditalSegmento(t)).toEqual(esperado));
+
+  it("todo edital vai em PDF e o arquivo existe em public/editais", () => {
+    for (const arq of Object.values(SELETIVA_EDITAIS_ARQUIVO)) {
+      expect(arq.url).toMatch(/\.pdf$/);
+      expect(arq.filename).toMatch(/\.pdf$/);
+      const local = join(__dirname, "..", "public", "editais", arq.url.split("/").pop()!);
+      expect(readFileSync(local).subarray(0, 5).toString()).toBe("%PDF-");
+    }
+  });
+
+  it("a pergunta de segmento carrega a própria marca", () => {
+    expect(isSeletivaEditalSegmentoAsk(SELETIVA_EDITAL_ASK_SEGMENTO_REPLY)).toBe(true);
   });
 });

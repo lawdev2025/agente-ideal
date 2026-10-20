@@ -39,6 +39,11 @@ import {
   seletivaDescontoDica,
   SELETIVA_MATRICULA_HORARIO,
   seletivaAgendadaDatas,
+  proximosTestesAgendados,
+  testeAgendadoDiaTexto,
+  isSeletivaOutraDataPedido,
+  testeOferecidoNoHistorico,
+  seletivaOutraDataReply,
   SELETIVA_AGENDADA_HORARIOS,
   SELETIVA_AGENDADA_URL,
 } from "../kb/seletiva-encerrada";
@@ -272,7 +277,11 @@ export class MessageOrchestrator {
         // teste") — a única rota que o Jev puxa sozinho (ver jevPedeEdital).
         const jevLive = this.jevLive && jevPending ? await jevPending : null;
         if (!topico && jevPedeEdital(jevLive)) topico = "edital";
-        if (topico) {
+        // Sem teste pela frente, o edital não serve pra nada: vira "encerrado".
+        if (topico === "edital" && !seletivaAgendadaDatas().length) topico = "agendamento";
+        // "Não posso nessa data" logo depois da oferta: o Jev lê como
+        // continuação e vetaria — a regra já exige a oferta no histórico.
+        if (topico && topico !== "outra_data") {
           // Live: o Jev pode trocar o tópico (agendamento → edital) ou vetar
           // a Seletiva inteira ("desconto pra servidor público?").
           const v = await gate(`seletiva_${topico}`, SELETIVA_ROTAS_JEV);
@@ -283,7 +292,7 @@ export class MessageOrchestrator {
           trace.route = `seletiva_${topico}`;
           // Só quem chegou tarde vira "agendada": quem pergunta do resultado ou
           // do dia da prova já está inscrito.
-          if (topico === "agendamento") await this.stateRepository.markSeletivaAgendada(studentId);
+          if (topico === "agendamento" || topico === "outra_data") await this.stateRepository.markSeletivaAgendada(studentId);
           if (await this.stateRepository.isBotPaused(studentId)) {
             logger.info({ studentId, topico }, "Seletiva encerrada — bot pausado, só marcou o status");
             return;
@@ -314,7 +323,9 @@ export class MessageOrchestrator {
               ? seletivaResultadoReply()
               : topico === "prova"
                 ? SELETIVA_PROVA_DIA_REPLY
-                : seletivaAgendamentoReply();
+                : topico === "outra_data"
+                  ? seletivaOutraDataReply(testeOferecidoNoHistorico(conversationHistory)) ?? seletivaAgendamentoReply()
+                  : seletivaAgendamentoReply();
           // RAIZ DE BUG (26/09, cliente recebeu o bloco 3x seguidas): resposta
           // fixa sai UMA vez por conversa. Se ela já foi mandada, a próxima
           // dúvida ("Ela tem identidade?") vai pro LLM, que tem os mesmos dados
@@ -2069,7 +2080,10 @@ export function detectSeletivaEncerradaTopic(
   userMessage: string,
   history: ConversationMessage[],
   now: number = Date.now()
-): "resultado" | "resultado_nao_recebido" | "prova" | "edital" | "agendamento" | null {
+): "resultado" | "resultado_nao_recebido" | "prova" | "edital" | "agendamento" | "outra_data" | null {
+  // O bot acabou de oferecer uma data de teste e o cliente diz que não pode /
+  // pede outra → oferece SÓ a seguinte (dono, 20/10/2026).
+  if (isSeletivaOutraDataPedido(userMessage) && testeOferecidoNoHistorico(history)) return "outra_data";
   const conteudo = isSeletivaContentQuestion(userMessage);
   // Pediu o EDITAL ("edital", "o que cai") → link do edital, não o bloco do dia.
   const edital = conteudo || /\bedita(l|is)\b/i.test(userMessage);
@@ -2374,10 +2388,9 @@ export function buildSeletivaEditalArquivoReply(editais: SeletivaEdital[], now: 
   const anexo = editais.every((e) => e === "militar")
     ? ""
     : "\n\n📚 O conteúdo de cada série está no *Anexo I*: a prova cobre o conteúdo da *série anterior* à que o aluno vai cursar em 2027.";
-  const datas = seletivaAgendadaDatas(now);
-  const dias = datas.length > 1 ? `nos dias ${datas.map((d) => `*${d}*`).join(" ou ")}` : `no dia *${datas[0]}*`;
-  const teste = datas.length
-    ? `\n\n📝 Teste agendado ${dias}, ${SELETIVA_AGENDADA_HORARIOS}. Inscrição: ${SELETIVA_AGENDADA_URL}`
+  const [prox] = proximosTestesAgendados(now);
+  const teste = prox
+    ? `\n\n📝 Próximo teste agendado: ${testeAgendadoDiaTexto(prox)}, ${SELETIVA_AGENDADA_HORARIOS}. Inscrição: ${SELETIVA_AGENDADA_URL}`
     : "";
   return (
     `Aqui ${editais.length > 1 ? "estão os editais" : "está o edital"} do *teste agendado* da *Seletiva Ideal 2027* — ${segmentos} 👇` +

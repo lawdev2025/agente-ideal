@@ -16,6 +16,8 @@ import {
   seletivaNaoRecebidoReply,
   seletivaInfoLLM,
   descontoMatriculaAtual,
+  seletivaOutraDataReply,
+  testeOferecidoNoHistorico,
 } from "../src/kb/seletiva-encerrada";
 import { buildSystemPrompt } from "../src/llm/prompts/system-prompt";
 import { SELETIVA_EDITAIS_ARQUIVO, SELETIVA_EDITAL_ASK_SEGMENTO_REPLY } from "../src/kb/seletiva-conteudo";
@@ -1648,6 +1650,24 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
   });
 
+  it("'não posso terça' logo depois da oferta → só a quinta da mesma semana, sem LLM", async () => {
+    vi.setSystemTime(new Date("2026-10-19T13:00:00Z"));
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "quero fazer o teste da seletiva" },
+        { role: "assistant", content: seletivaAgendamentoReply() },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "terça não consigo, tem outro dia?", "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/Nessa semana, temos também a opção/);
+    expect(sent).toContain("*quinta-feira, 22/10*");
+    expect(sent).not.toContain("20/10");
+    expect(m.stateRepo.markSeletivaAgendada).toHaveBeenCalledWith("u1");
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
   it.each([
     "que horas abre o portão da seletiva amanhã?",
     "precisa levar documento na prova da seletiva?",
@@ -1870,17 +1890,15 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
 
 describe("Seletiva: respostas mudam sozinhas com a data", () => {
   const belem = (iso: string) => Date.parse(iso);
-  it("teste agendado: 06/10 e 08/10 às 8h/14h; cada dia some às 14h dele; depois, outras condições", () => {
-    const ambos = seletivaAgendamentoReply(belem("2026-10-05T23:00:00Z"));
-    expect(ambos).toMatch(/\*06\/10\* ou \*08\/10\*/);
-    expect(ambos).toMatch(/8h\* ou às \*14h/);
+  it("teste agendado: só a próxima data, às 8h/14h; o dia some às 14h dele", () => {
+    const r = seletivaAgendamentoReply(belem("2026-10-05T23:00:00Z"));
+    expect(r).toMatch(/na \*terça-feira, 06\/10\*/);
+    expect(r).toMatch(/8h\* ou às \*14h/);
+    expect(r).not.toContain("08/10");
     const so08 = seletivaAgendamentoReply(belem("2026-10-06T17:01:00Z"));
-    expect(so08).toMatch(/no dia \*08\/10\*/);
+    expect(so08).toMatch(/na \*quinta-feira, 08\/10\*/);
     expect(so08).not.toContain("06/10");
     expect(seletivaAgendamentoReply(belem("2026-10-08T16:00:00Z"))).toContain(SELETIVA_AGENDADA_URL);
-    const depois = seletivaAgendamentoReply(belem("2026-10-20T17:01:00Z"));
-    expect(depois).not.toContain(SELETIVA_AGENDADA_URL);
-    expect(depois).toMatch(/encerrados/);
   });
   it("resultado: desconto até o fim de 09/10; depois, outras condições sem prometer o %", () => {
     const antes = seletivaResultadoReply(belem("2026-10-09T20:00:00Z"));
@@ -1904,30 +1922,88 @@ describe("Seletiva: respostas mudam sozinhas com a data", () => {
   });
 });
 
-describe("Seletiva: próxima data do teste só aparece depois da anterior", () => {
+describe("Seletiva: teste agendado toda terça e quinta, menos feriado (dono, 20/10)", () => {
   const t = (iso: string) => Date.parse(iso);
-  const casos: [string, RegExp, RegExp[]][] = [
-    ["2026-10-05T23:00:00Z", /06\/10\* ou \*08\/10/, [/13\/10/, /20\/10/]],
-    ["2026-10-06T17:01:00Z", /no dia \*08\/10/, [/06\/10/, /13\/10/, /20\/10/]],
-    ["2026-10-08T17:01:00Z", /no dia \*13\/10/, [/08\/10/, /20\/10/]],
-    ["2026-10-13T17:01:00Z", /no dia \*20\/10/, [/13\/10/]],
-    ["2026-10-20T17:01:00Z", /encerrados/, [/\d\d\/10\*? ou|no dia/]],
+  // [agora, próxima data esperada]
+  const casos: [string, string][] = [
+    ["2026-10-19T10:00-03:00", "terça-feira, 20/10"], // segunda → terça
+    ["2026-10-20T13:59-03:00", "terça-feira, 20/10"], // terça antes das 14h → ainda dá hoje
+    ["2026-10-20T14:01-03:00", "quinta-feira, 22/10"], // passou a sessão das 14h
+    ["2026-10-21T10:00-03:00", "quinta-feira, 22/10"], // quarta → quinta
+    ["2026-10-23T10:00-03:00", "terça-feira, 27/10"], // sexta → terça
+    ["2026-10-25T10:00-03:00", "terça-feira, 27/10"], // domingo → terça
+    ["2026-11-01T10:00-03:00", "terça-feira, 03/11"],
+    ["2026-11-19T15:00-03:00", "terça-feira, 24/11"], // quinta depois das 14h → terça
+    ["2026-12-07T10:00-03:00", "quinta-feira, 10/12"], // 08/12 (N. Sra. da Conceição) é feriado
+    ["2026-12-23T10:00-03:00", "terça-feira, 29/12"], // 24/12 véspera de Natal
+    ["2026-12-30T10:00-03:00", "terça-feira, 05/01"], // 31/12 e 01/01
+    ["2027-01-11T10:00-03:00", "quinta-feira, 14/01"], // 12/01 aniversário de Belém
+    ["2027-02-08T10:00-03:00", "quinta-feira, 11/02"], // Carnaval
   ];
-  it.each(casos)("%s", (iso, tem, naoTem) => {
+  it.each(casos)("%s → %s", (iso, esperado) => {
     const r = seletivaAgendamentoReply(t(iso));
-    expect(r).toMatch(tem);
-    for (const n of naoTem) expect(r).not.toMatch(n);
+    expect(r).toContain(`*${esperado}*`);
+    // Uma data só: nunca lista de opções.
+    expect(r.match(/\d{2}\/\d{2}/g)).toHaveLength(1);
   });
 
-  it("o LLM recebe as MESMAS datas que a resposta fixa, e nunca 03/10", () => {
-    expect(seletivaInfoLLM(t("2026-10-07T12:00:00Z"))).toMatch(/no dia 08\/10/);
-    expect(seletivaInfoLLM(t("2026-10-07T12:00:00Z"))).not.toMatch(/13\/10/);
-    expect(seletivaInfoLLM(t("2026-10-09T12:00:00Z"))).toMatch(/no dia 13\/10/);
-    const depoisPrazo = seletivaInfoLLM(t("2026-10-10T12:00:00Z"));
-    expect(depoisPrazo).toMatch(/MENSALIDADE durante TODO o ano de 2027, SEM prazo/);
-    expect(depoisPrazo).toMatch(/20% de desconto na MATRÍCULA até 20\/10/);
-    expect(buildSystemPrompt(t("2026-10-09T12:00:00Z"))).toMatch(/SITUAÇÃO DE HOJE[\s\S]*13\/10/);
+  it("depois de 20/10 o bot segue oferecendo teste (não 'encerrados')", () => {
+    const r = seletivaAgendamentoReply(t("2026-10-23T10:00-03:00"));
+    expect(r).toContain(SELETIVA_AGENDADA_URL);
+    expect(r).not.toMatch(/encerrados/);
+  });
+
+  it("o LLM recebe a próxima data e SÓ a seguinte pra quem não puder", () => {
+    const info = seletivaInfoLLM(t("2026-10-19T10:00-03:00"));
+    expect(info).toMatch(/SÓ a próxima data: terça-feira, 20\/10/);
+    expect(info).toMatch(/ofereça SÓ a seguinte: quinta-feira, 22\/10/);
+    expect(info).not.toMatch(/27\/10/);
+    expect(buildSystemPrompt(t("2026-10-21T10:00-03:00"))).toMatch(/SITUAÇÃO DE HOJE[\s\S]*22\/10/);
     expect(buildSystemPrompt()).not.toMatch(/03\/10/);
+  });
+});
+
+describe("Seletiva: cliente não pode na data → oferece só a seguinte", () => {
+  const t = (iso: string) => Date.parse(iso);
+  const oferta = (now: number) => [
+    { role: "user" as const, content: "quero fazer o teste da seletiva" },
+    { role: "assistant" as const, content: seletivaAgendamentoReply(now) },
+  ];
+
+  it("terça oferecida, não pode → 'nessa semana temos também a quinta'", () => {
+    const now = t("2026-10-19T10:00-03:00");
+    const h = oferta(now);
+    expect(detectSeletivaEncerradaTopic("terça não consigo", h, now)).toBe("outra_data");
+    const r = seletivaOutraDataReply(testeOferecidoNoHistorico(h), now)!;
+    expect(r).toMatch(/Nessa semana, temos também a opção/);
+    expect(r).toContain("*quinta-feira, 22/10*");
+    expect(r).toContain(SELETIVA_AGENDADA_URL);
+    expect(r).not.toContain("20/10");
+  });
+
+  it("quinta oferecida, não pode → próxima terça (outra semana)", () => {
+    const now = t("2026-10-21T10:00-03:00");
+    const r = seletivaOutraDataReply(testeOferecidoNoHistorico(oferta(now)), now)!;
+    expect(r).toMatch(/A próxima opção é/);
+    expect(r).toContain("*terça-feira, 27/10*");
+  });
+
+  it("não pode de novo → anda mais uma data a partir da última oferecida", () => {
+    const now = t("2026-10-19T10:00-03:00");
+    const h = [...oferta(now), { role: "user" as const, content: "não posso" }];
+    h.push({ role: "assistant" as const, content: seletivaOutraDataReply(testeOferecidoNoHistorico(h), now)! });
+    expect(seletivaOutraDataReply(testeOferecidoNoHistorico(h), now)).toContain("*terça-feira, 27/10*");
+  });
+
+  it("variações de 'não posso' e 'outra data'", () => {
+    const h = oferta(t("2026-10-19T10:00-03:00"));
+    for (const msg of ["Não posso nesse dia", "tem outra data?", "teria outro dia?", "nesse dia não vai dar pra mim", "qual a próxima data?", "não consigo ir terça"])
+      expect(detectSeletivaEncerradaTopic(msg, h), msg).toBe("outra_data");
+  });
+
+  it("sem oferta recente, 'não posso' não vira outra data", () => {
+    expect(detectSeletivaEncerradaTopic("não posso ir à reunião", [])).not.toBe("outra_data");
+    expect(testeOferecidoNoHistorico([{ role: "assistant", content: "Olá! Como posso ajudar?" }])).toBeNull();
   });
 });
 
@@ -1943,7 +2019,6 @@ describe("Desconto na matrícula depois da Seletiva: 20% até 20/10, 10% até 30
   });
   it("resposta do resultado e do agendado citam a faixa do momento", () => {
     expect(seletivaResultadoReply(t("2026-10-12T10:00-03:00"))).toMatch(/20% de desconto na matrícula\* até \*20\/10/);
-    expect(seletivaAgendamentoReply(t("2026-10-22T10:00-03:00"))).toMatch(/10% de desconto na matrícula\* até \*30\/10/);
     const fim = seletivaResultadoReply(t("2026-11-02T10:00-03:00"));
     expect(fim).not.toMatch(/\d+% de desconto/);
     expect(fim).toMatch(/mensalidade\* durante \*todo o ano de 2027/);

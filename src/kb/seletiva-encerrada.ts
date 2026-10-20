@@ -30,26 +30,123 @@ export const SELETIVA_RESULTADO_EMAIL_SUPORTE = "sistemas@grupoideal.com.br";
 export const SELETIVA_MATRICULA_FIM_MS = Date.parse("2026-10-10T03:00:00Z");
 
 // ── TESTE AGENDADO (quem não fez a Seletiva) ────────────────────────────────
-// Sempre às 8h e às 14h; inscrição pelo formulário. Cada dia:
-//   aPartirMs → quando passa a ser divulgado (o dono só quer anunciar a
-//               próxima data DEPOIS que a anterior passar)
-//   ateMs     → quando sai da resposta: início da última sessão (14h de
-//               Belém = 17h UTC)
-// Depois do último, a resposta vira "encerrado" + o desconto da matrícula do momento.
+// Dono (20/10/2026): teste TODA terça e quinta, menos feriado, sempre às 8h e
+// às 14h, inscrição pelo formulário. O bot divulga SÓ a próxima data (segunda
+// → terça; quarta → quinta; sexta → terça). Quem diz que não pode ganha SÓ a
+// seguinte ("nessa semana temos também a quinta") — nunca uma lista de datas.
+// Um dia sai da resposta no início da última sessão (14h de Belém = 17h UTC).
+// Belém é UTC-3 o ano todo (sem horário de verão).
 export const SELETIVA_AGENDADA_HORARIOS = "às *8h* ou às *14h*";
-export const SELETIVA_AGENDADA_DIAS = [
-  { data: "06/10", aPartirMs: 0, ateMs: Date.parse("2026-10-06T17:00:00Z") },
-  { data: "08/10", aPartirMs: 0, ateMs: Date.parse("2026-10-08T17:00:00Z") },
-  { data: "13/10", aPartirMs: Date.parse("2026-10-08T17:00:00Z"), ateMs: Date.parse("2026-10-13T17:00:00Z") },
-  { data: "20/10", aPartirMs: Date.parse("2026-10-13T17:00:00Z"), ateMs: Date.parse("2026-10-20T17:00:00Z") },
-];
-
-/** Datas do teste agendado que podem ser divulgadas agora. */
-export function seletivaAgendadaDatas(now: number = Date.now()): string[] {
-  return SELETIVA_AGENDADA_DIAS.filter((d) => now >= d.aPartirMs && now < d.ateMs).map((d) => d.data);
-}
 export const SELETIVA_AGENDADA_URL = "https://forms.cloud.microsoft/r/WKqZt6vcgJ";
-export const SELETIVA_AGENDADA_FIM_MS = SELETIVA_AGENDADA_DIAS[SELETIVA_AGENDADA_DIAS.length - 1].ateMs;
+export const SELETIVA_AGENDADA_INICIO = "2026-10-06";
+// Último dia de teste (AAAA-MM-DD) ou null = sem data pra acabar. Com fim,
+// depois dele a resposta vira "encerrado" + a faixa de matrícula do momento.
+export const SELETIVA_AGENDADA_FIM: string | null = null;
+// Terças/quintas sem teste: feriados nacionais, do Pará e de Belém, Carnaval
+// e as vésperas de Natal e Ano-Novo. Cancelou um dia? É só pôr aqui.
+export const SELETIVA_AGENDADA_SEM_TESTE = new Set([
+  "2026-11-02", "2026-11-15", "2026-11-20", "2026-12-08", "2026-12-24", "2026-12-25", "2026-12-31",
+  "2027-01-01", "2027-01-12", "2027-02-08", "2027-02-09", "2027-02-10", "2027-03-26", "2027-04-21",
+  "2027-05-01", "2027-05-27", "2027-08-15", "2027-09-07", "2027-10-11", "2027-10-12", "2027-11-02",
+  "2027-11-15", "2027-11-20", "2027-12-08", "2027-12-24", "2027-12-25", "2027-12-31",
+]);
+const DIAS_TESTE: Record<number, string> = { 2: "terça-feira", 4: "quinta-feira" };
+const BELEM_OFFSET_MS = 3 * 3600 * 1000;
+const DIA_MS = 24 * 3600 * 1000;
+
+export type TesteAgendado = { iso: string; data: string; semana: string; ateMs: number };
+
+function testeDoDia(diaUtcMs: number): TesteAgendado | null {
+  const d = new Date(diaUtcMs);
+  const semana = DIAS_TESTE[d.getUTCDay()];
+  const iso = d.toISOString().slice(0, 10);
+  if (!semana || iso < SELETIVA_AGENDADA_INICIO || SELETIVA_AGENDADA_SEM_TESTE.has(iso)) return null;
+  if (SELETIVA_AGENDADA_FIM && iso > SELETIVA_AGENDADA_FIM) return null;
+  return { iso, data: `${iso.slice(8, 10)}/${iso.slice(5, 7)}`, semana, ateMs: diaUtcMs + 17 * 3600 * 1000 };
+}
+
+/** Os próximos `n` testes ainda abertos (a partir de `now`), em ordem. */
+export function proximosTestesAgendados(now: number = Date.now(), n = 1): TesteAgendado[] {
+  const out: TesteAgendado[] = [];
+  const hojeBelem = new Date(now - BELEM_OFFSET_MS);
+  let dia = Math.max(
+    Date.UTC(hojeBelem.getUTCFullYear(), hojeBelem.getUTCMonth(), hojeBelem.getUTCDate()),
+    Date.parse(`${SELETIVA_AGENDADA_INICIO}T00:00:00Z`)
+  );
+  // Teto de 400 dias: com fim definido a lista acaba.
+  for (let i = 0; i < 400 && out.length < n; i++, dia += DIA_MS) {
+    const t = testeDoDia(dia);
+    if (t && now < t.ateMs) out.push(t);
+  }
+  return out;
+}
+
+/** Data do próximo teste (["22/10"]), ou [] se acabaram. */
+export function seletivaAgendadaDatas(now: number = Date.now()): string[] {
+  return proximosTestesAgendados(now, 1).map((t) => t.data);
+}
+
+/** "*quinta-feira, 22/10*" — como o dia aparece nas respostas. */
+export function testeAgendadoDiaTexto(t: TesteAgendado): string {
+  return `*${t.semana}, ${t.data}*`;
+}
+
+// "Não posso nesse dia", "tem outra data?", "terça não dá" — só conta depois
+// do bot ter oferecido uma data de teste (ver testeOferecidoNoHistorico).
+const OUTRA_DATA_SIGNAL =
+  /(n[ãa]o\s+(vou\s+|vamos\s+|vai\s+)?(posso|podemos|poder|consigo|conseguimos|conseguir|d[áa]\b|dar\b|tenho\s+como|temos\s+como)|outr[oa]s?\s+(data|dia|op[çc][ãa]o|semana)|tem\s+outr|teria\s+outr|tem\s+mais\s+(alguma\s+)?(data|dia|op[çc])|pr[óo]xim[oa]\s+(data|teste|dia|semana|op[çc])|remarc|impossibilitad|sem\s+disponibilidade|n[ãa]o\s+tenho\s+disponibilidade|fica\s+(dif[íi]cil|complicado))/i;
+
+export function isSeletivaOutraDataPedido(text: string): boolean {
+  return OUTRA_DATA_SIGNAL.test(text || "");
+}
+
+/**
+ * Data ("DD/MM") que o bot ofereceu por último — toda resposta de teste
+ * agendado leva o link do formulário. Só olha os últimos turnos: oferta antiga
+ * não transforma "não posso" de outro assunto em pedido de outra data.
+ */
+export function testeOferecidoNoHistorico(history: { role: string; content: string }[]): string | null {
+  for (const m of history.slice(-4).reverse()) {
+    if (m.role !== "assistant" || !m.content.includes(SELETIVA_AGENDADA_URL)) continue;
+    const datas = m.content.match(/\b\d{2}\/\d{2}\b/g);
+    return datas ? datas[datas.length - 1] : null;
+  }
+  return null;
+}
+
+// "DD/MM" → AAAA-MM-DD, no ano mais perto de hoje (oferta de dezembro lida em
+// janeiro continua sendo do ano anterior).
+function isoDaData(data: string, now: number): string {
+  const [dd, mm] = data.split("/").map(Number);
+  const hoje = new Date(now - BELEM_OFFSET_MS);
+  const mesHoje = hoje.getUTCMonth() + 1;
+  let ano = hoje.getUTCFullYear();
+  if (mm - mesHoje > 6) ano--;
+  else if (mesHoje - mm > 6) ano++;
+  return `${ano}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+// Segunda-feira da semana do dia (duas datas na mesma semana?).
+function segundaDaSemana(iso: string): number {
+  const d = Date.parse(`${iso}T00:00:00Z`);
+  return d - ((new Date(d).getUTCDay() + 6) % 7) * DIA_MS;
+}
+
+/**
+ * Cliente não pode na data oferecida → oferece SÓ a seguinte. Mesma semana:
+ * "nessa semana temos também a quinta"; senão, "a próxima opção é...".
+ * null quando não há teste depois (só com SELETIVA_AGENDADA_FIM).
+ */
+export function seletivaOutraDataReply(oferecida: string | null, now: number = Date.now()): string | null {
+  const depoisDe = oferecida ? isoDaData(oferecida, now) : "";
+  const prox = proximosTestesAgendados(now, 12).find((t) => t.iso > depoisDe);
+  if (!prox) return null;
+  const mesmaSemana = !!oferecida && segundaDaSemana(prox.iso) === segundaDaSemana(depoisDe);
+  const abertura = mesmaSemana
+    ? `Sem problemas! 😉 Nessa semana, temos também a opção de fazer o *teste agendado* na ${testeAgendadoDiaTexto(prox)}, ${SELETIVA_AGENDADA_HORARIOS}. 📝`
+    : `Sem problemas! 😉 A próxima opção é fazer o *teste agendado* na ${testeAgendadoDiaTexto(prox)}, ${SELETIVA_AGENDADA_HORARIOS}. 📝`;
+  return `${abertura}\n\n👉 Faça a inscrição aqui: ${SELETIVA_AGENDADA_URL}`;
+}
 
 // Pergunta de RESULTADO: nota, aprovação, classificação, lista, gabarito.
 // "saiu"/"sai quando" só contam junto de um desses — sozinhos são genéricos.
@@ -205,24 +302,21 @@ export const SELETIVA_PROVA_DIA_REPLY =
   "Boa prova! 🍀\n\n" +
   "_Não conseguiu se inscrever? Fique de olho: em breve vamos abrir o agendamento de um teste para quem não pôde participar._";
 
-function agendamentoReply(datas: string[]): string {
-  const dias = datas.length > 1
-    ? `nos dias ${datas.map((d) => `*${d}*`).join(" ou ")}`
-    : `no dia *${datas[0]}*`;
+function agendamentoReply(t: TesteAgendado): string {
   return (
     "As inscrições da *Seletiva Ideal 2027* já foram encerradas. 🙏\n\n" +
-    `Mas quem não conseguiu participar pode fazer o *teste agendado* ${dias}, ${SELETIVA_AGENDADA_HORARIOS}! 📝\n\n` +
+    `Mas quem não conseguiu participar pode fazer o *teste agendado* na ${testeAgendadoDiaTexto(t)}, ${SELETIVA_AGENDADA_HORARIOS}! 📝\n\n` +
     `👉 Faça a inscrição aqui: ${SELETIVA_AGENDADA_URL}`
   );
 }
 
-// Antes do primeiro teste (06/10 e 08/10) — texto de referência dos testes.
-export const SELETIVA_ENCERRADA_AGENDAMENTO_REPLY = agendamentoReply(seletivaAgendadaDatas(0));
+// Antes do primeiro teste (06/10) — texto de referência dos testes.
+export const SELETIVA_ENCERRADA_AGENDAMENTO_REPLY = agendamentoReply(proximosTestesAgendados(0)[0]);
 
-// Depois do último teste agendado: sem prova pela frente, vale a faixa do momento.
+// Sem teste pela frente (só com SELETIVA_AGENDADA_FIM): vale a faixa do momento.
 export function seletivaAgendamentoReply(now: number = Date.now()): string {
-  const datas = seletivaAgendadaDatas(now);
-  if (datas.length) return agendamentoReply(datas);
+  const [prox] = proximosTestesAgendados(now);
+  if (prox) return agendamentoReply(prox);
   return "A *Seletiva Ideal 2027* e os testes agendados já foram encerrados. 🙏\n\n" + condicaoAtualTexto(now);
 }
 
@@ -234,10 +328,9 @@ export function seletivaAgendamentoReply(now: number = Date.now()): string {
  */
 export function seletivaDescontoDica(now: number = Date.now()): string {
   const fez = "💡 *Quer desconto?* Quem fez a *Seletiva Ideal 2027* já recebeu por *e-mail* o % de desconto na mensalidade.";
-  const datas = seletivaAgendadaDatas(now);
-  if (datas.length) {
-    const dias = datas.length > 1 ? `nos dias ${datas.map((d) => `*${d}*`).join(" ou ")}` : `no dia *${datas[0]}*`;
-    return `${fez} Não fez? Ainda dá para fazer o *teste agendado* ${dias}, ${SELETIVA_AGENDADA_HORARIOS}: ${SELETIVA_AGENDADA_URL}`;
+  const [prox] = proximosTestesAgendados(now);
+  if (prox) {
+    return `${fez} Não fez? Ainda dá para fazer o *teste agendado* na ${testeAgendadoDiaTexto(prox)}, ${SELETIVA_AGENDADA_HORARIOS}: ${SELETIVA_AGENDADA_URL}`;
   }
   const d = descontoMatriculaAtual(now);
   return d ? `${fez} E ainda dá para garantir *${d.pct}% de desconto na matrícula* até *${d.ate}*!` : fez;
@@ -250,9 +343,11 @@ export function seletivaDescontoDica(now: number = Date.now()): string {
  * curtos do orquestrador (DADOS_COLEGIO).
  */
 export function seletivaInfoLLM(now: number = Date.now()): string {
-  const datas = seletivaAgendadaDatas(now);
-  const agendado = datas.length
-    ? `Quem NÃO fez a Seletiva → pode fazer o TESTE AGENDADO ${datas.length > 1 ? `nos dias ${datas.join(" ou ")}` : `no dia ${datas[0]}`}, sempre às 8h ou às 14h, inscrição em ${SELETIVA_AGENDADA_URL}. NÃO cite nenhuma outra data de teste.`
+  const [prox, seguinte] = proximosTestesAgendados(now, 2);
+  const agendado = prox
+    ? `Quem NÃO fez a Seletiva → pode fazer o TESTE AGENDADO (toda terça e quinta, menos feriado), sempre às 8h ou às 14h, inscrição em ${SELETIVA_AGENDADA_URL}. Divulgue SÓ a próxima data: ${prox.semana}, ${prox.data}.` +
+      (seguinte ? ` Se o cliente disser que não pode nessa data, ofereça SÓ a seguinte: ${seguinte.semana}, ${seguinte.data}.` : "") +
+      " NUNCA liste várias datas de uma vez."
     : "Quem NÃO fez a Seletiva → os testes agendados já foram encerrados. NÃO cite datas de teste.";
   const faixa = descontoMatriculaAtual(now);
   const condicaoAtual = faixa
@@ -264,7 +359,7 @@ export function seletivaInfoLLM(now: number = Date.now()): string {
       ? `Quem se matricular ATÉ ${SELETIVA_MATRICULA_PRAZO} leva o mesmo % também na matrícula.`
       : `O mesmo % na matrícula valia até ${SELETIVA_MATRICULA_PRAZO} (já passou). ${condicaoAtual}`);
   return [
-    `• SELETIVA IDEAL 2027: JÁ ENCERRADA (prova foi em 26/09). Não passe link de inscrição da Seletiva, taxa nem datas antigas. EDITAL do teste agendado: o colégio manda o ARQUIVO do edital (um por segmento: 2º ao 5º ano, 6º ano ao Ensino Médio, turmas militares) — se ele já foi enviado na conversa, diga que a resposta está no edital enviado; nunca invente regra ou conteúdo do edital. ${agendado}${!datas.length && now >= SELETIVA_MATRICULA_FIM_MS ? ` ${condicaoAtual}` : ""}`,
+    `• SELETIVA IDEAL 2027: JÁ ENCERRADA (prova foi em 26/09). Não passe link de inscrição da Seletiva, taxa nem datas antigas. EDITAL do teste agendado: o colégio manda o ARQUIVO do edital (um por segmento: 2º ao 5º ano, 6º ano ao Ensino Médio, turmas militares) — se ele já foi enviado na conversa, diga que a resposta está no edital enviado; nunca invente regra ou conteúdo do edital. ${agendado}${!prox && now >= SELETIVA_MATRICULA_FIM_MS ? ` ${condicaoAtual}` : ""}`,
     `• RESULTADO DA SELETIVA: JÁ FOI ENVIADO POR E-MAIL (o e-mail usado na inscrição), com o percentual de desconto de cada aluno. Você NÃO sabe o percentual da Seletiva de nenhum aluno — nunca diga nem estime esse número; ele está no e-mail. ${resultado} Matrícula presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO} (dê o endereço se perguntarem onde). Não achou o e-mail → olhar Spam/Lixo eletrônico e Promoções, buscar "Seletivas Ideal 2027"; se não achar, mandar e-mail para ${SELETIVA_RESULTADO_EMAIL_SUPORTE} com o nome completo do aluno e o e-mail correto. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro.`,
     "• MATRÍCULA NÃO É SELETIVA: quem pergunta de matrícula, vaga, turma ou visita quer MATRICULAR — fale da matrícula " +
       `(presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO}) e convide para agendar uma visita. Só fale da Seletiva se o cliente citar a Seletiva/resultado ou perguntar de valor/desconto.`,

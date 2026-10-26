@@ -1635,12 +1635,13 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     "perdi o prazo da prova de bolsa",
     "ainda dá pra fazer a seletiva amanhã?",
     "quero saber da seletiva",
-  ])("'%s' → encerrada + agendamento futuro, marca 'agendada'", async (msg) => {
+  ])("'%s' → inscrições do teste agendado abertas, marca 'agendada'", async (msg) => {
     const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
     const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
     await orch.processMessage("u1", msg, "u1");
     const sent = sentOf(m);
-    expect(sent).toMatch(/encerrad/i);
+    expect(sent).toMatch(/inscri[çc][õo]es .*teste agendado.* j[áa] est[ãa]o abertas/i);
+    expect(sent).not.toMatch(/encerrad/i);
     expect(sent).toMatch(/teste agendado/i);
     expect(sent).toContain("forms.cloud.microsoft/r/WKqZt6vcgJ");
     expect(sent).not.toContain("seletivas2027");
@@ -1666,6 +1667,44 @@ describe("Orchestrator: Seletiva ENCERRADA (25/09/2026)", () => {
     expect(sent).not.toContain("20/10");
     expect(m.stateRepo.markSeletivaAgendada).toHaveBeenCalledWith("u1");
     expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "precisa pagar alguma taxa pra fazer a seletiva?",
+    "o teste agendado é pago?",
+    "tem taxa a prova?",
+  ])("'%s' → teste agendado não tem taxa, sem LLM", async (msg) => {
+    vi.setSystemTime(new Date("2026-10-26T13:00:00Z"));
+    const m = buildMocks({ history: [{ role: "assistant", content: "Oi" }, { role: "user", content: "Ana" }] });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", msg, "u1");
+    const sent = sentOf(m);
+    expect(sent).toMatch(/n[ãa]o tem taxa/i);
+    expect(sent).toContain("*terça-feira, 27/10*");
+    expect(sent).toContain(SELETIVA_AGENDADA_URL);
+    expect(sent).not.toContain("loja.grupoideal");
+    expect(sent).not.toMatch(/presencialmente/i);
+    expect(m.stateRepo.markSeletivaAgendada).toHaveBeenCalledWith("u1");
+    expect(m.llm.generateMessage).not.toHaveBeenCalled();
+  });
+
+  it("'precisa pagar?' logo depois da oferta do teste → não tem taxa", async () => {
+    vi.setSystemTime(new Date("2026-10-26T13:00:00Z"));
+    const m = buildMocks({
+      history: [
+        { role: "user", content: "ainda dá pra fazer a seletiva?" },
+        { role: "assistant", content: seletivaAgendamentoReply() },
+      ],
+    });
+    const orch = new MessageOrchestrator(m.llm, m.stateRepo, m.whatsapp, m.escalation);
+    await orch.processMessage("u1", "precisa pagar alguma coisa?", "u1");
+    expect(sentOf(m)).toMatch(/n[ãa]o tem taxa/i);
+  });
+
+  it("taxa de matrícula com a Seletiva na conversa → não é a taxa do teste", () => {
+    const history = [{ role: "assistant" as const, content: seletivaAgendamentoReply(Date.parse("2026-10-26T13:00:00Z")) }];
+    const t = detectSeletivaEncerradaTopic("qual a taxa de matrícula?", history, Date.parse("2026-10-26T13:00:00Z"));
+    expect(t).not.toBe("taxa");
   });
 
   it.each([

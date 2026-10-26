@@ -302,10 +302,40 @@ export const SELETIVA_PROVA_DIA_REPLY =
   "Boa prova! 🍀\n\n" +
   "_Não conseguiu se inscrever? Fique de olho: em breve vamos abrir o agendamento de um teste para quem não pôde participar._";
 
+// Dono (26/10/2026): nada de "inscrições encerradas" — o cliente pergunta da
+// prova e ouve que fechou. Fala só que o teste agendado está com inscrição aberta.
 function agendamentoReply(t: TesteAgendado): string {
   return (
-    "As inscrições da *Seletiva Ideal 2027* já foram encerradas. 🙏\n\n" +
-    `Mas quem não conseguiu participar pode fazer o *teste agendado* na ${testeAgendadoDiaTexto(t)}, ${SELETIVA_AGENDADA_HORARIOS}! 📝\n\n` +
+    "As inscrições para o *teste agendado* da *Seletiva Ideal 2027* já estão abertas! 🎉\n\n" +
+    `O próximo é na ${testeAgendadoDiaTexto(t)}, ${SELETIVA_AGENDADA_HORARIOS}. 📝\n\n` +
+    `👉 Faça a inscrição aqui: ${SELETIVA_AGENDADA_URL}`
+  );
+}
+
+// ── TAXA (dono, 26/10/2026) ─────────────────────────────────────────────────
+// O teste agendado NÃO tem taxa: é só se inscrever no formulário e vir fazer.
+// Citando a Seletiva vale qualquer sinal de pagamento/valor; só pelo contexto
+// (Seletiva nos últimos turnos), só os explícitos — "quanto custa?" ali pode
+// ser da escola. Matrícula, mensalidade e material nunca: são da escola.
+const TAXA_SIGNAL =
+  /(\btaxas?\b|\bpagar\b|\bpago\b|\bpaga\b|pagamento|cobrad|cobra\b|gratuit|de\s+gra[çc]a|\bcusta\b|quanto\s+(custa|[ée]|fica)|\bvalor\b)/i;
+const TAXA_CONTEXTO_SIGNAL = /(\btaxas?\b|\bpagar\b|pagamento|cobrad|cobra\b|gratuit|de\s+gra[çc]a)/i;
+const TAXA_DA_ESCOLA =
+  /(matr[ií]cul|mensalidade|material|uniforme|boleto|passaporte|segunda\s+chamada|2[ªa]\s+chamada|recupera[çc])/i;
+
+export function isSeletivaTaxaQuestion(text: string, soPeloContexto = false): boolean {
+  const t = text || "";
+  if (TAXA_DA_ESCOLA.test(t)) return false;
+  return (soPeloContexto ? TAXA_CONTEXTO_SIGNAL : TAXA_SIGNAL).test(t);
+}
+
+// Sem teste pela frente (só com SELETIVA_AGENDADA_FIM) → null, vale o agendamento.
+export function seletivaTaxaReply(now: number = Date.now()): string | null {
+  const [prox] = proximosTestesAgendados(now);
+  if (!prox) return null;
+  return (
+    "O *teste agendado* da *Seletiva Ideal 2027* *não tem taxa*! 😉\n\n" +
+    `É só fazer a inscrição e vir fazer o teste. O próximo é na ${testeAgendadoDiaTexto(prox)}, ${SELETIVA_AGENDADA_HORARIOS}. 📝\n\n` +
     `👉 Faça a inscrição aqui: ${SELETIVA_AGENDADA_URL}`
   );
 }
@@ -345,7 +375,7 @@ export function seletivaDescontoDica(now: number = Date.now()): string {
 export function seletivaInfoLLM(now: number = Date.now()): string {
   const [prox, seguinte] = proximosTestesAgendados(now, 2);
   const agendado = prox
-    ? `Quem NÃO fez a Seletiva → pode fazer o TESTE AGENDADO (toda terça e quinta, menos feriado), sempre às 8h ou às 14h, inscrição em ${SELETIVA_AGENDADA_URL}. Divulgue SÓ a próxima data: ${prox.semana}, ${prox.data}.` +
+    ? `Quem NÃO fez a Seletiva → pode fazer o TESTE AGENDADO (toda terça e quinta, menos feriado), sempre às 8h ou às 14h, inscrição em ${SELETIVA_AGENDADA_URL}. O teste agendado NÃO tem taxa nem pagamento nenhum: é só se inscrever no formulário e vir fazer. Divulgue SÓ a próxima data: ${prox.semana}, ${prox.data}.` +
       (seguinte ? ` Se o cliente disser que não pode nessa data, ofereça SÓ a seguinte: ${seguinte.semana}, ${seguinte.data}.` : "") +
       " NUNCA liste várias datas de uma vez."
     : "Quem NÃO fez a Seletiva → os testes agendados já foram encerrados. NÃO cite datas de teste.";
@@ -359,7 +389,7 @@ export function seletivaInfoLLM(now: number = Date.now()): string {
       ? `Quem se matricular ATÉ ${SELETIVA_MATRICULA_PRAZO} leva o mesmo % também na matrícula.`
       : `O mesmo % na matrícula valia até ${SELETIVA_MATRICULA_PRAZO} (já passou). ${condicaoAtual}`);
   return [
-    `• SELETIVA IDEAL 2027: JÁ ENCERRADA (prova foi em 26/09). Não passe link de inscrição da Seletiva, taxa nem datas antigas. EDITAL do teste agendado: o colégio manda o ARQUIVO do edital (um por segmento: 2º ao 5º ano, 6º ano ao Ensino Médio, turmas militares) — se ele já foi enviado na conversa, diga que a resposta está no edital enviado; nunca invente regra ou conteúdo do edital. ${agendado}${!prox && now >= SELETIVA_MATRICULA_FIM_MS ? ` ${condicaoAtual}` : ""}`,
+    `• SELETIVA IDEAL 2027: a prova principal foi em 26/09. Não passe o link de inscrição antigo da Seletiva, o link da taxa antiga nem datas antigas.${prox ? " NUNCA diga que as inscrições estão encerradas/fechadas: diga que as inscrições do TESTE AGENDADO estão abertas." : ""} EDITAL do teste agendado: o colégio manda o ARQUIVO do edital (um por segmento: 2º ao 5º ano, 6º ano ao Ensino Médio, turmas militares) — se ele já foi enviado na conversa, diga que a resposta está no edital enviado; nunca invente regra ou conteúdo do edital. ${agendado}${!prox && now >= SELETIVA_MATRICULA_FIM_MS ? ` ${condicaoAtual}` : ""}`,
     `• RESULTADO DA SELETIVA: JÁ FOI ENVIADO POR E-MAIL (o e-mail usado na inscrição), com o percentual de desconto de cada aluno. Você NÃO sabe o percentual da Seletiva de nenhum aluno — nunca diga nem estime esse número; ele está no e-mail. ${resultado} Matrícula presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO} (dê o endereço se perguntarem onde). Não achou o e-mail → olhar Spam/Lixo eletrônico e Promoções, buscar "Seletivas Ideal 2027"; se não achar, mandar e-mail para ${SELETIVA_RESULTADO_EMAIL_SUPORTE} com o nome completo do aluno e o e-mail correto. Responda SÓ o que foi perguntado, em 1–2 frases — NUNCA repita o bloco inteiro.`,
     "• MATRÍCULA NÃO É SELETIVA: quem pergunta de matrícula, vaga, turma ou visita quer MATRICULAR — fale da matrícula " +
       `(presencial nas unidades, ${SELETIVA_MATRICULA_HORARIO}) e convide para agendar uma visita. Só fale da Seletiva se o cliente citar a Seletiva/resultado ou perguntar de valor/desconto.`,

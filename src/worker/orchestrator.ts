@@ -44,6 +44,8 @@ import {
   isSeletivaOutraDataPedido,
   testeOferecidoNoHistorico,
   seletivaOutraDataReply,
+  isSeletivaTaxaQuestion,
+  seletivaTaxaReply,
   SELETIVA_AGENDADA_HORARIOS,
   SELETIVA_AGENDADA_URL,
 } from "../kb/seletiva-encerrada";
@@ -281,7 +283,8 @@ export class MessageOrchestrator {
         if (topico === "edital" && !seletivaAgendadaDatas().length) topico = "agendamento";
         // "Não posso nessa data" logo depois da oferta: o Jev lê como
         // continuação e vetaria — a regra já exige a oferta no histórico.
-        if (topico && topico !== "outra_data") {
+        // Taxa também: o Jev lê como "preço" e vetaria pro guard de valores.
+        if (topico && topico !== "outra_data" && topico !== "taxa") {
           // Live: o Jev pode trocar o tópico (agendamento → edital) ou vetar
           // a Seletiva inteira ("desconto pra servidor público?").
           const v = await gate(`seletiva_${topico}`, SELETIVA_ROTAS_JEV);
@@ -292,7 +295,8 @@ export class MessageOrchestrator {
           trace.route = `seletiva_${topico}`;
           // Só quem chegou tarde vira "agendada": quem pergunta do resultado ou
           // do dia da prova já está inscrito.
-          if (topico === "agendamento" || topico === "outra_data") await this.stateRepository.markSeletivaAgendada(studentId);
+          if (topico === "agendamento" || topico === "outra_data" || topico === "taxa")
+            await this.stateRepository.markSeletivaAgendada(studentId);
           if (await this.stateRepository.isBotPaused(studentId)) {
             logger.info({ studentId, topico }, "Seletiva encerrada — bot pausado, só marcou o status");
             return;
@@ -325,7 +329,9 @@ export class MessageOrchestrator {
                 ? SELETIVA_PROVA_DIA_REPLY
                 : topico === "outra_data"
                   ? seletivaOutraDataReply(testeOferecidoNoHistorico(conversationHistory)) ?? seletivaAgendamentoReply()
-                  : seletivaAgendamentoReply();
+                  : topico === "taxa"
+                    ? seletivaTaxaReply() ?? seletivaAgendamentoReply()
+                    : seletivaAgendamentoReply();
           // RAIZ DE BUG (26/09, cliente recebeu o bloco 3x seguidas): resposta
           // fixa sai UMA vez por conversa. Se ela já foi mandada, a próxima
           // dúvida ("Ela tem identidade?") vai pro LLM, que tem os mesmos dados
@@ -2080,10 +2086,23 @@ export function detectSeletivaEncerradaTopic(
   userMessage: string,
   history: ConversationMessage[],
   now: number = Date.now()
-): "resultado" | "resultado_nao_recebido" | "prova" | "edital" | "agendamento" | "outra_data" | null {
+): "resultado" | "resultado_nao_recebido" | "prova" | "edital" | "agendamento" | "outra_data" | "taxa" | null {
   // O bot acabou de oferecer uma data de teste e o cliente diz que não pode /
   // pede outra → oferece SÓ a seguinte (dono, 20/10/2026).
   if (isSeletivaOutraDataPedido(userMessage) && testeOferecidoNoHistorico(history)) return "outra_data";
+  // "Precisa pagar taxa?" → o teste agendado não tem taxa (dono, 26/10/2026).
+  // Antes do guard de preço, que responderia "valores só presencialmente".
+  // "A prova tem taxa?" / "o teste agendado é pago?" contam como citar a Seletiva.
+  // Só depois da prova de 26/09: antes, a taxa era a da inscrição (paga).
+  const posProva = now >= SELETIVA_PROVA_FIM_MS;
+  const citaTeste = mentionsSeletiva(userMessage) || /\b(teste|prova)\b/i.test(userMessage);
+  if (posProva && citaTeste && isSeletivaTaxaQuestion(userMessage)) return "taxa";
+  if (
+    posProva &&
+    isSeletivaTaxaQuestion(userMessage, true) &&
+    history.slice(-6).some((m) => mentionsSeletiva(m.content) || m.content.includes(SELETIVA_AGENDADA_URL))
+  )
+    return "taxa";
   const conteudo = isSeletivaContentQuestion(userMessage);
   // Pediu o EDITAL ("edital", "o que cai") → link do edital, não o bloco do dia.
   const edital = conteudo || /\bedita(l|is)\b/i.test(userMessage);

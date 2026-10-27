@@ -43,6 +43,7 @@ export interface Config {
   claude: {
     apiKey: string;
     model: string;
+    effort: "low" | "medium" | "high";
   };
   /** Jev (TypeSafe): roteador de intenção. mode "off" quando não há chave. */
   jev: {
@@ -98,6 +99,7 @@ export const config: Config = {
   claude: {
     apiKey: rawConfig.ANTHROPIC_API_KEY,
     model: rawConfig.CLAUDE_MODEL,
+    effort: rawConfig.CLAUDE_EFFORT,
   },
   jev: {
     apiKey: rawConfig.TYPESAFE_API_KEY,

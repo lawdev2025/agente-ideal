@@ -24,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || "",
         VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || "",
         LLM_PROVIDER: process.env.LLM_PROVIDER || "claude",
-        CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-haiku-4-5-20251001",
+        CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-haiku-5-5",
         GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.1-flash-lite",
         INSTITUTION_NAME: process.env.INSTITUTION_NAME || "",
         PERSONA_NAME: process.env.PERSONA_NAME || "",

@@ -2526,7 +2526,7 @@ function buildPhrasingSystemPrompt(escalateAfter?: string): string {
 // keeping the conversation moving without inventing data.
 function buildChatSystemPrompt(): string {
   return [
-    `${IDENTIDADE_ATENDIMENTO} Nesta mensagem você está apenas conversando por WhatsApp — outras decisões já foram tratadas pelo sistema. Responda natural, 1-2 frases curtas. Se o cliente está confirmando algo ou agradecendo, responda curto e simpático. Não copie markdown bruto de resultado de ferramenta — reformule em português corrido.`,
+    `${IDENTIDADE_ATENDIMENTO} Nesta mensagem você está apenas conversando por WhatsApp — outras decisões já foram tratadas pelo sistema. Responda natural, 1-2 frases curtas. Se o cliente está confirmando algo ou agradecendo, responda curto e simpático. Só fale da Seletiva se o cliente citou ela; não ofereça menu de opções nem repita a pergunta "em que posso ajudar" que já fez. Não copie markdown bruto de resultado de ferramenta — reformule em português corrido.`,
     "",
     dadosColegio(),
     "",

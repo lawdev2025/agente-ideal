@@ -6,6 +6,12 @@ export interface GenerateOptions {
    * fluxo sem alterar comportamento.
    */
   flow?: string;
+  /**
+   * Quanto o modelo pensa antes de responder (Claude Haiku 5.5+). Sem valor,
+   * vale o CLAUDE_EFFORT da config. Rotas simples (classificação) usam "low".
+   * O Gemini ignora.
+   */
+  effort?: "low" | "medium" | "high";
 }
 
 export interface LLMProvider {

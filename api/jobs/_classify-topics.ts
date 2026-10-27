@@ -35,7 +35,7 @@ Se não houver sinal claro, use "Outras dúvidas" com confiança baixa.`;
 
 function getProvider() {
   return appConfig.llmProvider === "claude"
-    ? new ClaudeProvider(appConfig.claude.apiKey, appConfig.claude.model)
+    ? new ClaudeProvider(appConfig.claude.apiKey, appConfig.claude.model, appConfig.claude.effort)
     : new GeminiProvider(appConfig.gemini.apiKey, appConfig.gemini.model);
 }
 
@@ -131,6 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const r = await provider.generateMessage(transcript, [], [], {
           systemPromptOverride: CLASSIFY_SYSTEM_PROMPT,
           flow: "classify-topics",
+          effort: "low",
         });
         parsed = parseClassification(r.message || "");
       } catch (err) {

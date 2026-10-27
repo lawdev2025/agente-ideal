@@ -28,7 +28,15 @@ const EnvSchema = z.object({
 
   // Anthropic Claude
   ANTHROPIC_API_KEY: z.string().min(1),
-  CLAUDE_MODEL: z.string().default('claude-haiku-4-5-20251001'),
+  // Haiku 4.5 aposentado: um CLAUDE_MODEL antigo que ficou no ambiente
+  // (Vercel/.env) é trocado pelo 5.5 em vez de continuar rodando o modelo velho.
+  CLAUDE_MODEL: z
+    .string()
+    .default('claude-haiku-5-5')
+    .transform((m) => (m.startsWith('claude-haiku-4-5') ? 'claude-haiku-5-5' : m)),
+  // Profundidade do pensamento do Claude (low | medium | high). "medium" é o
+  // padrão do Haiku 5.5; "low" é mais barato/rápido, "high" segue regra melhor.
+  CLAUDE_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
 
   // Jev (TypeSafe) — classificador de intenção que decide QUAL resposta dar
   // (não escreve texto). Sem chave = desligado. "shadow" (default) só registra

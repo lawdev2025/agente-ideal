@@ -4,37 +4,39 @@ import { buildSystemPrompt } from "./prompts/system-prompt";
 import { logger } from "../logger";
 
 /**
- * Anthropic Claude provider.
+ * Anthropic Claude provider — modelo padrão: Claude Haiku 5.5.
  *
- * Prompt caching is MARKED on the system prompt (cache_control below), but be
- * aware of the model-specific minimum cacheable prefix: Haiku 4.5 only caches
- * prefixes >= 4096 tokens. Below that the cache_control marker is a silent
- * no-op — cache_creation_input_tokens comes back 0 and you pay full price.
+ * O que muda em relação ao Haiku 4.5 (aposentado aqui):
+ *   - Pensamento adaptativo ligado por padrão. A resposta pode começar com
+ *     blocos `thinking` (lemos só os `text`), e o pensamento conta no
+ *     max_tokens — por isso o teto subiu. A profundidade é controlada por
+ *     `output_config.effort` (padrão do modelo: "medium").
+ *   - temperature/top_p/top_k e prefill de assistant dão 400. Não usamos.
+ *   - Classificadores de segurança podem recusar (stop_reason "refusal",
+ *     sem fallback no servidor). Volta texto vazio e o orquestrador já trata
+ *     vazio (fraseamento cai no tool output; chat escala pro time).
+ *   - Tokenizer novo: o mesmo texto dá ~30% mais tokens.
  *
- * Today the production system prompts are all under 4096 tokens:
- *   - buildPhrasingSystemPrompt ~1.0k tokens  → NOT cached on Haiku
- *   - buildChatSystemPrompt     ~0.9k tokens  → NOT cached on Haiku
- *   - SYSTEM_PROMPT (full)      ~3.8k tokens  → NOT cached on Haiku (just under)
- *
- * So on the default model (Haiku 4.5) caching currently saves nothing. The
- * marker still helps on larger models (Sonnet/Opus cache from 1024-2048 tokens)
- * and is harmless on Haiku. To make caching pay off on Haiku, the cached prefix
- * must cross 4096 tokens (e.g. consolidate the prompts) — measure
- * cache_read_input_tokens in the logs before assuming any savings.
+ * Prompt caching: o Haiku 5.5 cacheia a partir de ~512 tokens (no 4.5 eram
+ * 4096), então os system prompts de produção (~0.9k–3.8k tokens) agora
+ * cacheiam de verdade. Confira cacheReadTokens nos logs.
  * Cache reads cost ~0.1x base input; writes cost 1.25x (5-min TTL).
  */
 export class ClaudeProvider implements LLMProvider {
   private client: Anthropic;
   private model: string;
   private apiKey: string;
+  private effort: "low" | "medium" | "high";
 
   constructor(
     apiKey: string,
-    model: string = "claude-haiku-4-5-20251001"
+    model: string = "claude-haiku-5-5",
+    effort: "low" | "medium" | "high" = "medium"
   ) {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     this.apiKey = apiKey;
+    this.effort = effort;
   }
 
   async generateMessage(
@@ -107,9 +109,14 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
         input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
       }));
 
+      const effort = options?.effort ?? this.effort;
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 1024,
+        // Folga pro pensamento adaptativo, que conta neste teto. A resposta
+        // visível continua curta (WhatsApp); o resto é margem pra não cortar.
+        max_tokens: 4096,
+        // Haiku 4.5 dá 400 com effort; só manda pra modelo que aceita.
+        ...(this.model.startsWith("claude-haiku-4-5") ? {} : { output_config: { effort } }),
         system: [
           {
             type: "text",
@@ -142,10 +149,27 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
         }
       }
 
+      if (response.stop_reason === "refusal") {
+        logger.warn(
+          {
+            model: this.model,
+            flow: options?.flow ?? "default",
+            category: response.stop_details?.category ?? null,
+          },
+          "Claude recusou a mensagem (classificador de segurança)"
+        );
+        return { message: "" };
+      }
+      if (response.stop_reason === "max_tokens") {
+        logger.warn({ model: this.model, flow: options?.flow ?? "default", effort }, "Claude bateu no max_tokens");
+      }
+
       logger.info(
         {
           model: this.model,
           flow: options?.flow ?? "default",
+          effort,
+          stopReason: response.stop_reason,
           systemChars: systemText.length,
           toolCalls: toolCalls.length,
           messageLength: text.length,
@@ -153,8 +177,7 @@ O calendário letivo e de provas está disponível no portal do aluno. Gostaria 
           // cacheCreation > 0: prefixo foi escrito no cache (pagou ~1.25x).
           // cacheRead > 0: prefixo veio do cache (pagou ~0.1x).
           // Ambos 0 com cache_control setado = prefixo abaixo do mínimo do
-          // modelo (4096 tokens no Haiku) — caching é no-op, vide comentário
-          // no topo desta classe.
+          // modelo (~512 tokens no Haiku 5.5) ou algo variando no prompt.
           cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
           cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
           outputTokens: response.usage.output_tokens,

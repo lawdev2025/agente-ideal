@@ -30,7 +30,7 @@ export const config = {
 const stateRepo = new StateRepository();
 const llmProvider =
   appConfig.llmProvider === "claude"
-    ? new ClaudeProvider(appConfig.claude.apiKey, appConfig.claude.model)
+    ? new ClaudeProvider(appConfig.claude.apiKey, appConfig.claude.model, appConfig.claude.effort)
     : new GeminiProvider(appConfig.gemini.apiKey, appConfig.gemini.model);
 const whatsappClient = new WhatsAppClient(
   appConfig.whatsapp.accessToken,

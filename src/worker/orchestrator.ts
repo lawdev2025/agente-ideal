@@ -10,6 +10,16 @@ import { matchDirectResponse } from "../kb/direct-responses";
 import { isPassaporteIdealQuestion, PASSAPORTE_IDEAL_REPLY, PASSAPORTE_IDEAL_LLM } from "../kb/passaporte-ideal";
 import { unitAbbrev } from "../kb/contact-tags";
 import {
+  isEixoQuestion,
+  eixoReply,
+  eixoSeletivaAberta,
+  eixoJaApresentado,
+  eixoLLM,
+  EIXO_VALOR_REPLY,
+  EIXO_SELETIVA_ART_URL,
+  EIXO_ART_CAPTION,
+} from "../kb/eixo-seletiva";
+import {
   isSeletivaContentQuestion,
   pickSeletivaEditais,
   SELETIVA_EDITAIS,
@@ -232,6 +242,50 @@ export class MessageOrchestrator {
           `Limite de ${MAX_BOT_RESPONSES} respostas do bot atingido — passando para atendimento humano`
         );
         return;
+      }
+
+      // EIXO (pré-vestibular) + SELETIVAS EIXO 2027 (kb/eixo-seletiva.ts). ANTES
+      // da Seletiva Ideal: "seletiva do eixo" casa mentionsSeletiva e viraria o
+      // bloco da Seletiva do colégio. Sem gate do Jev: "eixo" escrito não é
+      // ambíguo. Bloco fixo (arte + texto) 1x por conversa; pergunta de valor
+      // depois dele → valor só na secretaria/coordenador; resto → LLM.
+      {
+        const eixoNoHistorico = conversationHistory.some(
+          (m) => m.role === "assistant" && eixoJaApresentado(m.content)
+        );
+        const eixoValor =
+          isPriceOrMaterialQuestion(userMessage) &&
+          (isEixoQuestion(userMessage) ||
+            (eixoNoHistorico && !detectUnit(userMessage) && !mentionsSeletiva(userMessage)));
+        if (isEixoQuestion(userMessage) || eixoValor) {
+          trace.route = eixoValor ? "eixo_valor" : "eixo";
+          try {
+            await this.stateRepository.setContactTag(studentId, "eixo");
+          } catch (err) {
+            logger.warn({ err, studentId }, "Falha ao gravar a tag eixo");
+          }
+          if (await this.stateRepository.isBotPaused(studentId)) return;
+          const jaFoi = (c: string) => conversationHistory.some((m) => m.role === "assistant" && m.content === c);
+          if (!eixoNoHistorico) {
+            logger.info({ studentId }, "Eixo — arte + resposta fixa");
+            const reply = eixoReply();
+            if (eixoSeletivaAberta())
+              await this.sendAndRecordArt(conversationId, studentId, EIXO_SELETIVA_ART_URL, EIXO_ART_CAPTION);
+            await this.stateRepository.appendMessage(conversationId, "assistant", reply);
+            await this.whatsappClient.sendMessage(studentId, reply);
+            await this.recordTurnOutcome(userMessage, true);
+            return;
+          }
+          if (eixoValor && !jaFoi(EIXO_VALOR_REPLY)) {
+            logger.info({ studentId }, "Eixo — valor só na secretaria/coordenador");
+            await this.stateRepository.appendMessage(conversationId, "assistant", EIXO_VALOR_REPLY);
+            await this.whatsappClient.sendMessage(studentId, EIXO_VALOR_REPLY);
+            await this.recordTurnOutcome(userMessage, true);
+            return;
+          }
+          await this.runLLMFlow(conversationId, studentId, userMessage, conversationHistory);
+          return;
+        }
       }
 
       // PASSAPORTE IDEAL = taxa de pré-matrícula (kb/passaporte-ideal.ts). ANTES
@@ -2473,6 +2527,8 @@ const dadosColegio = () => [
   "• Endereços (dê a rua completa quando perguntarem): Batista Campos — Rua dos Mundurucus, 1412, Batista Campos, Belém-PA · Augusto Montenegro — Rodovia Augusto Montenegro, 130, Parque Verde, Belém-PA · Cidade Nova — Conjunto Cidade Nova II, Av. SN-3, nº 3277 (esq. WE-21), Coqueiro, Ananindeua-PA.",
   `• Links de visita: Batista Campos → ${VISIT_LINKS["Batista Campos"]} · Augusto Montenegro → ${VISIT_LINKS["Augusto Montenegro"]} · Cidade Nova → ${VISIT_LINKS["Cidade Nova"]}.`,
   "• 3 unidades, todas do Maternal ao Pré-Enem: Maternal, Jardim, Fund 1 (1º-5º), Fund 2 (6º-9º), Médio, Pré-Enem (Eixo). Sistema Poliedro. Material/uniforme comprados na escola/malharia. Aulas 07:30 (30 min de tolerância), iguais nas 3 unidades.",
+  // Eixo (pré-vestibular): explicação + Seletivas Eixo 2027 (some após 28/11).
+  ...eixoLLM().split("\n"),
   // A Seletiva PRECISA estar aqui: sem ela, a regra de "dado concreto fora dos
   // dados acima → a secretaria confirma" fazia o modelo empurrar a campanha pra
   // secretaria (bug real em produção, print do cliente).

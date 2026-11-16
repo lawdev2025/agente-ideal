@@ -38,6 +38,11 @@ export function classifyContactTag(text: string): ContactTag | null {
 
   if (MODALIDADE.test(t)) return "esporte";
 
+  // "Seletiva do Eixo" é do pré-vestibular, não da Seletiva do colégio: o
+  // Eixo vem ANTES do "selet" abaixo (o orquestrador também responde com o
+  // bloco do Eixo nesse caso).
+  if (/\beixos?\b/.test(t)) return "eixo";
+
   // Seletiva Ideal 2027 vem PRIMEIRO: é uma campanha própria e as frases dela
   // contêm palavras que cairiam em matrícula ("inscrição", "prova") ou em
   // rematrícula ("sou aluno e quero fazer a seletiva").

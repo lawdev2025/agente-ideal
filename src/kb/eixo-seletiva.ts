@@ -19,7 +19,7 @@ export const EIXO_COORDENADOR_PHONE = "(91) 99334-4387";
 // Formulário de inscrição (Microsoft Forms, link de RESPOSTA — o link de
 // edição "DesignPageV2" não abre pro público).
 export const EIXO_SELETIVA_URL =
-  "https://forms.office.com/Pages/ResponsePage.aspx?id=oPDMhAF5-EecGkpLlWidGdRzlrCiq19FqyQg7c1uSDRURVFKUEdBNURFVExMSDREWUxaV1k4RVk5NC4u";
+  "https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=oPDMhAF5-EecGkpLlWidGdRzlrCiq19FqyQg7c1uSDRURVFKUEdBNURFVExMSDREWUxaV1k4RVk5NC4u";
 
 // Arte da campanha, servida pelo próprio deploy (public/img/).
 export const EIXO_SELETIVA_ART_URL = "https://agente-ideal.vercel.app/img/seletiva-eixo-2027.jpg";
